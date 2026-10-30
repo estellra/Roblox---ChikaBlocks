@@ -9,54 +9,66 @@ export type Piece = {
 	width: number,
 	height: number,
 	size: SizeGroup,
+	color: number, -- fixed per shape family, 1..Config.COLOR_COUNT
+}
+
+local COLORS = {
+	Dot = 1,
+	Bar = 2,
+	Corner = 3,
+	Block = 4,
+	L = 5,
+	T = 6,
+	Zigzag = 7,
+	BigCorner = 8,
 }
 
 -- "#" is a filled cell, "." is empty. Rows go top to bottom.
-local SHAPES: { { id: string, rows: { string } } } = {
+local SHAPES: { { id: string, color: number, rows: { string } } } = {
 	-- Small (1-3 cells)
-	{ id = "Dot", rows = { "#" } },
-	{ id = "I2_H", rows = { "##" } },
-	{ id = "I2_V", rows = { "#", "#" } },
-	{ id = "I3_H", rows = { "###" } },
-	{ id = "I3_V", rows = { "#", "#", "#" } },
-	{ id = "L3_1", rows = { "##", "#." } },
-	{ id = "L3_2", rows = { "##", ".#" } },
-	{ id = "L3_3", rows = { "#.", "##" } },
-	{ id = "L3_4", rows = { ".#", "##" } },
+	{ id = "Dot", color = COLORS.Dot, rows = { "#" } },
+	{ id = "I2_H", color = COLORS.Bar, rows = { "##" } },
+	{ id = "I2_V", color = COLORS.Bar, rows = { "#", "#" } },
+	{ id = "I3_H", color = COLORS.Bar, rows = { "###" } },
+	{ id = "I3_V", color = COLORS.Bar, rows = { "#", "#", "#" } },
+	{ id = "L3_1", color = COLORS.Corner, rows = { "##", "#." } },
+	{ id = "L3_2", color = COLORS.Corner, rows = { "##", ".#" } },
+	{ id = "L3_3", color = COLORS.Corner, rows = { "#.", "##" } },
+	{ id = "L3_4", color = COLORS.Corner, rows = { ".#", "##" } },
 
 	-- Medium (4 cells)
-	{ id = "I4_H", rows = { "####" } },
-	{ id = "I4_V", rows = { "#", "#", "#", "#" } },
-	{ id = "O2", rows = { "##", "##" } },
-	{ id = "L4_1", rows = { "#.", "#.", "##" } },
-	{ id = "L4_2", rows = { "###", "#.." } },
-	{ id = "L4_3", rows = { "##", ".#", ".#" } },
-	{ id = "L4_4", rows = { "..#", "###" } },
-	{ id = "J4_1", rows = { ".#", ".#", "##" } },
-	{ id = "J4_2", rows = { "#..", "###" } },
-	{ id = "J4_3", rows = { "##", "#.", "#." } },
-	{ id = "J4_4", rows = { "###", "..#" } },
-	{ id = "T4_1", rows = { "###", ".#." } },
-	{ id = "T4_2", rows = { ".#.", "###" } },
-	{ id = "T4_3", rows = { "#.", "##", "#." } },
-	{ id = "T4_4", rows = { ".#", "##", ".#" } },
-	{ id = "S_H", rows = { ".##", "##." } },
-	{ id = "S_V", rows = { "#.", "##", ".#" } },
-	{ id = "Z_H", rows = { "##.", ".##" } },
-	{ id = "Z_V", rows = { ".#", "##", "#." } },
+	{ id = "I4_H", color = COLORS.Bar, rows = { "####" } },
+	{ id = "I4_V", color = COLORS.Bar, rows = { "#", "#", "#", "#" } },
+	{ id = "O2", color = COLORS.Block, rows = { "##", "##" } },
+	{ id = "L4_1", color = COLORS.L, rows = { "#.", "#.", "##" } },
+	{ id = "L4_2", color = COLORS.L, rows = { "###", "#.." } },
+	{ id = "L4_3", color = COLORS.L, rows = { "##", ".#", ".#" } },
+	{ id = "L4_4", color = COLORS.L, rows = { "..#", "###" } },
+	{ id = "J4_1", color = COLORS.L, rows = { ".#", ".#", "##" } },
+	{ id = "J4_2", color = COLORS.L, rows = { "#..", "###" } },
+	{ id = "J4_3", color = COLORS.L, rows = { "##", "#.", "#." } },
+	{ id = "J4_4", color = COLORS.L, rows = { "###", "..#" } },
+	{ id = "T4_1", color = COLORS.T, rows = { "###", ".#." } },
+	{ id = "T4_2", color = COLORS.T, rows = { ".#.", "###" } },
+	{ id = "T4_3", color = COLORS.T, rows = { "#.", "##", "#." } },
+	{ id = "T4_4", color = COLORS.T, rows = { ".#", "##", ".#" } },
+	{ id = "S_H", color = COLORS.Zigzag, rows = { ".##", "##." } },
+	{ id = "S_V", color = COLORS.Zigzag, rows = { "#.", "##", ".#" } },
+	{ id = "Z_H", color = COLORS.Zigzag, rows = { "##.", ".##" } },
+	{ id = "Z_V", color = COLORS.Zigzag, rows = { ".#", "##", "#." } },
 
 	-- Large (5-6 cells)
-	{ id = "I5_H", rows = { "#####" } },
-	{ id = "I5_V", rows = { "#", "#", "#", "#", "#" } },
-	{ id = "R2x3", rows = { "##", "##", "##" } },
-	{ id = "R3x2", rows = { "###", "###" } },
-	{ id = "L5_1", rows = { "#..", "#..", "###" } },
-	{ id = "L5_2", rows = { "###", "#..", "#.." } },
-	{ id = "L5_3", rows = { "###", "..#", "..#" } },
-	{ id = "L5_4", rows = { "..#", "..#", "###" } },
+	{ id = "I5_H", color = COLORS.Bar, rows = { "#####" } },
+	{ id = "I5_V", color = COLORS.Bar, rows = { "#", "#", "#", "#", "#" } },
+	{ id = "R2x3", color = COLORS.Block, rows = { "##", "##", "##" } },
+	{ id = "R3x2", color = COLORS.Block, rows = { "###", "###" } },
+	{ id = "L5_1", color = COLORS.BigCorner, rows = { "#..", "#..", "###" } },
+	{ id = "L5_2", color = COLORS.BigCorner, rows = { "###", "#..", "#.." } },
+	{ id = "L5_3", color = COLORS.BigCorner, rows = { "###", "..#", "..#" } },
+	{ id = "L5_4", color = COLORS.BigCorner, rows = { "..#", "..#", "###" } },
 
 	-- Huge (9 cells)
-	{ id = "O3", rows = { "###", "###", "###" } },
+	{ id = "O3", color = COLORS.Block, rows = { "###", "###", "###" } },
 }
 
 local function sizeGroupFor(cellCount: number): SizeGroup
@@ -70,7 +82,7 @@ local function sizeGroupFor(cellCount: number): SizeGroup
 	return "Huge"
 end
 
-local function parse(id: string, rows: { string }): Piece
+local function parse(id: string, color: number, rows: { string }): Piece
 	local cells: { Cell } = {}
 	local width = 0
 	for y, row in rows do
@@ -87,13 +99,14 @@ local function parse(id: string, rows: { string }): Piece
 		width = width,
 		height = #rows,
 		size = sizeGroupFor(#cells),
+		color = color,
 	})
 end
 
 local all: { Piece } = {}
 local byId: { [string]: Piece } = {}
 for _, shape in SHAPES do
-	local piece = parse(shape.id, shape.rows)
+	local piece = parse(shape.id, shape.color, shape.rows)
 	table.insert(all, piece)
 	byId[piece.id] = piece
 end

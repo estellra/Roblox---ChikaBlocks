@@ -1,4 +1,5 @@
 --!strict
+local Config = require("../src/shared/Config")
 local Pieces = require("../src/shared/Pieces")
 local TestKit = require("./TestKit")
 
@@ -58,6 +59,22 @@ return function(t: TestKit.TestKit)
 				t.expect(shapes[key]).toBe(nil)
 				shapes[key] = piece.id
 			end
+		end)
+
+		t.it("gives each shape family one color and uses every palette slot", function()
+			local used = {}
+			for _, piece in Pieces.ALL do
+				t.expect(piece.color >= 1 and piece.color <= Config.COLOR_COUNT).toBe(true)
+				used[piece.color] = true
+			end
+			for color = 1, Config.COLOR_COUNT do
+				t.expect(used[color]).toBe(true)
+			end
+			local P = Pieces.BY_ID
+			t.expect(P.L4_1.color).toBe(P.J4_3.color)
+			t.expect(P.I2_H.color).toBe(P.I5_V.color)
+			t.expect(P.S_H.color).toBe(P.Z_V.color)
+			t.expect(P.T4_1.color ~= P.L4_1.color).toBe(true)
 		end)
 
 		t.it("is read-only", function()

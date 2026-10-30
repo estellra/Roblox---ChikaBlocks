@@ -114,6 +114,16 @@ function Board.clearLines(board: Board, lines: Lines): number
 	return cleared
 end
 
+-- Empties a rectangle; the parts outside the board are ignored.
+function Board.clearRect(board: Board, x: number, y: number, width: number, height: number)
+	local cells = board.cells
+	for row = math.max(y, 0), math.min(y + height, SIZE) - 1 do
+		for col = math.max(x, 0), math.min(x + width, SIZE) - 1 do
+			cells[row * SIZE + col + 1] = 0
+		end
+	end
+end
+
 -- Lines that placing the piece would complete, without changing the board. Empty if the move is invalid.
 function Board.previewLines(board: Board, piece: Piece, x: number, y: number): Lines
 	if not Board.canPlace(board, piece, x, y) then

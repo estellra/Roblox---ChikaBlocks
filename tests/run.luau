@@ -11,6 +11,9 @@ local specs = {
 	require("./Pieces.spec"),
 	require("./Board.spec"),
 	require("./Scoring.spec"),
+	require("./Generator.spec"),
+	require("./GameSession.spec"),
+	require("./Simulation.spec"),
 }
 
 for _, spec in specs do

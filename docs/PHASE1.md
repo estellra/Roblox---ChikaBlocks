@@ -72,7 +72,9 @@ tests/
 | Lớn (5–6 ô) | thanh 5 (ngang/dọc); chữ nhật 2x3 và 3x2; L lớn 3x3 (4 hướng) | 8 |
 | Rất lớn (9 ô) | vuông 3x3 | 1 |
 
-Mỗi khối gồm `id`, `cells` (danh sách `{x, y}` đã chuẩn hóa về góc trên trái), `width`, `height`, `size` (nhóm).
+Mỗi khối gồm `id`, `cells` (danh sách `{x, y}` đã chuẩn hóa về góc trên trái), `width`, `height`, `size` (nhóm) và `color`.
+
+**Màu cố định theo họ hình** (8 màu, `Config.COLOR_COUNT`): chấm, thanh, góc 3 ô, khối vuông/chữ nhật, L/J 4 ô, T, S/Z, L lớn. Client map chỉ số màu 1–8 sang bảng màu của theme.
 
 ### Board
 - `Board.new()`, `canPlace(board, piece, x, y)` (kiểm tra trong biên và không chồng ô), `place(...)`.
@@ -91,43 +93,49 @@ Mỗi khối gồm `id`, `cells` (danh sách `{x, y}` đã chuẩn hóa về gó
 ### Generator
 Đầu vào là bảng hiện tại, điểm số và `Rng`. Đầu ra là 3 khối.
 
-1. **Trọng số khối** nội suy giữa mức dễ và mức khó theo `t = clamp(score / 8000, 0, 1)`:
+1. **Tỉ lệ theo nhóm:** mỗi lần bốc chọn nhóm theo tỉ lệ, rồi chọn đều một khối trong nhóm. Tỉ lệ nội suy giữa mức dễ và mức khó theo `t = clamp(score / 8000, 0, 1)`:
 
-   | Nhóm | Dễ (t = 0) | Khó (t = 1) |
+   | Nhóm | Dễ (0 điểm) | Khó (từ 8000 điểm) |
    |---|---|---|
-   | Nhỏ | 3 | 1.5 |
-   | Vừa | 3 | 3 |
-   | Lớn | 2 | 3 |
-   | Rất lớn | 0.5 | 1.5 |
+   | Nhỏ | 30% | 15% |
+   | Vừa | 45% | 40% |
+   | Lớn | 20% | 33% |
+   | Rất lớn (3x3) | 5% | 12% |
 
-2. **Mercy:** khi `fillRatio > 0.6`, trọng số nhóm Nhỏ nhân 2.
-3. **Bảo đảm công bằng** (chọn ngẫu nhiên lại tối đa 30 lần cho tới khi bộ khối đạt yêu cầu):
+   Mỗi bộ có tối đa 1 khối 3x3.
+2. **Mercy:** khi `fillRatio > 0.6`, tỉ lệ nhóm Nhỏ nhân 2 rồi chuẩn hóa lại.
+3. **Bảo đảm công bằng** (bốc lại tối đa 30 lần cho tới khi bộ khối đạt yêu cầu):
 
    | Điểm | Yêu cầu với bộ khối |
    |---|---|
-   | < 1500 | Đặt được **cả 3** theo một thứ tự nào đó, có tính cả việc xóa hàng giữa các lần đặt. Kiểm tra bằng backtracking, giới hạn 20.000 node. |
+   | < 1500, hoặc khi hồi sinh | Đặt được **cả 3** theo một thứ tự nào đó, có tính cả việc xóa hàng giữa các lần đặt. Kiểm tra bằng backtracking, giới hạn 20.000 node. |
    | 1500 – 5000 | **Từng khối** đều có chỗ đặt trên bảng hiện tại. |
    | ≥ 5000 | **Ít nhất 1 khối** đặt được. |
 
-4. **Dự phòng:** nếu sau 30 lần vẫn không đạt, lấy bộ khối nhỏ nhất đặt vừa. Khối 1x1 luôn đặt được, vì bảng không thể kín hết 64 ô (bảng kín thì mọi hàng đều đầy và đã bị xóa).
-5. Hiệu năng: sinh một bộ trung bình < 2ms, chậm nhất < 20ms. Có test benchmark để kiểm tra.
+   Khi hồi sinh, bộ khối được bốc theo tỉ lệ mức dễ.
+4. **Dự phòng:** nếu sau 30 lần vẫn không đạt, bốc thêm tối đa 10 lần chỉ từ nhóm Nhỏ, cuối cùng chia 3 khối 1x1. Bộ 3 khối 1x1 luôn đặt được, vì sau mỗi nước đi mọi hàng đầy đều bị xóa nên mỗi hàng luôn còn ít nhất 1 ô trống.
+5. **Solver:** chạy trên row mask 8 bit thay vì mảng ô của `Board`. Nhánh được cắt bỏ khi một nước không xóa hàng nào trong lúc mọi khối còn lại đều không có chỗ đặt (đặt thêm ô không bao giờ tạo thêm chỗ trống). Test so sánh với tìm kiếm vét cạn trên 200 bảng.
+6. **Hiệu năng (mục tiêu < 2ms trung bình, < 20ms chậm nhất):** đo được 0.02ms trung bình và dưới 1ms chậm nhất, cả trong Lune lẫn trên server Studio. Không cần `--!native`.
 
 ### GameSession
 Nguồn bộ khối được **truyền vào** (dependency injection, theo `roblox-testing`). Nhờ vậy test có thể đưa bộ khối cố định, GĐ1 dùng `Generator` cục bộ, còn GĐ2 server dùng `Generator` với seed bí mật và client nhận bộ khối qua remote.
 
 ```lua
-type SetSource = (board: Board, score: number) -> { Piece }
+type DealReason = "Normal" | "Revive"
+type SetSource = (board: Board, score: number, reason: DealReason) -> { Piece }
 
-local session = GameSession.new(nextSet: SetSource)
-session.board, session.tray      -- tray: { Piece? } x3, nil = đã dùng
-session.score, session.combo, session.isOver, session.revivesUsed
+local session = GameSession.new(setSource: SetSource, initialBoard: Board?)
+session.board, session.tray      -- tray: { Piece | false } x3, false = ô đã dùng
+session.score, session.combo, session.isOver, session.revivesUsed, session.moveCount
 session:canPlace(slot, x, y) -> boolean
-session:place(slot, x, y) -> PlaceResult?  -- nil nếu nước đi không hợp lệ
--- PlaceResult = { cells, clearedRows, clearedCols, points, combo, boardCleared, refilled, isOver }
-session:revive() -> boolean      -- xóa vùng 4x4 giữa bảng, lấy bộ khối mới, tối đa 2 lần
+session:place(slot, x, y) -> PlaceResult?  -- nil nếu nước đi không hợp lệ, trạng thái giữ nguyên
+-- PlaceResult = { slot, piece, x, y, clearedRows, clearedCols, cellsCleared, points, combo,
+--                 boardCleared, refilled, isOver }
+session:revive() -> boolean      -- xóa vùng 4x4 giữa bảng, reset combo, lấy bộ khối "Revive", tối đa 2 lần
 ```
-- Đặt hết 3 khối thì tự gọi `nextSet` để lấy bộ mới.
+- Đặt hết 3 khối thì tự gọi `setSource` để lấy bộ mới.
 - Sau mỗi lần đặt hoặc lấy bộ mới, nếu không khối nào còn trong khay đặt được thì `isOver = true`.
+- `slot`, `x`, `y` được xem là dữ liệu không tin cậy (sang GĐ2 server truyền thẳng từ client): sai kiểu, không nguyên, NaN, vô cực hay ngoài biên đều trả về `nil`, không throw.
 
 ## Đặc tả UI và điều khiển
 
@@ -196,3 +204,17 @@ Mỗi mốc kết thúc bằng: test pass, `stylua --check` và `selene` sạch,
 | ScreenInsets | `CoreUISafeInsets` cho UI tương tác (`roblox-ui`) | Theo skill: tách riêng ScreenGui nền và ScreenGui game. |
 | Layout và hiệu ứng | Scale, constraint, `UIScale` (`roblox-ui`) | Theo skill: bỏ module `Layout`, chuyển sang Scale và `UIAspectRatioConstraint`. |
 | Gamepad | Mọi thao tác đều có binding gamepad (`roblox-input`) | Vẫn làm ở GĐ2 như PLAN.md. GĐ1 tách lớp ý định trong `DragController` để GĐ2 gắn Input Action System vào. |
+
+### Quyết định khi review plan M2
+
+| Điểm | Quyết định |
+|---|---|
+| A. Trọng số khối | Tính theo **nhóm**, ghi dưới dạng tỉ lệ phần trăm (bảng ở mục Generator). |
+| B. Khối 3x3 | Tối đa **1 khối 3x3** mỗi bộ. |
+| C. Màu khối | **Cố định theo họ hình**, không ngẫu nhiên. |
+| D. Hồi sinh | **Reset combo** khi hồi sinh. |
+
+### Kết quả M2
+
+- 55 test pass, bao gồm 10.000 bảng ngẫu nhiên cho Generator và 200 ván bot tự chơi.
+- Bot (ưu tiên xóa hàng, sau đó chọn chỗ đặt khít nhất) đạt trung bình 3.129 điểm sau 134 nước; 65% số ván vượt 1.500 điểm và 24% vượt 5.000 điểm. Số liệu này dùng làm mốc khi tune độ khó.

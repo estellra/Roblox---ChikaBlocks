@@ -142,6 +142,28 @@ return function(t: TestKit.TestKit)
 			t.expect(Board.hasAnyPlacement(board, P.O2)).toBe(false)
 		end)
 
+		t.it("clears a rectangle and ignores the part outside the board", function()
+			local board = Helpers.boardFromRows({
+				"#######.",
+				"#######.",
+				"#######.",
+				"#######.",
+				"#######.",
+				"#######.",
+				"#######.",
+				"#######.",
+			})
+			Board.clearRect(board, 2, 2, 4, 4)
+			t.expect(Board.get(board, 2, 2)).toBe(0)
+			t.expect(Board.get(board, 5, 5)).toBe(0)
+			t.expect(Board.get(board, 1, 2)).toBe(1)
+			t.expect(Board.get(board, 6, 5)).toBe(1)
+			t.expect(Board.fillRatio(board)).toBe((56 - 16) / 64)
+			Board.clearRect(board, 6, -2, 5, 3)
+			t.expect(Board.get(board, 6, 0)).toBe(0)
+			t.expect(Board.get(board, 6, 1)).toBe(1)
+		end)
+
 		t.it("clones without sharing cells", function()
 			local board = Board.new()
 			local copy = Board.clone(board)
