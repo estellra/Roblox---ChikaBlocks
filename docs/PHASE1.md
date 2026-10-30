@@ -36,19 +36,21 @@ src/client/                    → StarterPlayer.StarterPlayerScripts.Client
   init.client.luau   -- chờ game.Loaded, ẩn player list, bootstrap Controllers/
   Controllers/
     GameController.luau  -- giữ GameSession, nhận nước đi, cập nhật các view
-    DragController.luau  -- nhặt, kéo, snap, thả (chuột và cảm ứng)
+    DragController.luau  -- nhặt, kéo, snap, thả (chuột và cảm ứng) — M4
+    DebugController.luau -- chỉ trong Studio: cầu điều khiển cho playtest qua MCP
   Views/
-    Gui.luau         -- tạo 2 ScreenGui (nền và game), không giữ logic
-    BoardView.luau   -- 64 ô, ghost preview, highlight, hiệu ứng xóa
-    TrayView.luau    -- 3 ô khay, vẽ khối thu nhỏ
+    Theme.luau       -- design token: màu, font, cỡ chữ, bo góc, khoảng cách
+    Create.luau      -- helper tạo instance (gán Parent sau cùng)
+    Gui.luau         -- tạo 3 ScreenGui (nền, game, overlay) và bố cục co giãn
+    BoardView.luau   -- 64 ô, chỉ vẽ lại ô thay đổi (ghost, highlight, hiệu ứng xóa ở M4)
+    TrayView.luau    -- 3 ô khay, vẽ khối trên lưới 5x5
     Hud.luau         -- điểm, best (trong phiên), overlay Game Over
 tests/
-  Rng.spec, Pieces.spec, Board.spec, Scoring.spec, Generator.spec, GameSession.spec
+  Rng.spec, Pieces.spec, Board.spec, Scoring.spec, Generator.spec, GameSession.spec, Simulation.spec
 ```
 
-- `Main.server.luau` và `Main.client.luau` hiện có sẽ được thay bằng hai file `init` ở trên.
 - Controller có dạng `{ init: (self) -> ()?, start: (self) -> ()? }`. `init` không được yield, `start` thì được.
-- `default.project.json` thêm `Players.$properties.CharacterAutoLoads = false`.
+- `default.project.json` đặt `Players.CharacterAutoLoads = false` và `StarterGui.ScreenOrientation = Sensor`.
 
 ## Đặc tả logic
 
@@ -140,17 +142,21 @@ session:revive() -> boolean      -- xóa vùng 4x4 giữa bảng, reset combo, l
 ## Đặc tả UI và điều khiển
 
 ### Giao diện (theo `roblox-ui`)
-- **Hai ScreenGui**, đều có `ResetOnSpawn = false` và `ZIndexBehavior = Sibling`:
-  - `Background`: `IgnoreGuiInset = true`, `ScreenInsets = None`, chỉ có một Frame màu phủ kín màn hình.
-  - `Game`: `ScreenInsets = CoreUISafeInsets` để tránh tai thỏ và thanh top bar của Roblox. Toàn bộ phần tương tác nằm ở đây.
-- **Layout dùng Scale và constraint, không tính pixel bằng tay:**
-  - Cột dọc gồm HUD điểm, bảng chơi, khay 3 khối.
-  - Bảng có `Size = UDim2.fromScale(0.9, 0.55)` cùng `UIAspectRatioConstraint` (`AspectRatio = 1`, `AspectType = FitWithinMaxSize`), nên luôn vuông và tự co theo màn hình hoặc khi xoay máy.
-  - 64 ô được đặt bằng Scale (mỗi ô `1/8` cạnh bảng).
+- **UI gray-box là placeholder.** Khi có mockup ở GĐ2, phần `Views/` sẽ được làm lại theo mockup; logic và cơ chế kéo thả giữ nguyên. Mọi màu, font, cỡ chữ, bo góc và khoảng cách đọc từ token trong `Theme.luau`, nên đổi giao diện (hoặc bán theme ở GĐ4) chủ yếu là đổi token.
+- **Ba ScreenGui**, đều có `ResetOnSpawn = false`:
+  - `Background`: `IgnoreGuiInset = true` rồi mới đặt `ScreenInsets = None` (đặt `IgnoreGuiInset` sẽ tự đổi `ScreenInsets`), chỉ có một Frame màu phủ kín màn hình.
+  - `Game`: `ScreenInsets = CoreUISafeInsets` (theo docs: tránh cả tai thỏ lẫn top bar của Roblox), `SafeAreaCompatibility = None`. Toàn bộ phần tương tác nằm ở đây, cùng lớp `DragLayer` cho M4.
+  - `Overlay`: phủ kín màn hình, chỉ bật khi Game Over.
+- **Bố cục co giãn**, tính lại mỗi khi vùng an toàn đổi kích thước (xoay máy, đổi thiết bị):
+  - **Màn dọc** (rộng/cao < 1.1): HUD → Bảng → Khay xếp dọc, 3 ô khay nằm ngang.
+  - **Màn ngang**: bảng bên trái; bên phải là cột gồm HUD và 3 ô khay xếp dọc.
+  - Mọi kích thước dùng Scale; bảng và ô khay vuông nhờ `UIAspectRatioConstraint` (`FitWithinMaxSize`). 64 ô đặt bằng Scale (mỗi ô `1/8` cạnh lưới).
   - Chỉ lúc kéo thả mới đọc `AbsolutePosition` và `AbsoluteSize` để tính snap.
-- **Phóng to/thu nhỏ bằng `UIScale`, không tween `Size`:** khối trong khay có scale 0.55, nhặt lên thì tween về 1.0. Hiệu ứng xóa ô cũng dùng `UIScale`.
-- Nút "Chơi lại" dùng `Activated` (chạy được với chuột, cảm ứng và gamepad), không dùng `MouseButton1Click`.
-- Chữ dùng `TextSize` cố định kèm `UITextSizeConstraint` khi cần, tránh `TextScaled`. Vùng chạm tối thiểu khoảng 44×44 px.
+- **Khay:** mỗi khối vẽ trên lưới ảo 5x5 căn giữa ô khay (có lề trong), nên mọi khối cùng cỡ ô và khối dài 5 ô vừa khít.
+- **Phóng to/thu nhỏ bằng `UIScale`, không tween `Size`:** khi nhặt, khối phóng từ cỡ ô khay lên cỡ ô bảng. Hiệu ứng xóa ô cũng dùng `UIScale`.
+- Nút "Play again" dùng `Activated` (chạy được với chuột, cảm ứng và gamepad).
+- **Chữ:** số điểm và dòng "Best" dùng `TextScaled` có `UITextSizeConstraint` chặn trên dưới (vùng HUD cao thấp rất khác nhau giữa điện thoại dọc và TV). Chữ trong panel dùng cỡ cố định. Vùng chạm tối thiểu 44×44 px.
+- **Ngôn ngữ:** chữ trên UI bằng tiếng Anh; tiếng Việt thêm sau qua LocalizationTable.
 - Tạo xong toàn bộ cây UI rồi mới gán `Parent` cho `PlayerGui`, để chỉ chạy layout một lần.
 
 ### Kéo thả (tự viết bằng UserInputService)
@@ -177,7 +183,13 @@ session:revive() -> boolean      -- xóa vùng 4x4 giữa bảng, reset combo, l
 - **Trong Studio, qua Studio MCP (theo `roblox-studio-mcp`):**
   - Code sửa trên đĩa và để Rojo sync, **không** sửa script trong Studio, vì Rojo sẽ ghi đè.
   - Playtest bằng `start_stop_play`, đọc lỗi bằng `get_console_output`, kiểm tra trạng thái bằng `execute_luau` trong context Client, xem giao diện bằng `screen_capture`. Xong luôn dừng play.
-- **Thiết bị:** kiểm tra bằng Device Simulator ở các cấu hình điện thoại dọc, điện thoại ngang, tablet và màn 1080p. Có thể dùng skill `rbx-device-simulator-lua` của Studio để đổi thiết bị tự động.
+- **Thiết bị:** kiểm tra bằng Device Simulator ở các cấu hình điện thoại dọc, điện thoại ngang, tablet và màn 1080p, dùng skill `rbx-device-simulator-lua` của Studio để đổi thiết bị tự động.
+  - Chỉ đổi được thiết bị ở chế độ Edit, nên mỗi máy phải: dừng play → chọn máy → bấm Play → chụp.
+  - Chọn thiết bị trước rồi mới đặt hướng màn hình (đặt hướng khi đang giả lập laptop sẽ lỗi).
+- **Cầu debug (chỉ trong Studio):** `PlayerScripts.ChikaDebug:Invoke(lệnh, ...)` gọi từ `execute_luau` context Client. Lệnh: `state`, `layout`, `place slot x y`, `autoplay n`, `gameover`, `restart`. `DebugController` cũng in `[Layout] …` ra Output mỗi khi bố cục đổi.
+- **Lưu ý môi trường:**
+  - `execute_luau` ở chế độ Edit giữ cache module đã require, nên muốn chạy code mới thì kiểm tra trong playtest.
+  - `rojo serve` không nạp lại thay đổi `$properties` trong `default.project.json`; phải khởi động lại server rồi Connect lại trong Studio.
 
 ## Các mốc thực hiện
 
@@ -218,3 +230,29 @@ Mỗi mốc kết thúc bằng: test pass, `stylua --check` và `selene` sạch,
 
 - 55 test pass, bao gồm 10.000 bảng ngẫu nhiên cho Generator và 200 ván bot tự chơi.
 - Bot (ưu tiên xóa hàng, sau đó chọn chỗ đặt khít nhất) đạt trung bình 3.129 điểm sau 134 nước; 65% số ván vượt 1.500 điểm và 24% vượt 5.000 điểm. Số liệu này dùng làm mốc khi tune độ khó.
+
+### Quyết định khi review plan M3
+
+| Điểm | Quyết định |
+|---|---|
+| E. Bố cục và xoay màn hình | **Hai bố cục (dọc/ngang) tự chuyển**, giữ xoay tự do (`Sensor`). |
+| F. Công cụ debug | **Có** `DebugController`, chỉ tạo trong Studio. |
+| G. Ngôn ngữ UI | **Tiếng Anh**, tiếng Việt thêm sau qua LocalizationTable. |
+| Theme | **Dạng token** trong `Theme.luau`, để làm lại theo mockup (GĐ2) và bán theme (GĐ4) dễ dàng. |
+
+### Kết quả M3
+
+Playtest qua MCP, không có lỗi trong Output (cảnh báo `rbxassetid://203785492` đến từ Studio, không phải code của game).
+
+| Thiết bị | Viewport | Bố cục | Bảng | Ô khay / ô bảng |
+|---|---|---|---|---|
+| Average Laptop | 1365×768 | Ngang | 681 px | 39% |
+| iPhone 17 Pro, ngang | 749×381 | Ngang | 310 px | 39% |
+| iPhone 17 Pro, dọc | 401×777 | Dọc | 384 px | 49% |
+| iPad Pro M5 13", ngang | 1375×1031 | Ngang | 792 px | 46% |
+| Samsung Galaxy A06, ngang | 705×338 | Ngang | 268 px | 39% |
+| Xbox One | 1920×1080 | Ngang | 953 px | 39% |
+
+- Bảng luôn vuông, nằm trong vùng an toàn (né top bar và tai thỏ), overlay Game Over vừa màn hình ở mọi máy.
+- Đã sửa trong lúc kiểm tra: chữ "Best" quá nhỏ trên TV và tablet (chuyển sang `TextScaled` có chặn 14–28 px); khối dài 5 ô chạm mép ô khay (thêm lề trong ô khay).
+- **Để lại cho lúc làm UI theo mockup:** ở màn ngang, ô trong khay chỉ bằng ~39% ô trên bảng (trên Galaxy A06 chỉ 12.7 px). Vẫn nhìn rõ hình và ô khay đủ lớn để chạm (63 px), nhưng mockup nên bố trí khay to hơn ở màn ngang.

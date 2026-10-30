@@ -18,6 +18,16 @@
           "$path": "src/client"
         }
       }
+    },
+    "StarterGui": {
+      "$properties": {
+        "ScreenOrientation": "Sensor"
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": false
+      }
     }
   }
 }
