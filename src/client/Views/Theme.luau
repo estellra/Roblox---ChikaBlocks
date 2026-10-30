@@ -15,11 +15,21 @@ export type Theme = {
 		Panel: Color3,
 		Button: Color3,
 		ButtonText: Color3,
+		Gain: Color3, -- floating "+points" text
+		Combo: Color3, -- floating "Combo xN" text
 		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT)
 	},
 	Transparency: {
 		Overlay: number,
 		TraySlot: number,
+		Ghost: number, -- where the dragged piece would land
+	},
+	Motion: { -- durations in seconds
+		Pickup: number,
+		Return: number,
+		PlacePop: number,
+		Clear: number,
+		Gain: number,
 	},
 	Fonts: {
 		Title: Font,
@@ -30,6 +40,8 @@ export type Theme = {
 		ScoreMax: number,
 		HudLabelMin: number,
 		HudLabelMax: number,
+		GainMin: number,
+		GainMax: number,
 		Label: number,
 		Title: number,
 		Button: number,
@@ -66,6 +78,8 @@ local Theme: Theme = {
 		Panel = Color3.fromRGB(56, 60, 74),
 		Button = Color3.fromRGB(96, 168, 255),
 		ButtonText = Color3.fromRGB(20, 22, 28),
+		Gain = Color3.fromRGB(240, 240, 245),
+		Combo = Color3.fromRGB(255, 214, 102),
 		Pieces = {
 			Color3.fromRGB(255, 214, 102), -- Dot
 			Color3.fromRGB(102, 204, 255), -- Bar
@@ -80,6 +94,14 @@ local Theme: Theme = {
 	Transparency = {
 		Overlay = 0.35,
 		TraySlot = 0.4,
+		Ghost = 0.5,
+	},
+	Motion = {
+		Pickup = 0.1,
+		Return = 0.15,
+		PlacePop = 0.15,
+		Clear = 0.2,
+		Gain = 0.8,
 	},
 	Fonts = {
 		Title = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
@@ -90,6 +112,8 @@ local Theme: Theme = {
 		ScoreMax = 72,
 		HudLabelMin = 14,
 		HudLabelMax = 28,
+		GainMin = 20,
+		GainMax = 44,
 		Label = 18,
 		Title = 34,
 		Button = 22,

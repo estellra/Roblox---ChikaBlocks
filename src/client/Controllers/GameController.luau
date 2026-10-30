@@ -25,6 +25,7 @@ local GameController = {}
 local session: GameSession.GameSession
 local views: Views? = nil
 local best = 0 -- best score this play session; saved scores come in phase 2
+local sessionReplacedListeners: { () -> () } = {}
 
 local function newSession(): GameSession.GameSession
 	-- Phase 1 seeds on the client; in phase 2 the server keeps the seed.
@@ -57,7 +58,7 @@ function GameController.start(_self: any)
 		gui = gui,
 		board = BoardView.new(gui.boardArea),
 		tray = TrayView.new(gui.trayArea),
-		hud = Hud.new(gui.hudArea, gui.overlay, function()
+		hud = Hud.new(gui.hudArea, gui.boardArea, gui.overlay, function()
 			GameController.restart()
 		end),
 	}
@@ -69,7 +70,13 @@ function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSes
 	local result = session:place(slot, x, y)
 	if result then
 		best = math.max(best, session.score)
+		if views then
+			views.board:playMoveEffects(result) -- needs the board as drawn before this move
+		end
 		render()
+		if views then
+			views.hud:showGain(result)
+		end
 	end
 	return result
 end
@@ -77,6 +84,14 @@ end
 function GameController.restart()
 	session = newSession()
 	render()
+	for _, listener in sessionReplacedListeners do
+		task.spawn(listener)
+	end
+end
+
+-- Called after restart() replaces the session (e.g. so an in-progress drag can be cancelled).
+function GameController.onSessionReplaced(callback: () -> ())
+	table.insert(sessionReplacedListeners, callback)
 end
 
 function GameController.getSession(): GameSession.GameSession

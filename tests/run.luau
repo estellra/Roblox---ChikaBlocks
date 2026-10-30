@@ -14,6 +14,7 @@ local specs = {
 	require("./Generator.spec"),
 	require("./GameSession.spec"),
 	require("./Simulation.spec"),
+	require("./DragMath.spec"),
 }
 
 for _, spec in specs do

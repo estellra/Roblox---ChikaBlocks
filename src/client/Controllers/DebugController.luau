@@ -4,12 +4,18 @@
 -- changes. Does nothing outside Studio.
 --
 -- Commands: state | layout | place <slot> <x> <y> | autoplay <moves> | gameover | restart
+--           dragstats | dragpoint <slot> <x> <y> [touch] | pointer
+-- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
+local DragController = require("./DragController")
+local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
 
 local SIZE = Config.GRID_SIZE
@@ -117,6 +123,45 @@ local function handle(rng: Random, command: string, ...: any): string
 	elseif command == "restart" then
 		GameController.restart()
 		return describeState()
+	elseif command == "dragstats" then
+		local stats = DragController.getStats()
+		local parts = {}
+		for key, value in stats do
+			table.insert(parts, `{key}={value}`)
+		end
+		table.sort(parts)
+		return table.concat(parts, " ")
+	elseif command == "dragpoint" then
+		-- Where to press (slot center) and release (pointer that drops the slot's piece on cell x, y).
+		local slot, x, y, mode = ...
+		local views = GameController.getViews()
+		local piece = session.tray[slot]
+		if not views or not piece then
+			return "no piece in that slot"
+		end
+		local grid = views.board.grid
+		local toX, toY = DragMath.pointerFor({
+			x = grid.AbsolutePosition.X,
+			y = grid.AbsolutePosition.Y,
+			size = grid.AbsoluteSize.X,
+			cells = SIZE,
+		}, x, y, piece.width, piece.height, mode == "touch", DragController.TOUCH_LIFT_CELLS)
+		local from = views.tray:center(slot)
+		local inset = GuiService:GetGuiInset()
+		return string.format(
+			"piece=%s from=%d,%d to=%d,%d inset=%d,%d",
+			piece.id,
+			from.X,
+			from.Y,
+			toX,
+			toY,
+			inset.X,
+			inset.Y
+		)
+	elseif command == "pointer" then
+		local stats = DragController.getStats()
+		local mouse = UserInputService:GetMouseLocation()
+		return `lastPointer={stats.lastPointer} lastInputType={stats.lastInputType} mouseLocation={mouse.X},{mouse.Y}`
 	end
 	return `unknown command "{command}" (score={session.score})`
 end

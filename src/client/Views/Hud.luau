@@ -1,5 +1,9 @@
 --!strict
--- Score display and the game over panel.
+-- Score display, gains floating over the board after line clears, and the game over panel.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -10,6 +14,7 @@ export type Hud = typeof(setmetatable(
 	{} :: {
 		scoreLabel: TextLabel,
 		bestLabel: TextLabel,
+		popups: Frame, -- floating gain labels, over the board
 		overlay: ScreenGui,
 		finalScoreLabel: TextLabel,
 		finalBestLabel: TextLabel,
@@ -33,7 +38,7 @@ local function label(name: string, text: string, font: Font, textSize: number, c
 	})
 end
 
-function Hud.new(hudArea: GuiObject, overlay: ScreenGui, onRestart: () -> ()): Hud
+function Hud.new(hudArea: GuiObject, popupArea: GuiObject, overlay: ScreenGui, onRestart: () -> ()): Hud
 	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
 
 	-- The score scales with the HUD area (it is much taller on a phone in portrait than in landscape),
@@ -75,6 +80,13 @@ function Hud.new(hudArea: GuiObject, overlay: ScreenGui, onRestart: () -> ()): H
 		}),
 		scoreLabel,
 		bestLabel,
+	})
+	local popups = create("Frame", {
+		Name = "Popups",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ZIndex = 10,
+		Parent = popupArea,
 	})
 
 	local finalScoreLabel = label("FinalScore", "Score 0", fonts.Title, sizes.Label + 6, colors.Text, 2)
@@ -134,6 +146,7 @@ function Hud.new(hudArea: GuiObject, overlay: ScreenGui, onRestart: () -> ()): H
 	return setmetatable({
 		scoreLabel = scoreLabel,
 		bestLabel = bestLabel,
+		popups = popups,
 		overlay = overlay,
 		finalScoreLabel = finalScoreLabel,
 		finalBestLabel = finalBestLabel,
@@ -150,6 +163,46 @@ function Hud.setScore(self: Hud, score: number, best: number)
 	if self.bestLabel.Text ~= bestText then
 		self.bestLabel.Text = bestText
 	end
+end
+
+-- Floats "+points" up over the board after a line clear, with the combo or a board clear noted.
+function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
+	local linesCleared = #result.clearedRows + #result.clearedCols
+	if linesCleared == 0 then
+		return
+	end
+	local text = `+{result.points}`
+	if result.boardCleared then
+		text ..= "  Board clear!"
+	elseif result.combo >= 2 then
+		text ..= `  Combo x{result.combo}`
+	end
+	local gain = create("TextLabel", {
+		Name = "Gain",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 0.12),
+		BackgroundTransparency = 1,
+		FontFace = Theme.Fonts.Title,
+		TextScaled = true,
+		TextColor3 = if result.combo >= 2 or result.boardCleared then Theme.Colors.Combo else Theme.Colors.Gain,
+		Text = text,
+		Parent = self.popups,
+	}, {
+		create("UITextSizeConstraint", {
+			MinTextSize = Theme.TextSize.GainMin,
+			MaxTextSize = Theme.TextSize.GainMax,
+		}),
+	})
+	local float = TweenService:Create(
+		gain,
+		TweenInfo.new(Theme.Motion.Gain, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromScale(0.5, 0.36), TextTransparency = 1 }
+	)
+	float.Completed:Once(function()
+		gain:Destroy()
+	end)
+	float:Play()
 end
 
 function Hud.showGameOver(self: Hud, score: number, best: number)

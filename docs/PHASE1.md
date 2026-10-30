@@ -256,3 +256,29 @@ Playtest qua MCP, không có lỗi trong Output (cảnh báo `rbxassetid://20378
 - Bảng luôn vuông, nằm trong vùng an toàn (né top bar và tai thỏ), overlay Game Over vừa màn hình ở mọi máy.
 - Đã sửa trong lúc kiểm tra: chữ "Best" quá nhỏ trên TV và tablet (chuyển sang `TextScaled` có chặn 14–28 px); khối dài 5 ô chạm mép ô khay (thêm lề trong ô khay).
 - **Để lại cho lúc làm UI theo mockup:** ở màn ngang, ô trong khay chỉ bằng ~39% ô trên bảng (trên Galaxy A06 chỉ 12.7 px). Vẫn nhìn rõ hình và ô khay đủ lớn để chạm (63 px), nhưng mockup nên bố trí khay to hơn ở màn ngang.
+
+### Quyết định khi review plan M4
+
+| Điểm | Quyết định |
+|---|---|
+| H. Khối bám theo chuột | **Tâm khối ở con trỏ** (giống cảm ứng). Cảm ứng: khối cao hơn ngón tay 1,5 ô. |
+| I. Hỗ trợ snap | **Có**: ô làm tròn không đặt được thì lấy ô trống lân cận gần nhất, lệch tối đa 0,75 ô. |
+| J. Hiệu ứng | **Xóa hàng + khối nảy khi đặt + chữ nổi** "+điểm", "Combo xN", "Board clear!" (chỉ khi xóa hàng). Chữ nổi bay ở giữa bảng. |
+| K. Highlight | **Tô hàng sắp xóa theo màu khối đang kéo.** |
+
+### Kết quả M4
+
+- 63 test pass (thêm 8 test cho `DragMath`).
+- Kéo thả tự động trong Studio bằng `user_mouse_input` cùng cầu debug:
+
+| Kịch bản | Kết quả |
+|---|---|
+| Chuột: kéo vào ô trống | Đặt đúng ô, ghost hiện đúng chỗ, connection về 0 sau khi thả |
+| Chuột: thả vào chỗ đã có khối | Khối bay về khay, trạng thái không đổi |
+| Chuột: thả vào chỗ hoàn thành một hàng | Hàng tô màu khi kéo tới; khi thả, hàng bị xóa, cộng đúng điểm, frame hiệu ứng tự dọn |
+| Cảm ứng (iPhone 17 Pro dọc, Studio tự đổi chuột thành Touch) | Khối nổi cao hơn ngón tay 1,5 ô, đặt đúng ô |
+| Restart giữa lúc kéo | Huỷ kéo, connection về 0, lớp kéo trống, nhấc ngón tay sau đó không đặt nhầm |
+
+- Đã sửa trong lúc test: chữ nổi đè lên dòng "Best" trong HUD, chuyển sang bay ở giữa bảng.
+- **Lưu ý công cụ test:** `user_mouse_input` dùng toạ độ GUI (như `AbsolutePosition`). Khi giả lập điện thoại thì input thành Touch, và điểm chạm thấp hơn toạ độ đưa vào 62 px, nên phải cộng bù. `InputObject.Position` mà game nhận vẫn đúng toạ độ GUI.
+- **Lưu ý Rojo:** một số editor và công cụ sửa code ghi file tạm rồi đổi tên, làm Rojo 7.7 crash ([rojo-rbx/rojo#1314](https://github.com/rojo-rbx/rojo/issues/1314)). Khi `rojo serve` đang chạy, sửa file trong `src/` bằng cách ghi thẳng (không qua file tạm).
