@@ -1,0 +1,14 @@
+# Studio place files (the place itself lives on Roblox) and their lock files
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Generated
+build/
+sourcemap.json
+roblox.yml
+
+# Packages (added in phase 2 via Wally)
+Packages/
+ServerPackages/
