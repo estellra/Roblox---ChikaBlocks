@@ -13,13 +13,15 @@ Game xếp khối 8x8 trên Roblox. Kế hoạch và các quyết định thiế
    rokit install
    rojo plugin install
    ```
-3. Mở place ChikaBlocks trong Studio, chạy `rojo serve`, rồi bấm **Connect** trong plugin Rojo.
+3. Mở place ChikaBlocks trong Studio, chạy `.\scripts\serve.ps1` (PowerShell), rồi bấm **Connect** trong plugin Rojo.
+
+> **Rojo 7.7 có thể crash** khi file được lưu kiểu ghi file tạm rồi đổi tên (một số editor và công cụ sửa code làm vậy), xem [rojo-rbx/rojo#1314](https://github.com/rojo-rbx/rojo/issues/1314). `scripts/serve.ps1` tự chạy lại server sau mỗi lần crash. Nếu plugin trong Studio báo *Couldn't connect to the Rojo server*, chỉ cần bấm **Connect** lại.
 
 ## Lệnh thường dùng
 
 | Lệnh | Tác dụng |
 |---|---|
-| `rojo serve` | Sync code từ `src/` sang Studio |
+| `.\scripts\serve.ps1` | Sync code từ `src/` sang Studio (`rojo serve`, tự chạy lại nếu crash) |
 | `lune run tests/run.luau` | Chạy unit test cho logic trong `src/shared` |
 | `stylua src tests` | Format code |
 | `selene src` | Lint |
