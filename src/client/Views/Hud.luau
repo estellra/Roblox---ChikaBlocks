@@ -1,11 +1,19 @@
 --!strict
 -- Score display, gains floating over the board after line clears, and the game over panel.
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Theme = require("./Theme")
 local create = require("./Create")
+
+local RESTART_KEYS: { [Enum.KeyCode]: boolean } = {
+	[Enum.KeyCode.Return] = true,
+	[Enum.KeyCode.KeypadEnter] = true,
+	[Enum.KeyCode.Space] = true,
+}
 
 local Hud = {}
 Hud.__index = Hud
@@ -15,10 +23,14 @@ export type Hud = typeof(setmetatable(
 		scoreLabel: TextLabel,
 		bestLabel: TextLabel,
 		popups: Frame, -- floating gain labels, over the board
-		overlay: ScreenGui,
+		overlay: ScreenGui, -- game over panel (safe area)
+		backdrop: ScreenGui, -- full-screen dimmer under the panel
 		finalScoreLabel: TextLabel,
+		newBestLabel: TextLabel,
 		finalBestLabel: TextLabel,
 		restartButton: TextButton,
+		onRestart: () -> (),
+		keyConnection: RBXScriptConnection?, -- Enter / Space restart while the panel is open
 		connections: { RBXScriptConnection },
 	},
 	Hud
@@ -38,7 +50,13 @@ local function label(name: string, text: string, font: Font, textSize: number, c
 	})
 end
 
-function Hud.new(hudArea: GuiObject, popupArea: GuiObject, overlay: ScreenGui, onRestart: () -> ()): Hud
+function Hud.new(
+	hudArea: GuiObject,
+	popupArea: GuiObject,
+	overlay: ScreenGui,
+	backdrop: ScreenGui,
+	onRestart: () -> ()
+): Hud
 	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
 
 	-- The score scales with the HUD area (it is much taller on a phone in portrait than in landscape),
@@ -90,10 +108,12 @@ function Hud.new(hudArea: GuiObject, popupArea: GuiObject, overlay: ScreenGui, o
 	})
 
 	local finalScoreLabel = label("FinalScore", "Score 0", fonts.Title, sizes.Label + 6, colors.Text, 2)
-	local finalBestLabel = label("FinalBest", "Best 0", fonts.Body, sizes.Label, colors.TextMuted, 3)
+	local newBestLabel = label("NewBest", "New best!", fonts.Title, sizes.Label + 2, colors.Combo, 3)
+	newBestLabel.Visible = false
+	local finalBestLabel = label("FinalBest", "Best 0", fonts.Body, sizes.Label, colors.TextMuted, 4)
 	local restartButton = create("TextButton", {
 		Name = "PlayAgain",
-		LayoutOrder = 4,
+		LayoutOrder = 5,
 		Size = UDim2.new(0.8, 0, 0, 52),
 		BackgroundColor3 = colors.Button,
 		BorderSizePixel = 0,
@@ -106,41 +126,44 @@ function Hud.new(hudArea: GuiObject, popupArea: GuiObject, overlay: ScreenGui, o
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
 		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
 	})
+	-- The dimmer covers the whole screen; the panel lives in the safe-area overlay above it.
 	create("Frame", {
 		Name = "Dim",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = colors.Overlay,
 		BackgroundTransparency = Theme.Transparency.Overlay,
 		BorderSizePixel = 0,
+		Active = true, -- swallow clicks so nothing under the panel reacts
+		Parent = backdrop,
+	})
+	create("Frame", {
+		Name = "Panel",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.8, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = colors.Panel,
+		BorderSizePixel = 0,
 		Parent = overlay,
 	}, {
-		create("Frame", {
-			Name = "Panel",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(0.8, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundColor3 = colors.Panel,
-			BorderSizePixel = 0,
-		}, {
-			create("UICorner", { CornerRadius = Theme.Radius.Panel }),
-			create("UISizeConstraint", { MaxSize = Vector2.new(420, math.huge) }),
-			create("UIPadding", {
-				PaddingTop = UDim.new(0, 24),
-				PaddingBottom = UDim.new(0, 24),
-				PaddingLeft = UDim.new(0, 20),
-				PaddingRight = UDim.new(0, 20),
-			}),
-			create("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				Padding = UDim.new(0, 12),
-			}),
-			label("Title", "Game Over", fonts.Title, sizes.Title, colors.Text, 1),
-			finalScoreLabel,
-			finalBestLabel,
-			restartButton,
+		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
+		create("UISizeConstraint", { MaxSize = Vector2.new(420, math.huge) }),
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 24),
+			PaddingBottom = UDim.new(0, 24),
+			PaddingLeft = UDim.new(0, 20),
+			PaddingRight = UDim.new(0, 20),
 		}),
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 12),
+		}),
+		label("Title", "Game Over", fonts.Title, sizes.Title, colors.Text, 1),
+		finalScoreLabel,
+		newBestLabel,
+		finalBestLabel,
+		restartButton,
 	})
 
 	return setmetatable({
@@ -148,9 +171,13 @@ function Hud.new(hudArea: GuiObject, popupArea: GuiObject, overlay: ScreenGui, o
 		bestLabel = bestLabel,
 		popups = popups,
 		overlay = overlay,
+		backdrop = backdrop,
 		finalScoreLabel = finalScoreLabel,
+		newBestLabel = newBestLabel,
 		finalBestLabel = finalBestLabel,
 		restartButton = restartButton,
+		onRestart = onRestart,
+		keyConnection = nil,
 		connections = { restartButton.Activated:Connect(onRestart) },
 	}, Hud)
 end
@@ -205,17 +232,45 @@ function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
 	float:Play()
 end
 
-function Hud.showGameOver(self: Hud, score: number, best: number)
+-- Opens the game over panel. "Play again" works by click/tap, Enter or Space, and the gamepad A button
+-- (the button is selected when a gamepad is in use).
+function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boolean)
 	self.finalScoreLabel.Text = `Score {score}`
 	self.finalBestLabel.Text = `Best {best}`
+	self.newBestLabel.Visible = isNewBest
+	self.backdrop.Enabled = true
 	self.overlay.Enabled = true
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+		GuiService.SelectedObject = self.restartButton
+	end
+	if not self.keyConnection then
+		self.keyConnection = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+			if not processed and RESTART_KEYS[input.KeyCode] then
+				self.onRestart()
+			end
+		end)
+	end
 end
 
 function Hud.hideGameOver(self: Hud)
 	self.overlay.Enabled = false
+	self.backdrop.Enabled = false
+	if GuiService.SelectedObject == self.restartButton then
+		GuiService.SelectedObject = nil
+	end
+	if self.keyConnection then
+		self.keyConnection:Disconnect()
+		self.keyConnection = nil
+	end
+end
+
+-- Whether Enter / Space currently restart; for the Studio debug bridge.
+function Hud.isListeningForRestartKeys(self: Hud): boolean
+	return self.keyConnection ~= nil
 end
 
 function Hud.destroy(self: Hud)
+	self:hideGameOver()
 	for _, connection in self.connections do
 		connection:Disconnect()
 	end

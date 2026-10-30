@@ -14,7 +14,8 @@ export type Gui = {
 	boardArea: Frame,
 	trayArea: Frame,
 	dragLayer: Frame, -- full-screen layer above everything in the game UI, for pieces being dragged
-	overlay: ScreenGui, -- disabled until a view shows something in it (game over)
+	overlay: ScreenGui, -- interactive panels over the game (game over); safe area, disabled until used
+	overlayBackdrop: ScreenGui, -- full-screen dimmer under the overlay; disabled until used
 	getMode: () -> LayoutMode,
 	onLayoutChanged: (callback: (mode: LayoutMode) -> ()) -> (),
 	destroy: () -> (),
@@ -123,15 +124,25 @@ function Gui.create(playerGui: PlayerGui): Gui
 		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 	}, { root, dragLayer })
 
+	-- Non-interactive dimmer drawn under the notch and top bar; panels go in the safe-area overlay above it.
+	local overlayBackdrop = create("ScreenGui", {
+		Name = "OverlayBackdrop",
+		DisplayOrder = 2,
+		ResetOnSpawn = false,
+		Enabled = false,
+	})
+	overlayBackdrop.IgnoreGuiInset = true
+	overlayBackdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
+
 	local overlay = create("ScreenGui", {
 		Name = "Overlay",
-		DisplayOrder = 2,
+		DisplayOrder = 3,
+		SafeAreaCompatibility = Enum.SafeAreaCompatibility.None,
+		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Enabled = false,
 	})
-	overlay.IgnoreGuiInset = true
-	overlay.ScreenInsets = Enum.ScreenInsets.None -- the dimmer covers the whole screen
 
 	local mode: LayoutMode = "Portrait"
 	local slotSize = PORTRAIT.slot
@@ -179,6 +190,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 
 	background.Parent = playerGui
 	gameGui.Parent = playerGui
+	overlayBackdrop.Parent = playerGui
 	overlay.Parent = playerGui
 	applyLayout()
 
@@ -188,6 +200,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 		trayArea = trayArea,
 		dragLayer = dragLayer,
 		overlay = overlay,
+		overlayBackdrop = overlayBackdrop,
 		getMode = function(): LayoutMode
 			return mode
 		end,
@@ -201,6 +214,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 			table.clear(listeners)
 			background:Destroy()
 			gameGui:Destroy()
+			overlayBackdrop:Destroy()
 			overlay:Destroy()
 		end,
 	}

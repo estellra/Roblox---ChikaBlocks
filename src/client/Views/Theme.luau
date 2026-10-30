@@ -23,6 +23,7 @@ export type Theme = {
 		Overlay: number,
 		TraySlot: number,
 		Ghost: number, -- where the dragged piece would land
+		NoMoves: number, -- board dimmer at game over
 	},
 	Motion: { -- durations in seconds
 		Pickup: number,
@@ -30,6 +31,8 @@ export type Theme = {
 		PlacePop: number,
 		Clear: number,
 		Gain: number,
+		NoMovesFade: number,
+		GameOverDelay: number, -- from the losing move to the game over panel
 	},
 	Fonts: {
 		Title: Font,
@@ -95,6 +98,7 @@ local Theme: Theme = {
 		Overlay = 0.35,
 		TraySlot = 0.4,
 		Ghost = 0.5,
+		NoMoves = 0.45,
 	},
 	Motion = {
 		Pickup = 0.1,
@@ -102,6 +106,8 @@ local Theme: Theme = {
 		PlacePop = 0.15,
 		Clear = 0.2,
 		Gain = 0.8,
+		NoMovesFade = 0.25,
+		GameOverDelay = 0.8,
 	},
 	Fonts = {
 		Title = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),

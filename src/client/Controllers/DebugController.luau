@@ -5,6 +5,7 @@
 --
 -- Commands: state | layout | place <slot> <x> <y> | autoplay <moves> | gameover | restart
 --           dragstats | dragpoint <slot> <x> <y> [touch] | pointer
+--           playdrag <moves> (plays through the drag intents) | stats (leak checks)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
@@ -69,8 +70,8 @@ local function describeLayout(): string
 	)
 end
 
--- Plays one move: the placement clearing the most lines, or any valid placement when `random` is set.
-local function playOne(rng: Random, random: boolean): boolean
+-- Picks a move: the placement clearing the most lines, or any valid placement when `random` is set.
+local function chooseMove(rng: Random, random: boolean): { number }?
 	local session = GameController.getSession()
 	local candidates: { { number } } = {}
 	local best: { number }? = nil
@@ -92,8 +93,34 @@ local function playOne(rng: Random, random: boolean): boolean
 			end
 		end
 	end
-	local move = if random and #candidates > 0 then candidates[rng:NextInteger(1, #candidates)] else best
+	return if random and #candidates > 0 then candidates[rng:NextInteger(1, #candidates)] else best
+end
+
+local function playOne(rng: Random, random: boolean): boolean
+	local move = chooseMove(rng, random)
 	return move ~= nil and GameController.tryPlace(move[1], move[2], move[3]) ~= nil
+end
+
+-- Plays a move the way a player does: pick from the tray, move the pointer onto the target, drop.
+local function dragOne(rng: Random): boolean
+	local move = chooseMove(rng, false)
+	local views = GameController.getViews()
+	if not move or not views then
+		return false
+	end
+	local piece = GameController.getSession().tray[move[1]]
+	if not piece or not DragController.pick(move[1], false) then
+		return false
+	end
+	local grid = views.board.grid
+	local pointerX, pointerY = DragMath.pointerFor({
+		x = grid.AbsolutePosition.X,
+		y = grid.AbsolutePosition.Y,
+		size = grid.AbsoluteSize.X,
+		cells = SIZE,
+	}, move[2], move[3], piece.width, piece.height, false, DragController.TOUCH_LIFT_CELLS)
+	DragController.movePointer(Vector2.new(pointerX, pointerY))
+	return DragController.drop()
 end
 
 local function handle(rng: Random, command: string, ...: any): string
@@ -157,6 +184,34 @@ local function handle(rng: Random, command: string, ...: any): string
 			toY,
 			inset.X,
 			inset.Y
+		)
+	elseif command == "playdrag" then
+		local moves = tonumber((...)) or 1000
+		local played, failed = 0, 0
+		while played < moves and not GameController.getSession().isOver do
+			if not dragOne(rng) then
+				failed += 1
+				break
+			end
+			played += 1
+			task.wait() -- let a frame pass, like real play
+		end
+		return `played {played} failed {failed}\n{describeState()}`
+	elseif command == "stats" then
+		local views = GameController.getViews()
+		if not views then
+			return "UI not built yet"
+		end
+		return string.format(
+			"guiDescendants=%d dragLayer=%d effects=%d popups=%d dragConnections=%d restartKeys=%s overlay=%s luaHeapKB=%d",
+			#Players.LocalPlayer.PlayerGui:GetDescendants(),
+			#views.gui.dragLayer:GetChildren(),
+			#views.board.effects:GetChildren(),
+			#views.hud.popups:GetChildren(),
+			DragController.getStats().connections,
+			tostring(views.hud:isListeningForRestartKeys()),
+			tostring(views.gui.overlay.Enabled),
+			gcinfo()
 		)
 	elseif command == "pointer" then
 		local stats = DragController.getStats()

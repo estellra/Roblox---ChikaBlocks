@@ -2,6 +2,7 @@
 -- Draws the grid. render() only touches cells whose value changed since the last call.
 -- While a piece is dragged, showPreview() draws a ghost where it would land and paints the lines it would
 -- complete in its color. playMoveEffects() animates a placement; call it before rendering the new board.
+-- setNoMoves() darkens the board with "No moves left" when the run ends.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -31,6 +32,8 @@ export type BoardView = typeof(setmetatable(
 		ghostBlocks: { Frame },
 		effects: Frame,
 		highlighted: { number }, -- cells the preview painted, to restore later
+		noMoves: Frame,
+		noMovesLabel: TextLabel,
 	},
 	BoardView
 ))
@@ -96,6 +99,29 @@ function BoardView.new(parent: GuiObject): BoardView
 		ghosts[i], ghostBlocks[i] = ghost, block
 	end
 
+	local noMovesLabel = create("TextLabel", {
+		Name = "Label",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 0.14),
+		BackgroundTransparency = 1,
+		FontFace = Theme.Fonts.Title,
+		TextScaled = true,
+		TextColor3 = Theme.Colors.Text,
+		Text = "No moves left",
+	}, {
+		create("UITextSizeConstraint", { MinTextSize = Theme.TextSize.GainMin, MaxTextSize = Theme.TextSize.GainMax }),
+	})
+	local noMoves = create("Frame", {
+		Name = "NoMoves",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Theme.Colors.Overlay,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+		Visible = false,
+	}, { create("UICorner", { CornerRadius = Theme.Radius.Board }), noMovesLabel })
+
 	local frame = create("Frame", {
 		Name = "Board",
 		Size = UDim2.fromScale(1, 1),
@@ -112,6 +138,7 @@ function BoardView.new(parent: GuiObject): BoardView
 		grid,
 		ghostLayer,
 		effects,
+		noMoves,
 	})
 	frame.Parent = parent
 
@@ -125,6 +152,8 @@ function BoardView.new(parent: GuiObject): BoardView
 		ghostBlocks = ghostBlocks,
 		effects = effects,
 		highlighted = {},
+		noMoves = noMoves,
+		noMovesLabel = noMovesLabel,
 	}, BoardView)
 end
 
@@ -216,6 +245,24 @@ function BoardView.playMoveEffects(self: BoardView, result: GameSession.PlaceRes
 			TweenService:Create(scale, popInfo, { Scale = 1 }):Play()
 		end
 	end
+end
+
+-- Darkens the board with "No moves left" (fading in), or removes that.
+function BoardView.setNoMoves(self: BoardView, visible: boolean)
+	local frame, label = self.noMoves, self.noMovesLabel
+	if not visible then
+		frame.Visible = false
+		return
+	end
+	if frame.Visible then
+		return
+	end
+	frame.BackgroundTransparency = 1
+	label.TextTransparency = 1
+	frame.Visible = true
+	local info = TweenInfo.new(Theme.Motion.NoMovesFade, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(frame, info, { BackgroundTransparency = Theme.Transparency.NoMoves }):Play()
+	TweenService:Create(label, info, { TextTransparency = 0 }):Play()
 end
 
 function BoardView.destroy(self: BoardView)
