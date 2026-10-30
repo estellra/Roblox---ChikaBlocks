@@ -30,14 +30,16 @@ ChikaBlock/
 │  │  ├─ Generator.luau        -- sinh bộ 3 khối có seed, độ khó theo điểm
 │  │  ├─ Scoring.luau          -- tính điểm, combo
 │  │  └─ Config.luau           -- toàn bộ số liệu cần tune (điểm, trọng số, giá)
-│  ├─ server/   → ServerScriptService
-│  │  ├─ GameService.luau      -- quản lý ván chơi, validate nước đi
-│  │  ├─ DataService.luau      -- ProfileStore: highscore, level, cosmetic
-│  │  └─ PurchaseService.luau  -- ProcessReceipt (hồi sinh, rotate, donate)
-│  └─ client/   → StarterPlayerScripts
-│     ├─ BoardView.luau        -- vẽ lưới bằng GUI, ghost preview
-│     ├─ DragController.luau   -- kéo thả chuột/cảm ứng/gamepad
-│     └─ Menu, GameOver, Tutorial ...
+│  ├─ server/   → ServerScriptService.Server
+│  │  ├─ init.server.luau      -- entry duy nhất phía server: load Services, gọi init() rồi start()
+│  │  └─ Services/
+│  │     ├─ GameService.luau     -- quản lý ván chơi, validate nước đi, sinh bộ khối
+│  │     ├─ DataService.luau     -- ProfileStore: highscore, level, cosmetic
+│  │     └─ PurchaseService.luau -- ProcessReceipt (hồi sinh, rotate, donate)
+│  └─ client/   → StarterPlayer.StarterPlayerScripts.Client
+│     ├─ init.client.luau      -- entry duy nhất phía client: load Controllers
+│     ├─ Controllers/          -- GameController, DragController, (GĐ2: Menu, Tutorial...)
+│     └─ Views/                -- BoardView, TrayView, Hud... chỉ vẽ, không giữ logic game
 └─ tests/                      -- unit test cho phần logic trong shared/
 ```
 
@@ -45,10 +47,11 @@ ChikaBlock/
 
 - **Logic game là module Luau thuần** (`Board`, `Generator`, `Scoring`), không phụ thuộc UI. Client và server dùng chung một code, và viết unit test được.
 - **Server giữ quyền quyết định, client dự đoán trước để phản hồi tức thì:**
-  1. Server tạo seed cho ván và sinh bộ khối.
+  1. Server giữ seed **bí mật** và tự sinh từng bộ khối, rồi gửi bộ khối cho client. Code trong `ReplicatedStorage` thì exploiter đọc được, nên nếu client có seed sẽ biết trước các khối sắp ra.
   2. Khi đặt khối, client cập nhật ngay trên màn hình (độ trễ cảm nhận gần 0ms, đáp ứng yêu cầu <100ms), đồng thời gửi `PlacePiece(pieceIndex, x, y)` lên server.
   3. Server kiểm tra hợp lệ, tự tính điểm rồi xác nhận. Nếu lệch thì client đồng bộ theo server.
-  4. Nhờ vậy điểm trên leaderboard không làm giả được, và hồi sinh chỉ cấp sau khi server xác nhận giao dịch.
+  4. Đặt xong khối thứ 3, client chờ bộ khối mới từ server (khoảng một round-trip, được hiệu ứng xóa hàng che đi).
+  5. Nhờ vậy điểm trên leaderboard không làm giả được, người chơi không biết trước khối (công bằng cho PVP), và hồi sinh chỉ cấp sau khi server xác nhận giao dịch.
 - **Dữ liệu người chơi:** ProfileStore (session lock, chống mất và nhân bản data). **Leaderboard:** OrderedDataStore.
 - **Toàn bộ số liệu nằm trong `Config.luau`** để tune mà không phải sửa logic. Sau này có thể chuyển sang ConfigService để chỉnh live.
 
@@ -96,6 +99,8 @@ ChikaBlock/
 - [x] Thêm `.gitignore`. Test runner: Lune với `tests/TestKit.luau` (chạy `lune run tests/run.luau`).
 
 ### Giai đoạn 1: Prototype gray-box
+Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
+
 - [ ] `Board`, `Pieces`, `Generator`, `Scoring` kèm unit test.
 - [ ] UI thô: lưới 8x8 và 3 khối chờ, kéo thả trên PC và mobile (dùng Device Emulator).
 - [ ] Vòng chơi đầy đủ: bắt đầu → đặt khối → xóa hàng → game over → chơi lại.
