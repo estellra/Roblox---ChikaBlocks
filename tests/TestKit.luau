@@ -60,6 +60,14 @@ function TestKit.expect(actual: any)
 				error(`expected a truthy value, got {tostring(actual)}`, 2)
 			end
 		end,
+		toThrow = function()
+			if type(actual) ~= "function" then
+				error("toThrow expects a function", 2)
+			end
+			if pcall(actual) then
+				error("expected the function to throw", 2)
+			end
+		end,
 	}
 end
 

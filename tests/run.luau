@@ -7,6 +7,10 @@ local TestKit = require("./TestKit")
 -- Add each new spec module here.
 local specs = {
 	require("./Config.spec"),
+	require("./Rng.spec"),
+	require("./Pieces.spec"),
+	require("./Board.spec"),
+	require("./Scoring.spec"),
 }
 
 for _, spec in specs do
