@@ -21,6 +21,7 @@ local GameController = require("./GameController")
 
 local SIZE = Config.GRID_SIZE
 local MAX_GAME_OVER_MOVES = 500
+local MOVE_PACE_SECONDS = 0.13 -- bots play at a human pace, under the server's limit of 8 moves a second
 
 local DebugController = {}
 
@@ -38,8 +39,18 @@ local function describeState(): string
 	for i, piece in session.tray do
 		tray[i] = if piece then piece.id else "-"
 	end
-	return `score={session.score} over={session.isOver} moves={session.moveCount} tray={table.concat(tray, ",")}\n`
-		.. table.concat(rows, "\n")
+	local header =
+		`run={GameController.getRunId()} score={session.score} over={session.isOver} moves={session.moveCount}`
+	return `{header} tray={table.concat(tray, ",")}\n` .. table.concat(rows, "\n")
+end
+
+-- After the last piece of a set the tray stays empty until the server's next set arrives.
+local function waitForTray(): boolean
+	local deadline = os.clock() + 3
+	while GameController.getSession().awaitingSet and os.clock() < deadline do
+		task.wait()
+	end
+	return not GameController.getSession().awaitingSet
 end
 
 local function rect(object: GuiObject): string
@@ -136,19 +147,27 @@ local function handle(rng: Random, command: string, ...: any): string
 	elseif command == "autoplay" then
 		local moves = tonumber((...)) or 10
 		local played = 0
-		while played < moves and not GameController.getSession().isOver and playOne(rng, false) do
+		while played < moves and waitForTray() and not GameController.getSession().isOver and playOne(rng, false) do
 			played += 1
+			task.wait(MOVE_PACE_SECONDS)
 		end
 		return `played {played}\n{describeState()}`
 	elseif command == "gameover" then
 		for _ = 1, MAX_GAME_OVER_MOVES do
-			if GameController.getSession().isOver or not playOne(rng, true) then
+			if not waitForTray() or GameController.getSession().isOver or not playOne(rng, true) then
 				break
 			end
+			task.wait(MOVE_PACE_SECONDS)
 		end
 		return describeState()
 	elseif command == "restart" then
+		-- Waits for the server to start the new run.
+		local before = GameController.getRunId()
 		GameController.restart()
+		local deadline = os.clock() + 5
+		while GameController.getRunId() == before and os.clock() < deadline do
+			task.wait()
+		end
 		return describeState()
 	elseif command == "dragstats" then
 		local stats = DragController.getStats()
@@ -188,13 +207,13 @@ local function handle(rng: Random, command: string, ...: any): string
 	elseif command == "playdrag" then
 		local moves = tonumber((...)) or 1000
 		local played, failed = 0, 0
-		while played < moves and not GameController.getSession().isOver do
+		while played < moves and waitForTray() and not GameController.getSession().isOver do
 			if not dragOne(rng) then
 				failed += 1
 				break
 			end
 			played += 1
-			task.wait() -- let a frame pass, like real play
+			task.wait(MOVE_PACE_SECONDS)
 		end
 		return `played {played} failed {failed}\n{describeState()}`
 	elseif command == "stats" then

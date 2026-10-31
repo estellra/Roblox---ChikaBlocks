@@ -153,6 +153,82 @@ return function(t: TestKit.TestKit)
 			t.expect(#reasons).toBe(3)
 		end)
 
+		t.it("waits for a set when the source has none, then plays on after receiveSet", function()
+			local dealt = false
+			local function source(): { Pieces.Piece }?
+				if dealt then
+					return nil
+				end
+				dealt = true
+				return { Pieces.BY_ID.Dot, Pieces.BY_ID.Dot, Pieces.BY_ID.Dot }
+			end
+			local session = GameSession.new(source)
+			session:place(1, 0, 0)
+			session:place(2, 2, 2)
+			local last = session:place(3, 4, 4)
+			assert(last)
+			t.expect(last.refilled).toBe(false)
+			t.expect(last.awaitingSet).toBe(true)
+			t.expect(last.isOver).toBe(false)
+			t.expect(Helpers.ids(session.tray)).toEqual({ false, false, false })
+			t.expect(session:canPlace(1, 6, 6)).toBe(false)
+
+			local O2 = Pieces.BY_ID.O2
+			t.expect(session:receiveSet({ O2, O2, O2 })).toBe(true)
+			t.expect(session.awaitingSet).toBe(false)
+			t.expect(Helpers.ids(session.tray)).toEqual({ "O2", "O2", "O2" })
+			t.expect(session:receiveSet({ O2, O2, O2 })).toBe(false) -- not awaiting any more
+		end)
+
+		t.it("starts out awaiting when the source has nothing yet", function()
+			local session = GameSession.new(function(): { Pieces.Piece }?
+				return nil
+			end)
+			t.expect(session.awaitingSet).toBe(true)
+			t.expect(session.isOver).toBe(false)
+			t.expect(session:receiveSet({ Pieces.BY_ID.Dot })).toBe(false) -- wrong count
+		end)
+
+		t.it("ends the game when a received set doesn't fit", function()
+			local session = GameSession.new(function(): { Pieces.Piece }?
+				return nil
+			end, Helpers.boardFromRows(CHECKERBOARD))
+			local O2 = Pieces.BY_ID.O2
+			t.expect(session:receiveSet({ O2, O2, O2 })).toBe(true)
+			t.expect(session.isOver).toBe(true)
+		end)
+
+		t.it("round-trips through a snapshot and keeps playing identically", function()
+			local sets = { { "Dot", "O2", "I3_H" }, { "T4_1", "L3_1", "I2_V" } }
+			local session = GameSession.new((Helpers.queueSource(sets)), Helpers.boardFromRows({ "######.." }))
+			session:place(1, 6, 0) -- row 0 now has 7 of 8 cells
+			session:place(2, 3, 3)
+			local copy = GameSession.fromSnapshot(session:snapshot(), (Helpers.queueSource({ sets[2] })))
+			t.expect(copy:snapshot()).toEqual(session:snapshot())
+
+			session:place(3, 0, 6)
+			copy:place(3, 0, 6)
+			t.expect(copy:snapshot()).toEqual(session:snapshot())
+			t.expect(session.score).toBe(copy.score)
+		end)
+
+		t.it("refuses snapshots with a bad board or unknown pieces", function()
+			local snapshot = GameSession.new((Helpers.queueSource({ { "Dot", "Dot", "Dot" } }))):snapshot()
+			local badCells = table.clone(snapshot)
+			badCells.cells = { 0, 0 }
+			local badPiece = table.clone(snapshot)
+			badPiece.tray = { "NotAPiece", false, false }
+			local noSet = function(): { Pieces.Piece }?
+				return nil
+			end
+			t.expect(function()
+				GameSession.fromSnapshot(badCells, noSet)
+			end).toThrow()
+			t.expect(function()
+				GameSession.fromSnapshot(badPiece, noSet)
+			end).toThrow()
+		end)
+
 		t.it("throws when the set source deals the wrong number of pieces", function()
 			t.expect(function()
 				GameSession.new((Helpers.queueSource({ { "Dot", "Dot" } })))

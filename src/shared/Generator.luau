@@ -19,7 +19,8 @@ type Rng = Rng.Rng
 export type DealReason = "Normal" | "Revive"
 export type FairnessTier = "WholeSet" | "EachPiece" | "AnyPiece"
 export type GroupShares = { [SizeGroup]: number }
-export type SetSource = (board: Board, score: number, reason: DealReason) -> { Piece }
+-- Returns the next set, or nil when it isn't available yet (the client waits for the server's).
+export type SetSource = (board: Board, score: number, reason: DealReason) -> { Piece }?
 
 type Rows = { number } -- one mask per board row; bit x is set when cell x is filled
 type Masks = { number } -- one mask per piece row
@@ -275,7 +276,7 @@ function Generator.nextSet(board: Board, score: number, rng: Rng, reason: DealRe
 end
 
 function Generator.newSource(rng: Rng): SetSource
-	return function(board: Board, score: number, reason: DealReason): { Piece }
+	return function(board: Board, score: number, reason: DealReason): { Piece }?
 		return Generator.nextSet(board, score, rng, reason)
 	end
 end

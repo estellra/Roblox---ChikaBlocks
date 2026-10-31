@@ -15,6 +15,9 @@ local specs = {
 	require("./GameSession.spec"),
 	require("./Simulation.spec"),
 	require("./DragMath.spec"),
+	require("./Lockstep.spec"),
+	require("./ServerUtil.spec"),
+	require("./GameRuns.spec"),
 }
 
 for _, spec in specs do

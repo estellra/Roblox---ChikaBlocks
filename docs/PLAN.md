@@ -107,7 +107,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 - **Xong khi:** chơi được trọn một ván trong Studio, logic pass toàn bộ test. ✅ Hoàn thành (kết quả từng mốc trong [PHASE1.md](PHASE1.md)).
 
 ### Giai đoạn 2: MVP (đủ để publish)
-- [ ] Server validate nước đi và tính điểm (như mục 2).
+- [x] Server validate nước đi và tính điểm (như mục 2). Chi tiết: [PHASE2.md](PHASE2.md).
 - [ ] Lưu highscore bằng ProfileStore.
 - [ ] Hồi sinh bằng Developer Product, xử lý `ProcessReceipt` an toàn khi bị gọi lặp.
 - [ ] UI theme pastel, menu chính, màn Game Over, popup linh vật, SFX và VFX cơ bản.

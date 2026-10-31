@@ -1,0 +1,59 @@
+--!strict
+-- Studio-only test hook. Creates ServerStorage.ChikaServerDebug (a BindableFunction) so playtests driven
+-- through Studio MCP can read the server's copy of a run and compare it with the client's. Does nothing
+-- outside Studio.
+--
+-- Commands: state [userId]  (defaults to the first player)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local GameService = require("./GameService")
+
+local SIZE = Config.GRID_SIZE
+
+local DebugService = {}
+
+local function describe(player: Player): string
+	local state = GameService.getRuns():peek(player)
+	if not state then
+		return `no run for {player.Name}`
+	end
+	local snapshot = state.session
+	local rows = {}
+	for y = 0, SIZE - 1 do
+		local row = table.create(SIZE)
+		for x = 0, SIZE - 1 do
+			row[x + 1] = if snapshot.cells[y * SIZE + x + 1] == 0 then "." else "#"
+		end
+		rows[y + 1] = table.concat(row)
+	end
+	local tray = {}
+	for i, id in snapshot.tray do
+		tray[i] = if id then id else "-"
+	end
+	return `run={state.runId} score={snapshot.score} over={snapshot.isOver} moves={snapshot.moveCount} best={state.best} tray={table.concat(
+		tray,
+		","
+	)}\n{table.concat(rows, "\n")}`
+end
+
+function DebugService.start(_self: any)
+	if not RunService:IsStudio() then
+		return
+	end
+	local bridge = Instance.new("BindableFunction")
+	bridge.Name = "ChikaServerDebug"
+	bridge.OnInvoke = function(command: string, userId: number?): string
+		if command == "state" then
+			local player = if userId then Players:GetPlayerByUserId(userId) else Players:GetPlayers()[1]
+			return if player then describe(player) else "no player"
+		end
+		return `unknown command "{command}"`
+	end
+	bridge.Parent = ServerStorage
+end
+
+return DebugService

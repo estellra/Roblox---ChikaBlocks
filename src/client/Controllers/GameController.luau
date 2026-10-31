@@ -1,12 +1,16 @@
 --!strict
--- Owns the local GameSession (phase 1 runs entirely on the client) and keeps the views in sync with it.
+-- Shows and plays the player's run. The server owns the run (GameService); this controller predicts each
+-- move on a local copy of the session so the board reacts instantly, sends the move, and checks the
+-- server's answer. Sets of pieces only come from the server. When the two disagree, the server's full
+-- state replaces the local copy.
 -- Other controllers drive the game through tryPlace() and restart().
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
-local Generator = require(ReplicatedStorage.Shared.Generator)
-local Rng = require(ReplicatedStorage.Shared.Rng)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Pieces = require(ReplicatedStorage.Shared.Pieces)
 
 local BoardView = require("../Views/BoardView")
 local Gui = require("../Views/Gui")
@@ -21,19 +25,29 @@ export type Views = {
 	hud: Hud.Hud,
 }
 
+-- What the server sends with GameState (see GameRuns.RunState).
+type RunState = { runId: number, best: number, session: GameSession.Snapshot }
+type Prediction = { score: number, isOver: boolean }
+
+local IS_STUDIO = RunService:IsStudio()
+local START_RETRY_SECONDS = 3 -- ask again if the server hasn't answered StartGame by then
+local CONFIRM_TIMEOUT_SECONDS = 2 -- ask for the full state if a move is still unconfirmed by then
+
 local GameController = {}
 
 local session: GameSession.GameSession
+local runId = 0 -- 0 until the server starts the first run
 local views: Views? = nil
-local best = 0 -- best score this play session; saved scores come in phase 2
+local best = 0
 local bestBeforeRun = 0 -- best when the current run started, to tell a new best apart
-local gameOverToken = 0 -- bumped on restart so a pending game over panel for the old run never opens
+local gameOverToken = 0 -- bumped whenever the session is replaced so a pending game over panel never opens
+local startToken = 0 -- identifies the latest StartGame request, for the retry
+local predictions: { [number]: Prediction } = {} -- by move index, until the server confirms the move
 local sessionReplacedListeners: { () -> () } = {}
 
-local function newSession(): GameSession.GameSession
-	-- Phase 1 seeds on the client; in phase 2 the server keeps the seed.
-	local seed = Random.new():NextInteger(1, 2 ^ 31 - 1)
-	return GameSession.new(Generator.newSource(Rng.new(seed)))
+-- The client never deals: new sets arrive from the server with MoveResult.
+local function noSet(_board: any, _score: number, _reason: any): { Pieces.Piece }?
+	return nil
 end
 
 local function render()
@@ -63,8 +77,85 @@ local function presentGameOver(delaySeconds: number)
 	end)
 end
 
+local function replaceSession(newSession: GameSession.GameSession)
+	session = newSession
+	table.clear(predictions)
+	gameOverToken += 1
+	if views then
+		views.board:setNoMoves(false)
+		views.hud:hideGameOver()
+	end
+	render()
+	for _, listener in sessionReplacedListeners do
+		task.spawn(listener)
+	end
+	if session.isOver then
+		presentGameOver(0)
+	end
+end
+
+local function requestStart()
+	startToken += 1
+	local token = startToken
+	Net.StartGame:FireServer()
+	task.delay(START_RETRY_SECONDS, function()
+		if token == startToken then
+			requestStart()
+		end
+	end)
+end
+
+local function onGameState(state: RunState, reason: string)
+	if reason == "start" then
+		startToken += 1 -- answered; cancels the retry
+		bestBeforeRun = state.best
+	elseif IS_STUDIO then
+		warn(`[ChikaBlock] resynced with the server at move {state.session.moveCount}`)
+	end
+	runId = state.runId
+	best = math.max(state.best, state.session.score)
+	replaceSession(GameSession.fromSnapshot(state.session, noSet))
+end
+
+local function onMoveResult(
+	resultRunId: number,
+	moveIndex: number,
+	score: number,
+	set: { string }?,
+	isOver: boolean,
+	serverBest: number
+)
+	if resultRunId ~= runId then
+		return -- answer for an older run
+	end
+	best = math.max(best, serverBest)
+	local predicted = predictions[moveIndex]
+	predictions[moveIndex] = nil
+
+	local expectedOver = predicted and predicted.isOver
+	if set then
+		local pieces = {}
+		for i, id in set do
+			pieces[i] = Pieces.BY_ID[id]
+		end
+		if not session:receiveSet(pieces) then
+			Net.RequestState:FireServer()
+			return
+		end
+		render()
+		expectedOver = session.isOver -- the new set decides whether the run goes on
+		if session.isOver then
+			presentGameOver(Theme.Motion.GameOverDelay)
+		end
+	end
+	if not predicted or predicted.score ~= score or expectedOver ~= isOver then
+		Net.RequestState:FireServer()
+	end
+end
+
 function GameController.init(_self: any)
-	session = newSession()
+	-- Placeholder until the server's first state arrives: empty board, waiting for a set.
+	session = GameSession.new(noSet)
 end
 
 function GameController.start(_self: any)
@@ -78,16 +169,28 @@ function GameController.start(_self: any)
 			GameController.restart()
 		end),
 	}
+	Net.GameState.OnClientEvent:Connect(onGameState)
+	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
 	render()
-	if session.isOver then
-		presentGameOver(0)
-	end
+	requestStart()
 end
 
--- Plays a move from the tray. Returns nil (and changes nothing) when the move is invalid.
+-- Plays a move from the tray right away and sends it to the server. Returns nil (and changes nothing)
+-- when the move is invalid.
 function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSession.PlaceResult?
+	local moveIndex = session.moveCount
 	local result = session:place(slot, x, y)
 	if result then
+		local prediction = { score = session.score, isOver = session.isOver }
+		predictions[moveIndex] = prediction
+		Net.PlacePiece:FireServer(runId, moveIndex, slot, x, y)
+		-- A dropped move (e.g. rate limited) would otherwise leave the client waiting forever, for instance
+		-- for a set the server never deals.
+		task.delay(CONFIRM_TIMEOUT_SECONDS, function()
+			if predictions[moveIndex] == prediction then
+				Net.RequestState:FireServer()
+			end
+		end)
 		best = math.max(best, session.score)
 		if views then
 			views.board:playMoveEffects(result) -- needs the board as drawn before this move
@@ -103,27 +206,27 @@ function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSes
 	return result
 end
 
+-- Asks the server for a new run; the board switches over when its state arrives.
 function GameController.restart()
-	session = newSession()
-	bestBeforeRun = best
 	gameOverToken += 1
 	if views then
 		views.board:setNoMoves(false)
 		views.hud:hideGameOver()
 	end
-	render()
-	for _, listener in sessionReplacedListeners do
-		task.spawn(listener)
-	end
+	requestStart()
 end
 
--- Called after restart() replaces the session (e.g. so an in-progress drag can be cancelled).
+-- Called whenever the session is replaced (new run or resync), e.g. so an in-progress drag is cancelled.
 function GameController.onSessionReplaced(callback: () -> ())
 	table.insert(sessionReplacedListeners, callback)
 end
 
 function GameController.getSession(): GameSession.GameSession
 	return session
+end
+
+function GameController.getRunId(): number
+	return runId
 end
 
 -- nil until start() has built the UI.
