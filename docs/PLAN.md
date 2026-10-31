@@ -101,10 +101,10 @@ ChikaBlock/
 ### Giai đoạn 1: Prototype gray-box
 Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 
-- [ ] `Board`, `Pieces`, `Generator`, `Scoring` kèm unit test.
-- [ ] UI thô: lưới 8x8 và 3 khối chờ, kéo thả trên PC và mobile (dùng Device Emulator).
-- [ ] Vòng chơi đầy đủ: bắt đầu → đặt khối → xóa hàng → game over → chơi lại.
-- **Xong khi:** chơi được trọn một ván trong Studio, logic pass toàn bộ test.
+- [x] `Board`, `Pieces`, `Generator`, `Scoring` kèm unit test.
+- [x] UI thô: lưới 8x8 và 3 khối chờ, kéo thả trên PC và mobile (dùng Device Emulator).
+- [x] Vòng chơi đầy đủ: bắt đầu → đặt khối → xóa hàng → game over → chơi lại.
+- **Xong khi:** chơi được trọn một ván trong Studio, logic pass toàn bộ test. ✅ Hoàn thành (kết quả từng mốc trong [PHASE1.md](PHASE1.md)).
 
 ### Giai đoạn 2: MVP (đủ để publish)
 - [ ] Server validate nước đi và tính điểm (như mục 2).

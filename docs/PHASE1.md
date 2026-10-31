@@ -282,3 +282,41 @@ Playtest qua MCP, không có lỗi trong Output (cảnh báo `rbxassetid://20378
 - Đã sửa trong lúc test: chữ nổi đè lên dòng "Best" trong HUD, chuyển sang bay ở giữa bảng.
 - **Lưu ý công cụ test:** `user_mouse_input` dùng toạ độ GUI (như `AbsolutePosition`). Khi giả lập điện thoại thì input thành Touch, và điểm chạm thấp hơn toạ độ đưa vào 62 px, nên phải cộng bù. `InputObject.Position` mà game nhận vẫn đúng toạ độ GUI.
 - **Lưu ý Rojo:** một số editor và công cụ sửa code ghi file tạm rồi đổi tên, làm Rojo 7.7 crash ([rojo-rbx/rojo#1314](https://github.com/rojo-rbx/rojo/issues/1314)). Khi `rojo serve` đang chạy, sửa file trong `src/` bằng cách ghi thẳng (không qua file tạm).
+
+### Quyết định khi review plan M5
+
+| Điểm | Quyết định |
+|---|---|
+| L. Thời điểm hiện Game Over | **Chờ 0,8 giây**: bảng tối đi kèm chữ "No moves left", rồi mới mở panel. |
+| M. Kỷ lục mới | **Hiện "New best!"** (màu vàng) khi điểm vượt best của các ván trước trong phiên. Ván đầu tiên không hiện. |
+
+### Kết quả M5
+
+- **Màn Game Over:**
+  - Nền mờ chặn input, nên không bấm xuyên xuống khay được.
+  - "Play again" bấm được bằng chuột/chạm, Enter hoặc Space, và nút A khi dùng tay cầm (nút được chọn sẵn).
+  - Phím Enter/Space chỉ được gắn khi panel đang mở.
+- **Tách overlay** thành `OverlayBackdrop` (nền mờ, `ScreenInsets = None`) và `Overlay` (panel, `CoreUISafeInsets`). Khi giả lập cảm ứng, nút đặt trong ScreenGui `None`/`IgnoreGuiInset` không nhận được chạm, vì điểm chạm bị dò theo gốc toạ độ khác. Docs cũng ghi `None` chỉ dành cho nội dung không tương tác.
+- **Lệnh debug mới:** `playdrag n` chơi qua đúng đường kéo thả, `stats` đếm instance, hiệu ứng, connection và bộ nhớ Lua.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Cả ván qua đường kéo thả (`playdrag`) | 23–83 nước mỗi ván, không nước nào lỗi |
+| Vòng chơi lại ×3 (chuột, phím Enter, bấm đúp) | Mỗi lần ra ván mới sạch, overlay tắt, phím Enter được gỡ |
+| "New best!" | Hiện khi 1.523 > 371; không hiện khi 313 < 371 |
+| Bấm vào khay khi đang Game Over | Bị chặn, khay không nhận input |
+| Restart trong 0,8 giây chờ | Panel của ván cũ không mở; lớp tối được gỡ |
+| Rò rỉ sau các vòng | Số instance lúc Game Over giữ ở 361–368; hiệu ứng, chữ nổi, connection kéo đều về 0; bộ nhớ Lua dao động 1,6–2,1 MB, không tăng dần |
+| iPhone 17 Pro dọc (cảm ứng) | Panel vừa màn; chạm "Play again" khởi động lại được (sau khi tách overlay) |
+| Laptop (chuột) | Bấm "Play again" vẫn chạy sau khi tách overlay |
+
+## Tổng kết GĐ1 và việc chuyển sang GĐ2
+
+- **Đã có:** logic đầy đủ (63 test), sinh khối công bằng, UI gray-box co giãn dọc/ngang, kéo thả chuột và cảm ứng, hiệu ứng, Game Over và chơi lại. Tất cả chạy cục bộ trên client.
+- **Việc còn treo cho GĐ2:**
+  - Chuyển `GameSession` lên server, giữ seed bí mật, client gửi nước đi qua RemoteEvent (theo mục 2 trong PLAN.md).
+  - Làm lại UI theo mockup. Riêng màn ngang cần khay to hơn: hiện ô trong khay chỉ bằng khoảng 39% ô trên bảng.
+  - Gamepad: gắn Input Action System vào các hàm `pick`, `hover`, `drop`, `cancel` của `DragController`.
+  - Lưu best bằng ProfileStore. Hiện best chỉ tồn tại trong phiên chơi.
+  - Các câu hỏi mở trong PLAN.md cần trả lời trước GĐ2: tên game, linh vật, ngôn ngữ, giá Robux, publish dưới Group hay tài khoản cá nhân.
+- **Theo dõi:** khi Rojo ra bản sửa [rojo-rbx/rojo#1314](https://github.com/rojo-rbx/rojo/issues/1314), nâng phiên bản trong `rokit.toml`.
