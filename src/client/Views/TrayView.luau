@@ -22,6 +22,8 @@ export type TrayView = typeof(setmetatable(
 		slots: { Frame },
 		contents: { Frame }, -- padded area inside each slot that holds the piece preview
 		hitboxes: { TextButton },
+		selections: { UIStroke }, -- outline of the slot chosen with keyboard or gamepad
+		selected: number?,
 		shown: { Piece | false },
 	},
 	TrayView
@@ -29,7 +31,7 @@ export type TrayView = typeof(setmetatable(
 
 function TrayView.new(parent: GuiObject): TrayView
 	local padding = Theme.Spacing.TraySlotPadding
-	local slots, contents, hitboxes = {}, {}, {}
+	local slots, contents, hitboxes, selections = {}, {}, {}, {}
 	for i = 1, Config.PIECES_PER_SET do
 		local content = create("Frame", {
 			Name = "Content",
@@ -51,6 +53,13 @@ function TrayView.new(parent: GuiObject): TrayView
 			AutoButtonColor = false,
 			Text = "",
 		})
+		local selection = create("UIStroke", {
+			Name = "Selection",
+			Color = Theme.Colors.Selection,
+			Thickness = 3,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Enabled = false,
+		})
 		slots[i] = create("Frame", {
 			Name = `Slot{i}`,
 			LayoutOrder = i,
@@ -64,16 +73,20 @@ function TrayView.new(parent: GuiObject): TrayView
 				AspectRatio = 1,
 				AspectType = Enum.AspectType.FitWithinMaxSize,
 			}),
+			selection,
 			content,
 			hitbox,
 		})
 		contents[i] = content
 		hitboxes[i] = hitbox
+		selections[i] = selection
 	end
 	return setmetatable({
 		slots = slots,
 		contents = contents,
 		hitboxes = hitboxes,
+		selections = selections,
+		selected = nil,
 		shown = table.create(Config.PIECES_PER_SET, false),
 	}, TrayView)
 end
@@ -97,6 +110,17 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 		end
 		self.shown[index] = piece
 	end
+end
+
+-- Outlines `slot` (keyboard and gamepad play); nil removes the outline.
+function TrayView.setSelected(self: TrayView, slot: number?)
+	if self.selected == slot then
+		return
+	end
+	for index, selection in self.selections do
+		selection.Enabled = index == slot
+	end
+	self.selected = slot
 end
 
 -- Hides the preview while its piece is being dragged.

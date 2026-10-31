@@ -1,7 +1,7 @@
 --!strict
 -- Drag and drop from the tray to the board, for mouse and touch.
 -- The input adapter at the bottom turns pointer events into intents: pick(), movePointer(), drop(), cancel().
--- Phase 2 gamepad controls will drive the same intents, using hover() to target cells instead of a pointer.
+-- Keyboard and gamepad (GamepadController) drive the same intents, using hover() to target cells instead of a pointer.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -24,6 +24,7 @@ type Drag = {
 	scale: UIScale,
 	cell: number, -- board cell size in pixels
 	target: { x: number, y: number }?, -- board cell the piece would drop on
+	blocked: boolean, -- faded: held with keys over cells it can't land on
 	connections: { RBXScriptConnection },
 }
 
@@ -71,6 +72,18 @@ local function setTarget(current: Drag, x: number?, y: number?)
 	end
 end
 
+local function setBlocked(current: Drag, blocked: boolean)
+	if current.blocked == blocked then
+		return
+	end
+	current.blocked = blocked
+	for _, block in current.frame:GetDescendants() do
+		if block.Name == "Block" and block:IsA("Frame") then
+			block.BackgroundTransparency = if blocked then Theme.Transparency.Blocked else 0
+		end
+	end
+end
+
 local function endDrag(current: Drag)
 	setTarget(current, nil, nil)
 	for _, connection in current.connections do
@@ -88,6 +101,7 @@ local function returnToTray(current: Drag)
 	local trayCell = views.tray:cellSize(slot)
 	local info = TweenInfo.new(Theme.Motion.Return, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+	setBlocked(current, false)
 	returning[slot] = current.frame
 	if trayCell > 0 then
 		TweenService:Create(current.scale, info, { Scale = trayCell / current.cell }):Play()
@@ -138,6 +152,7 @@ function DragController.pick(slot: number, isTouch: boolean): boolean
 		scale = scale,
 		cell = cell,
 		target = nil,
+		blocked = false,
 		connections = {},
 	}
 	drag = current
@@ -179,20 +194,18 @@ function DragController.movePointer(position: Vector2)
 	setTarget(current, x, y)
 end
 
--- Intent (gamepad, phase 2): target a board cell directly; the piece sits over it.
+-- Intent (keyboard / gamepad): put the piece over board cell (x, y); it can land there only if it fits.
 function DragController.hover(x: number, y: number)
 	local current = drag
 	if not current then
 		return
 	end
-	if GameController.getSession():canPlace(current.slot, x, y) then
-		local grid = gridOf(getViews())
-		local piece, cell = current.piece, current.cell
-		placeFrame(current, grid.x + (x + piece.width / 2) * cell, grid.y + (y + piece.height / 2) * cell)
-		setTarget(current, x, y)
-	else
-		setTarget(current, nil, nil)
-	end
+	local grid = gridOf(getViews())
+	local piece, cell = current.piece, current.cell
+	placeFrame(current, grid.x + (x + piece.width / 2) * cell, grid.y + (y + piece.height / 2) * cell)
+	local fits = GameController.getSession():canPlace(current.slot, x, y)
+	setTarget(current, if fits then x else nil, if fits then y else nil)
+	setBlocked(current, not fits)
 end
 
 -- Intent: let go. Places the piece when it has a target, otherwise sends it back. Returns whether it placed.
@@ -221,6 +234,22 @@ function DragController.cancel()
 	end
 	endDrag(current)
 	returnToTray(current)
+end
+
+function DragController.isDragging(): boolean
+	return drag ~= nil
+end
+
+-- The piece being dragged, if any.
+function DragController.getPiece(): Piece?
+	local current = drag
+	return if current then current.piece else nil
+end
+
+-- Whether the dragged piece would land if dropped now.
+function DragController.hasTarget(): boolean
+	local current = drag
+	return current ~= nil and current.target ~= nil
 end
 
 -- For the Studio debug bridge.

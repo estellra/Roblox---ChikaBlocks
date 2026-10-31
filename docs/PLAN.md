@@ -1,12 +1,12 @@
 # Kế hoạch build game: ChikaBlock
 
-> Dựa trên tài liệu thiết kế "Chikawa Blast". Tên game chính thức chưa chốt (xem [Câu hỏi còn mở](#câu-hỏi-còn-mở)).
+> Dựa trên tài liệu thiết kế "Chikawa Blast". Tên game: **ChiikaBlocks** (chốt khi lên plan M9).
 
 ## 1. Các quyết định đã chốt
 
 | Chủ đề | Quyết định |
 |---|---|
-| Bản quyền | **Không** dùng nhân vật hay tên Chiikawa. Tự thiết kế linh vật riêng theo phong cách cute, pastel, tròn trịa. Tên game không chứa "Chikawa". |
+| Bản quyền | **Không** dùng nhân vật Chiikawa. Tự thiết kế linh vật riêng theo phong cách cute, pastel, tròn trịa. Tên game là **ChiikaBlocks** (quyết định khi lên plan M9, thay cho ý ban đầu là tên không chứa "Chikawa"). Lưu ý: tên này gần "Chiikawa", nên vẫn có rủi ro bản quyền/thương hiệu khi publish và kiếm tiền. |
 | Workflow code | **Rojo + git**. Code nằm trong repo này, sync sang Studio. |
 | Lobby | **Chỉ có menu UI**. Vào game là thấy menu, bấm Play là chơi ngay. Không có sảnh 3D. |
 | Sinh block | **Công bằng, độ khó tăng dần**. Bộ khối mới luôn có ít nhất 1 khối đặt được. Không ngầm gài để người chơi thua. |
@@ -111,7 +111,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 - [x] Lưu highscore bằng ProfileStore.
 - [ ] Hồi sinh bằng Developer Product, xử lý `ProcessReceipt` an toàn khi bị gọi lặp.
 - [ ] UI theme pastel, menu chính, màn Game Over, popup linh vật, SFX và VFX cơ bản.
-- [ ] Tutorial lần đầu chơi. Hỗ trợ gamepad.
+- [x] Tutorial lần đầu chơi. Hỗ trợ gamepad và bàn phím (M9).
 - **Xong khi:** đạt ≥95% số lần test không lỗi, người mới hiểu cách chơi trong 15 giây, kéo thả không thấy trễ.
 - → Publish bản test (friends/private) rồi public.
 
@@ -152,8 +152,8 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 
 Các câu hỏi này không chặn Giai đoạn 0–1, nhưng cần trả lời trước khi tới giai đoạn tương ứng:
 
-1. **Tên game mới và linh vật** (trước GĐ2): tên là gì, linh vật trông thế nào, ai vẽ asset 2D?
-2. **Ngôn ngữ UI** (trước GĐ2): đề xuất tiếng Anh mặc định, thêm tiếng Việt qua LocalizationTable.
+1. **Linh vật** (trước M10): linh vật trông thế nào, ai vẽ asset 2D? Tên game đã chốt là ChiikaBlocks.
+2. **Ngôn ngữ UI:** đã chốt tiếng Anh (M9). Có thể thêm tiếng Việt qua LocalizationTable sau.
 3. **Giá Robux** (trước GĐ2–3): hồi sinh lần 1 và lần 2, xoay khối, các mức donate.
 4. **Publish dưới tài khoản cá nhân hay Group?** (trước GĐ2): nếu 2 người chia doanh thu thì nên dùng Group.
 5. **Quà theo mốc highscore** (trước GĐ3): là cosmetic, danh hiệu hay gì khác?

@@ -4,6 +4,9 @@
 -- These are gray-box placeholder values.
 
 export type Theme = {
+	Text: {
+		GameTitle: string,
+	},
 	Colors: {
 		Background: Color3,
 		Board: Color3,
@@ -15,6 +18,10 @@ export type Theme = {
 		Panel: Color3,
 		Button: Color3,
 		ButtonText: Color3,
+		ButtonSecondary: Color3,
+		ButtonSecondaryText: Color3,
+		Selection: Color3, -- outline of the tray slot chosen with keyboard or gamepad
+		Hand: Color3, -- tutorial hint pointer
 		Gain: Color3, -- floating "+points" text
 		Combo: Color3, -- floating "Combo xN" text
 		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT)
@@ -23,6 +30,7 @@ export type Theme = {
 		Overlay: number,
 		TraySlot: number,
 		Ghost: number, -- where the dragged piece would land
+		Blocked: number, -- a piece held with keys over cells it can't land on
 		NoMoves: number, -- board dimmer at game over
 	},
 	Motion: { -- durations in seconds
@@ -33,6 +41,9 @@ export type Theme = {
 		Gain: number,
 		NoMovesFade: number,
 		GameOverDelay: number, -- from the losing move to the game over panel
+		HandMove: number, -- tutorial pointer sliding from the tray to the board
+		HandPause: number,
+		Tip: number, -- how long a tutorial tip stays up
 	},
 	Fonts: {
 		Title: Font,
@@ -45,6 +56,9 @@ export type Theme = {
 		HudLabelMax: number,
 		GainMin: number,
 		GainMax: number,
+		HintMin: number,
+		HintMax: number,
+		MenuTitle: number,
 		Label: number,
 		Title: number,
 		Button: number,
@@ -70,6 +84,9 @@ export type Theme = {
 local BUILDER_SANS = "rbxasset://fonts/families/BuilderSans.json"
 
 local Theme: Theme = {
+	Text = {
+		GameTitle = "ChiikaBlocks",
+	},
 	Colors = {
 		Background = Color3.fromRGB(34, 36, 44),
 		Board = Color3.fromRGB(48, 51, 62),
@@ -81,6 +98,10 @@ local Theme: Theme = {
 		Panel = Color3.fromRGB(56, 60, 74),
 		Button = Color3.fromRGB(96, 168, 255),
 		ButtonText = Color3.fromRGB(20, 22, 28),
+		ButtonSecondary = Color3.fromRGB(74, 79, 96),
+		ButtonSecondaryText = Color3.fromRGB(240, 240, 245),
+		Selection = Color3.fromRGB(255, 214, 102),
+		Hand = Color3.fromRGB(240, 240, 245),
 		Gain = Color3.fromRGB(240, 240, 245),
 		Combo = Color3.fromRGB(255, 214, 102),
 		Pieces = {
@@ -98,6 +119,7 @@ local Theme: Theme = {
 		Overlay = 0.35,
 		TraySlot = 0.4,
 		Ghost = 0.5,
+		Blocked = 0.6,
 		NoMoves = 0.45,
 	},
 	Motion = {
@@ -108,6 +130,9 @@ local Theme: Theme = {
 		Gain = 0.8,
 		NoMovesFade = 0.25,
 		GameOverDelay = 0.8,
+		HandMove = 1.0,
+		HandPause = 0.5,
+		Tip = 3,
 	},
 	Fonts = {
 		Title = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
@@ -120,6 +145,9 @@ local Theme: Theme = {
 		HudLabelMax = 28,
 		GainMin = 20,
 		GainMax = 44,
+		HintMin = 12,
+		HintMax = 20,
+		MenuTitle = 56,
 		Label = 18,
 		Title = 34,
 		Button = 22,

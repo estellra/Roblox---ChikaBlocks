@@ -19,6 +19,7 @@ local specs = {
 	require("./ServerUtil.spec"),
 	require("./GameRuns.spec"),
 	require("./PlayerData.spec"),
+	require("./Tutorial.spec"),
 }
 
 for _, spec in specs do

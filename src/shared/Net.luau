@@ -2,13 +2,15 @@
 -- Every remote in the game, in one place. The server creates them; clients wait for them.
 --
 -- Client -> server
---   StartGame()                                  start or restart the player's run
+--   StartGame(mode)                              start or restart the player's run; mode "normal" or "tutorial"
+--   RequestProfile()                             send the saved profile (best, games played, tutorial done)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start" or "resync"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
 --                                                a move was accepted; set = new piece ids when the tray refilled
+--   Profile(profile)                             { best, gamesPlayed, tutorialDone }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -42,6 +44,8 @@ return {
 	StartGame = remoteEvent("StartGame"),
 	PlacePiece = remoteEvent("PlacePiece"),
 	RequestState = remoteEvent("RequestState"),
+	RequestProfile = remoteEvent("RequestProfile"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
+	Profile = remoteEvent("Profile"),
 }

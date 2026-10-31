@@ -3,7 +3,8 @@
 -- through Studio MCP can read the server's copy of a run and compare it with the client's. Does nothing
 -- outside Studio.
 --
--- Commands: state [userId] | data [userId]  (default to the first player)
+-- Commands: state [userId] | data [userId] | resetdata [userId]  (default to the first player)
+-- resetdata wipes the player's PlayerData_Dev profile (Studio's store) to replay the first-time flow.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -60,6 +61,15 @@ function DebugService.start(_self: any)
 				return `{DataService.describeStore()} | no data loaded for {player.Name}`
 			end
 			return `{DataService.describeStore()} | version={data.version} best={data.bestScore} games={data.gamesPlayed} tutorialDone={data.tutorialDone}`
+		elseif command == "resetdata" then
+			local data = DataService.get(player)
+			if not data then
+				return "no data loaded"
+			end
+			data.bestScore, data.gamesPlayed, data.tutorialDone = 0, 0, false
+			GameService.getRuns():setBest(player, 0)
+			GameService.sendProfile(player)
+			return `reset {player.Name}: best=0 games=0 tutorialDone=false`
 		end
 		return `unknown command "{command}"`
 	end

@@ -29,6 +29,7 @@ export type Hud = typeof(setmetatable(
 		newBestLabel: TextLabel,
 		finalBestLabel: TextLabel,
 		restartButton: TextButton,
+		menuButton: TextButton,
 		onRestart: () -> (),
 		keyConnection: RBXScriptConnection?, -- Enter / Space restart while the panel is open
 		connections: { RBXScriptConnection },
@@ -55,7 +56,8 @@ function Hud.new(
 	popupArea: GuiObject,
 	overlay: ScreenGui,
 	backdrop: ScreenGui,
-	onRestart: () -> ()
+	onRestart: () -> (),
+	onMenu: () -> ()
 ): Hud
 	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
 
@@ -126,6 +128,21 @@ function Hud.new(
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
 		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
 	})
+	local menuButton = create("TextButton", {
+		Name = "Menu",
+		LayoutOrder = 6,
+		Size = UDim2.new(0.8, 0, 0, 52),
+		BackgroundColor3 = colors.ButtonSecondary,
+		BorderSizePixel = 0,
+		AutoButtonColor = true,
+		FontFace = fonts.Title,
+		TextSize = sizes.Button,
+		TextColor3 = colors.ButtonSecondaryText,
+		Text = "Menu",
+	}, {
+		create("UICorner", { CornerRadius = Theme.Radius.Button }),
+		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
+	})
 	-- The dimmer covers the whole screen; the panel lives in the safe-area overlay above it.
 	create("Frame", {
 		Name = "Dim",
@@ -164,6 +181,7 @@ function Hud.new(
 		newBestLabel,
 		finalBestLabel,
 		restartButton,
+		menuButton,
 	})
 
 	return setmetatable({
@@ -176,9 +194,10 @@ function Hud.new(
 		newBestLabel = newBestLabel,
 		finalBestLabel = finalBestLabel,
 		restartButton = restartButton,
+		menuButton = menuButton,
 		onRestart = onRestart,
 		keyConnection = nil,
-		connections = { restartButton.Activated:Connect(onRestart) },
+		connections = { restartButton.Activated:Connect(onRestart), menuButton.Activated:Connect(onMenu) },
 	}, Hud)
 end
 
@@ -233,7 +252,7 @@ function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
 end
 
 -- Opens the game over panel. "Play again" works by click/tap, Enter or Space, and the gamepad A button
--- (the button is selected when a gamepad is in use).
+-- (the button is selected when a gamepad is in use); "Menu" goes back to the main menu.
 function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boolean)
 	self.finalScoreLabel.Text = `Score {score}`
 	self.finalBestLabel.Text = `Best {best}`
@@ -255,7 +274,8 @@ end
 function Hud.hideGameOver(self: Hud)
 	self.overlay.Enabled = false
 	self.backdrop.Enabled = false
-	if GuiService.SelectedObject == self.restartButton then
+	local selected = GuiService.SelectedObject
+	if selected == self.restartButton or selected == self.menuButton then
 		GuiService.SelectedObject = nil
 	end
 	if self.keyConnection then

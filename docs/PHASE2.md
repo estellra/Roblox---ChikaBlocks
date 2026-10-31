@@ -9,8 +9,8 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M6** Server giữ quyền quyết định | `GameService` chạy `GameSession` trên server, seed bí mật, client dự đoán và đồng bộ lại khi lệch | Không | ✅ Xong |
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
-| **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (seed cố định), Input Action System | Ngôn ngữ | |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup, linh vật, SFX/VFX, khay to hơn ở màn ngang | Tên game, linh vật, mockup | |
+| **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup, linh vật, SFX/VFX, khay to hơn ở màn ngang | Linh vật, mockup | |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -113,3 +113,61 @@ Client                                         Server (GameService → GameRuns)
 - **Chưa kiểm tra được:** khóa session khi hai server cùng mở một người chơi (Studio chỉ có một server). Phần này dựa vào ProfileStore.
 - Store `PlayerData_Dev` đang có dữ liệu test của tài khoản dev (best 563). Không ảnh hưởng tới `PlayerData` của game thật.
 - **Lưu ý môi trường:** thêm mục mới vào cây trong `default.project.json` (như `ServerPackages`) cần khởi động lại `rojo serve` rồi Connect lại, giống khi đổi `$properties`.
+
+## M9: Menu, tutorial, bàn phím và tay cầm
+
+### Thiết kế
+
+- **Luồng:** vào game thì hiện màn hình chính (tên **ChiikaBlocks**, best, nút Play và How to play). Ván chỉ bắt đầu khi bấm Play. Game Over có thêm nút Menu để về màn hình chính.
+  - Play: chơi ván tutorial cho tới khi người chơi xong tutorial một lần, sau đó là ván thường.
+  - How to play: luôn mở ván tutorial.
+- **Ván tutorial** (`src/shared/Tutorial.luau`): bảng dựng sẵn, hàng dưới cùng chỉ còn khe 3 ô; bộ khối đầu là `I3_H, O2, L3_1`. Thả `I3_H` vào khe thì xóa hàng và bảng vẫn còn khối. Từ bộ thứ hai, ván chạy như ván thường (sinh khối công bằng, có tính điểm và best).
+- **Server:** `StartGame(mode)` nhận `"normal"` hoặc `"tutorial"`; mode sai thì bỏ qua. Nước đầu tiên của ván tutorial được chấp nhận thì server bật cờ `tutorialDone` và gửi lại profile (kể cả khi người chơi không đặt theo gợi ý).
+- **Remote mới:** `RequestProfile` (client → server), `Profile(best, gamesPlayed, tutorialDone)` (server → client), có giới hạn tần suất.
+- **Client:**
+  - `MenuController` và `MenuView`: màn hình chính đè lên game. Enter hoặc Space bấm Play; khi dùng tay cầm thì Play được chọn sẵn.
+  - `TutorialController` và `TutorialView`: bàn tay trượt lặp lại từ ô khay tới khe, kèm một dòng hướng dẫn trong mép trên của bảng (theo chiều rộng bảng). Câu hướng dẫn đổi theo thiết bị đang dùng (chuột/cảm ứng, bàn phím, tay cầm). Đặt nước đầu thì ẩn gợi ý; xóa hàng đầu tiên thì hiện tip "Full rows and columns clear. Keep the board open!" trong 3 giây.
+  - `GamepadController`: Input Action System, context `Gameplay` chỉ bật khi đang chơi (tắt ở menu và ở bảng Game Over để Enter, Space và nút A bấm nút của menu).
+  - Khay có viền vàng ở ô đang chọn và dòng gợi ý phím bên dưới, chỉ hiện khi đang dùng bàn phím hoặc tay cầm.
+  - Khối cầm bằng phím luôn nằm khít vào ô. Chỗ không đặt được thì khối mờ đi (`Theme.Transparency.Blocked`), bấm đặt sẽ không có tác dụng.
+
+| Hành động | Bàn phím | Tay cầm |
+|---|---|---|
+| Chọn khối trước / sau | Q / E (hoặc trái / phải khi chưa cầm khối) | LB / RB |
+| Di chuyển từng ô (giữ để lặp) | WASD, mũi tên | D-pad, cần trái |
+| Nhặt / đặt | Space, Enter | A |
+| Trả khối về khay | Backspace | B |
+
+- **Debug chỉ chạy trong Studio:** client có thêm lệnh `play [normal|tutorial]` và `flow`; server có lệnh `resetdata` (đưa best, số ván, `tutorialDone` về 0 để thử lại lần đầu chơi).
+
+### Quyết định khi review plan M9
+
+| Điểm | Quyết định |
+|---|---|
+| Ngôn ngữ | **English** cho mọi chữ trong game. |
+| S. Kiểu tutorial | **Ván dựng sẵn**, nước đầu chắc chắn xóa hàng, có bàn tay chỉ đường. |
+| U. Bàn phím | **Có**, dùng chung các action với tay cầm. |
+| Tên game | **Giữ ChiikaBlocks** (không dùng tên tạm). |
+| Màn hình chính, tutorial | Bản MVP dạng gray-box; làm lại theo mockup ở M10. |
+
+### Kết quả M9
+
+- **95 test pass** (thêm test cho `Tutorial`, ván tutorial trong `GameRuns`, `markTutorialDone`).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Lần đầu chơi (sau `resetdata`) | Menu hiện; Play mở ván tutorial có bàn tay và dòng hướng dẫn |
+| Kéo theo gợi ý bằng chuột | Xóa hàng, 13 điểm, hiện tip; server lưu `tutorialDone=true` |
+| Game Over → Menu → Enter | Về menu; Enter mở ván thường |
+| Play lại ở phiên sau | `tutorialDone` vẫn là true; How to play vẫn mở được tutorial |
+| Bàn phím | Q/E chọn khối, Space nhặt và đặt, WASD/mũi tên di chuyển, giữ phím thì lặp và dừng ở mép bảng, Backspace trả khối; chỗ sai thì khối mờ và không đặt được; làm tutorial bằng bàn phím được |
+| iPhone 17 Pro dọc | Menu, tutorial và kéo cảm ứng đúng ô |
+| iPhone 17 Pro ngang | Menu, dòng hướng dẫn và bảng Game Over vừa màn hình |
+
+- **Lỗi phát hiện và đã sửa:**
+  - Khi cầm bằng phím, chỗ không đặt được trông y như chỗ đặt được: thêm hiệu ứng mờ.
+  - Câu hướng dẫn chỉ được chọn lúc bắt đầu ván, nên đổi sang bàn phím giữa chừng vẫn ghi "Drag…": giờ được đọc lại mỗi vòng.
+  - Ở điện thoại ngang, dòng hướng dẫn rộng hơn bảng và đè lên điểm số: giờ lấy theo chiều rộng bảng.
+- **Chưa kiểm tra được:** bấm nút tay cầm thật. Công cụ MCP gửi nút tay cầm như phím bàn phím, còn `VirtualInputManager` cần quyền RobloxScript. Đã kiểm tra các binding được tạo đủ; cần thử bằng **Controller Emulator** của Studio hoặc tay cầm thật.
+- **Lỗi có sẵn từ M4 (chưa sửa):** ở điện thoại ngang, bảng chiếm hết chiều cao màn hình mà khối kéo bằng cảm ứng luôn nằm cao hơn ngón tay 1,5 ô. Đo trên iPhone 17 Pro: ngón tay chạm sát mép dưới thì khối chỉ xuống tới hàng 6, nên **không thả được vào hàng cuối**.
+- **Lưu ý khi test:** client giữ best theo kiểu chỉ tăng, nên sau `resetdata` HUD và menu vẫn hiện best cũ cho tới khi vào lại game. Khi chơi thật best không bao giờ giảm nên không ảnh hưởng.

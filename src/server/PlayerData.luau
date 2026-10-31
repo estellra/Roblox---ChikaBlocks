@@ -51,4 +51,13 @@ function PlayerData.recordRunEnd(data: PlayerData, finalScore: number)
 	data.gamesPlayed += 1
 end
 
+-- Returns whether this changed anything (false when the tutorial was already done).
+function PlayerData.markTutorialDone(data: PlayerData): boolean
+	if data.tutorialDone then
+		return false
+	end
+	data.tutorialDone = true
+	return true
+end
+
 return PlayerData

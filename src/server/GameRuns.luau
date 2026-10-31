@@ -12,24 +12,40 @@ export type Deps = {
 	GameSession: any,
 	Generator: any,
 	Rng: any,
+	Tutorial: any?, -- needed only for tutorial runs
 	clock: () -> number,
 	newSeed: () -> number,
 	limits: { place: Limit, start: Limit, state: Limit }?,
 }
 
+-- "tutorial" runs open with Tutorial's fixed board and tray, then continue like normal runs.
+export type RunMode = "normal" | "tutorial"
+
 -- What the client needs to (re)build its copy of the run.
 export type RunState = {
 	runId: number,
+	mode: RunMode,
 	best: number,
 	session: any, -- GameSession.Snapshot
 }
 
 export type PlaceOutcome =
-	{ kind: "accepted", runId: number, moveIndex: number, score: number, set: { string }?, isOver: boolean, best: number }
+	{
+		kind: "accepted",
+		runId: number,
+		mode: RunMode,
+		moveIndex: number,
+		score: number,
+		set: { string }?,
+		isOver: boolean,
+		best: number,
+	}
 	| { kind: "resync", state: RunState }
 	| { kind: "ignored", reason: string }
 
-type Run = { id: number, session: any }
+type Run = { id: number, mode: RunMode, session: any }
+
+local MODES: { [string]: boolean } = { normal = true, tutorial = true }
 
 local DEFAULT_LIMITS = {
 	place = { capacity = 8, windowSeconds = 1 }, -- no human places more than 8 pieces a second
@@ -76,17 +92,40 @@ function GameRuns.new(deps: Deps): GameRuns
 end
 
 local function stateOf(self: GameRuns, key: any, run: Run): RunState
-	return { runId = run.id, best = self.bests[key] or 0, session = run.session:snapshot() }
+	return { runId = run.id, mode = run.mode, best = self.bests[key] or 0, session = run.session:snapshot() }
 end
 
--- Starts (or restarts) the player's run. Nil when asked too often.
-function GameRuns.start(self: GameRuns, key: any): RunState?
+-- Starts (or restarts) the player's run; `mode` is "normal" (or nil) or "tutorial". Nil when the mode is
+-- unknown or the player asks too often.
+function GameRuns.start(self: GameRuns, key: any, mode: unknown?): RunState?
+	local runMode: RunMode = "normal"
+	if mode ~= nil then
+		if typeof(mode) ~= "string" or not MODES[mode :: string] then
+			return nil
+		end
+		runMode = mode :: any
+	end
 	if not self.startLimiter:allow(key) then
 		return nil
 	end
+
 	local deps = self.deps
-	local source = deps.Generator.newSource(deps.Rng.new(deps.newSeed()))
-	local run = { id = self.nextRunId, session = deps.GameSession.new(source) }
+	local dealNext = deps.Generator.newSource(deps.Rng.new(deps.newSeed()))
+	local session
+	if runMode == "tutorial" then
+		local tutorial = deps.Tutorial :: any
+		local openingDealt = false
+		session = deps.GameSession.new(function(board: any, score: number, reason: any): any
+			if not openingDealt then
+				openingDealt = true
+				return tutorial.tray()
+			end
+			return dealNext(board, score, reason)
+		end, tutorial.newBoard())
+	else
+		session = deps.GameSession.new(dealNext)
+	end
+	local run = { id = self.nextRunId, mode = runMode, session = session }
 	self.nextRunId += 1
 	self.runs[key] = run
 	return stateOf(self, key, run)
@@ -143,6 +182,7 @@ function GameRuns.place(
 	return {
 		kind = "accepted",
 		runId = run.id,
+		mode = run.mode,
 		moveIndex = index,
 		score = session.score,
 		set = set,

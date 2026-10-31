@@ -7,6 +7,7 @@ local Generator = require("../src/shared/Generator")
 local Pieces = require("../src/shared/Pieces")
 local Rng = require("../src/shared/Rng")
 local TestKit = require("./TestKit")
+local Tutorial = require("../src/shared/Tutorial")
 
 local SIZE = Config.GRID_SIZE
 local PLAYER = "player-1" -- GameRuns works with any key; in the game it's the Player
@@ -23,6 +24,7 @@ local function newRuns(generator: any?): (GameRuns.GameRuns, (seconds: number) -
 		GameSession = GameSession,
 		Generator = generator or Generator,
 		Rng = Rng,
+		Tutorial = Tutorial,
 		clock = function(): number
 			return now
 		end,
@@ -205,6 +207,33 @@ return function(t: TestKit.TestKit)
 			local nextRun = runs:start(PLAYER) :: GameRuns.RunState
 			t.expect(nextRun.best).toBe(36)
 			t.expect(nextRun.session.score).toBe(0)
+		end)
+
+		t.it("starts a tutorial run on the fixed opening and lets the hinted move clear a line", function()
+			local runs = newRuns()
+			local state = runs:start(PLAYER, "tutorial") :: GameRuns.RunState
+			t.expect(state.mode).toBe("tutorial")
+			t.expect(state.session.cells).toEqual(Tutorial.newBoard().cells)
+			t.expect(state.session.tray).toEqual({ "I3_H", "O2", "L3_1" })
+
+			local hint = Tutorial.HINT
+			local outcome = runs:place(PLAYER, state.runId, 0, hint.slot, hint.x, hint.y)
+			t.expect(outcome.kind).toBe("accepted")
+			if outcome.kind == "accepted" then
+				t.expect(outcome.mode).toBe("tutorial")
+				t.expect(outcome.score).toBe(3 + 10) -- three cells placed, one line cleared
+			end
+		end)
+
+		t.it("starts normal runs by default and refuses unknown modes", function()
+			local runs, advance = newRuns()
+			t.expect((runs:start(PLAYER) :: GameRuns.RunState).mode).toBe("normal")
+			advance(1)
+			local badModes: { any } = { "hard", 1, {}, true }
+			for _, mode in badModes do
+				t.expect(runs:start(PLAYER, mode)).toBe(nil)
+			end
+			t.expect((runs:start(PLAYER, "normal") :: GameRuns.RunState).mode).toBe("normal")
 		end)
 
 		t.it("forgets a player who leaves", function()

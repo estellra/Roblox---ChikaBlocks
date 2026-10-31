@@ -5,6 +5,7 @@
 --
 -- Commands: state | layout | place <slot> <x> <y> | autoplay <moves> | gameover | restart
 --           dragstats | dragpoint <slot> <x> <y> [touch] | pointer
+--           play [normal|tutorial] (leaves the menu like the Play button) | flow (menu, run mode, hints, keys)
 --           playdrag <moves> (plays through the drag intents) | stats (leak checks)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
@@ -18,6 +19,9 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local DragController = require("./DragController")
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
+local GamepadController = require("./GamepadController")
+local MenuController = require("./MenuController")
+local TutorialController = require("./TutorialController")
 
 local SIZE = Config.GRID_SIZE
 local MAX_GAME_OVER_MOVES = 500
@@ -163,12 +167,40 @@ local function handle(rng: Random, command: string, ...: any): string
 	elseif command == "restart" then
 		-- Waits for the server to start the new run.
 		local before = GameController.getRunId()
-		GameController.restart()
+		MenuController.play("normal")
 		local deadline = os.clock() + 5
 		while GameController.getRunId() == before and os.clock() < deadline do
 			task.wait()
 		end
 		return describeState()
+	elseif command == "play" then
+		local mode = ...
+		local before = GameController.getRunId()
+		MenuController.play(mode)
+		local deadline = os.clock() + 5
+		while GameController.getRunId() == before and os.clock() < deadline do
+			task.wait()
+		end
+		task.wait(0.1) -- let listeners (tutorial hint) react to the new run
+		return describeState()
+	elseif command == "flow" then
+		local profile = GameController.getProfile()
+		local keys = GamepadController.getStats()
+		return string.format(
+			"menuOpen=%s runMode=%s runId=%d hint=%s profile=%s keys: mode=%s context=%s slot=%d keyDrag=%s target=%s",
+			tostring(MenuController.isOpen()),
+			GameController.getRunMode(),
+			GameController.getRunId(),
+			tostring(TutorialController.isHintVisible()),
+			if profile
+				then `best={profile.best},games={profile.gamesPlayed},tutorialDone={profile.tutorialDone}`
+				else "none",
+			keys.inputMode,
+			tostring(keys.contextEnabled),
+			keys.selectedSlot,
+			tostring(keys.keyDrag),
+			keys.target
+		)
 	elseif command == "dragstats" then
 		local stats = DragController.getStats()
 		local parts = {}

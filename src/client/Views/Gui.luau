@@ -2,6 +2,7 @@
 -- Builds the ScreenGuis and owns the responsive layout. Views only fill the areas handed out here.
 --   Portrait  (narrow screens): HUD, board and tray stacked top to bottom, tray slots in a row
 --   Landscape (wide screens):   board on the left; HUD above a column of tray slots on the right
+-- A one-line hint (controls for keyboard and gamepad) sits under the tray in both layouts.
 -- The layout is re-applied whenever the safe area changes size (rotation, window resize, device switch).
 
 local Theme = require("./Theme")
@@ -14,6 +15,7 @@ export type Gui = {
 	boardArea: Frame,
 	trayArea: Frame,
 	dragLayer: Frame, -- full-screen layer above everything in the game UI, for pieces being dragged
+	hint: TextLabel, -- keeps its space when empty, so the board doesn't resize as hints come and go
 	overlay: ScreenGui, -- interactive panels over the game (game over); safe area, disabled until used
 	overlayBackdrop: ScreenGui, -- full-screen dimmer under the overlay; disabled until used
 	getMode: () -> LayoutMode,
@@ -26,15 +28,17 @@ local LANDSCAPE_MIN_RATIO = 1.1 -- width / height of the safe area
 -- Sizes are scales of the parent (Root, or the side column in landscape).
 local PORTRAIT = {
 	hud = UDim2.fromScale(1, 0.12),
-	board = UDim2.fromScale(1, 0.6),
-	tray = UDim2.fromScale(1, 0.22),
+	board = UDim2.fromScale(1, 0.57),
+	tray = UDim2.fromScale(1, 0.2),
+	hint = UDim2.fromScale(1, 0.04),
 	slot = UDim2.fromScale(0.3, 1),
 }
 local LANDSCAPE = {
 	board = UDim2.fromScale(0.6, 1),
 	side = UDim2.fromScale(0.36, 1),
-	hud = UDim2.fromScale(1, 0.2),
-	tray = UDim2.fromScale(1, 0.76),
+	hud = UDim2.fromScale(1, 0.17),
+	tray = UDim2.fromScale(1, 0.73),
+	hint = UDim2.fromScale(1, 0.06),
 	slot = UDim2.fromScale(1, 0.31),
 }
 
@@ -89,6 +93,17 @@ function Gui.create(playerGui: PlayerGui): Gui
 	local trayArea = area("TrayArea", 3)
 	local trayLayout = listLayout("Layout", spacing.TrayGap)
 	trayLayout.Parent = trayArea
+	local hint = create("TextLabel", {
+		Name = "Hint",
+		LayoutOrder = 4,
+		BackgroundTransparency = 1,
+		FontFace = Theme.Fonts.Body,
+		TextScaled = true,
+		TextColor3 = Theme.Colors.TextMuted,
+		Text = "",
+	}, {
+		create("UITextSizeConstraint", { MinTextSize = Theme.TextSize.HintMin, MaxTextSize = Theme.TextSize.HintMax }),
+	})
 	local sideColumn = area("SideColumn", 2)
 	listLayout("Layout", spacing.Gap).Parent = sideColumn
 	local rootLayout = listLayout("Layout", spacing.Gap)
@@ -107,6 +122,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 		hudArea,
 		boardArea,
 		trayArea,
+		hint,
 		sideColumn,
 	})
 	local dragLayer = create("Frame", {
@@ -157,6 +173,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 			hudArea.Parent, hudArea.LayoutOrder, hudArea.Size = root, 1, PORTRAIT.hud
 			boardArea.LayoutOrder, boardArea.Size = 2, PORTRAIT.board
 			trayArea.Parent, trayArea.LayoutOrder, trayArea.Size = root, 3, PORTRAIT.tray
+			hint.Parent, hint.LayoutOrder, hint.Size = root, 4, PORTRAIT.hint
 			trayLayout.FillDirection = Enum.FillDirection.Horizontal
 			slotSize = PORTRAIT.slot
 		else
@@ -165,6 +182,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 			sideColumn.Visible, sideColumn.Size = true, LANDSCAPE.side
 			hudArea.Parent, hudArea.LayoutOrder, hudArea.Size = sideColumn, 1, LANDSCAPE.hud
 			trayArea.Parent, trayArea.LayoutOrder, trayArea.Size = sideColumn, 2, LANDSCAPE.tray
+			hint.Parent, hint.LayoutOrder, hint.Size = sideColumn, 3, LANDSCAPE.hint
 			trayLayout.FillDirection = Enum.FillDirection.Vertical
 			slotSize = LANDSCAPE.slot
 		end
@@ -199,6 +217,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 		boardArea = boardArea,
 		trayArea = trayArea,
 		dragLayer = dragLayer,
+		hint = hint,
 		overlay = overlay,
 		overlayBackdrop = overlayBackdrop,
 		getMode = function(): LayoutMode

@@ -32,6 +32,13 @@ return function(t: TestKit.TestKit)
 			t.expect(data.bestScore).toBe(300)
 		end)
 
+		t.it("marks the tutorial done once", function()
+			local data = fresh()
+			t.expect(PlayerData.markTutorialDone(data)).toBe(true)
+			t.expect(data.tutorialDone).toBe(true)
+			t.expect(PlayerData.markTutorialDone(data)).toBe(false)
+		end)
+
 		t.it("counts finished runs and records their score", function()
 			local data = fresh()
 			PlayerData.recordRunEnd(data, 450)
