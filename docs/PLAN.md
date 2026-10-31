@@ -108,7 +108,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 
 ### Giai đoạn 2: MVP (đủ để publish)
 - [x] Server validate nước đi và tính điểm (như mục 2). Chi tiết: [PHASE2.md](PHASE2.md).
-- [ ] Lưu highscore bằng ProfileStore.
+- [x] Lưu highscore bằng ProfileStore.
 - [ ] Hồi sinh bằng Developer Product, xử lý `ProcessReceipt` an toàn khi bị gọi lặp.
 - [ ] UI theme pastel, menu chính, màn Game Over, popup linh vật, SFX và VFX cơ bản.
 - [ ] Tutorial lần đầu chơi. Hỗ trợ gamepad.

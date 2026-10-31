@@ -7,7 +7,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | Mốc | Nội dung | Cần trước | Trạng thái |
 |---|---|---|---|
 | **M6** Server giữ quyền quyết định | `GameService` chạy `GameSession` trên server, seed bí mật, client dự đoán và đồng bộ lại khi lệch | Không | ✅ Xong |
-| **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | |
+| **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (seed cố định), Input Action System | Ngôn ngữ | |
 | **M10** Giao diện thật | Làm lại `Views/` theo mockup, linh vật, SFX/VFX, khay to hơn ở màn ngang | Tên game, linh vật, mockup | |
@@ -73,3 +73,43 @@ Client                                         Server (GameService → GameRuns)
   - Bot test đi theo nhịp người chơi (0,13 giây/nước), dưới giới hạn tần suất của server.
 - **Để lại cho M10:** dưới 3G khay trống khoảng nửa giây khi chờ bộ khối mới. Nên có hiệu ứng chờ nhẹ ở ô khay.
 - **Network Simulator** đã được trả về 0 sau khi test.
+
+## M7: Lưu dữ liệu người chơi
+
+### Thiết kế
+
+- **Dữ liệu** (một profile mỗi người chơi, key `User_{UserId}`): `version`, `bestScore`, `gamesPlayed` (số ván đã thua), `tutorialDone` (dùng ở M9).
+- **`PlayerData`** (`src/server/PlayerData.luau`): logic thuần, test bằng Lune. Gồm template, khung migrate theo `version` (hiện chưa có bước migrate nào), `recordScore` và `recordRunEnd`.
+- **`DataService`:** bọc ProfileStore 1.0.3 (cài qua Wally, `ServerScriptService.ServerPackages`).
+  - Mở session khi người chơi vào: migrate, `Reconcile`, `AddUserId` (để Roblox xoá dữ liệu khi người chơi yêu cầu).
+  - Đóng session khi người chơi rời. ProfileStore tự lưu định kỳ và lưu khi server tắt.
+- **`GameService`:**
+  - `StartGame` chờ dữ liệu tải xong (tối đa 15 giây) rồi lấy best đã lưu.
+  - Mỗi nước được chấp nhận thì cập nhật best (ghi vào bộ nhớ, ProfileStore tự lưu). Ván thua thì cộng `gamesPlayed`.
+- **Tool:** `rokit.toml` thêm `wally@0.3.2`. `wally.toml` khai báo ProfileStore ở `server-dependencies`, `wally.lock` được commit, thư mục `ServerPackages/` không commit. Rojo map `ServerPackages` dạng `optional`, nên build được cả khi chưa chạy `wally install`.
+- Package ProfileStore có kèm một Script test (`ProfileStoreTest.server.luau`). File project của package chỉ đưa `ProfileStore.luau` vào game, nên Script đó không được sync.
+
+### Quyết định khi review plan M7
+
+| Điểm | Quyết định |
+|---|---|
+| P. Cách đưa ProfileStore vào | **Wally.** |
+| Q. Không tải được dữ liệu | **Kick** kèm lời nhắn "We couldn't load your saved data. Please rejoin." |
+| R. Store khi test trong Studio | **Tách riêng:** Studio dùng `PlayerData_Dev`, game thật dùng `PlayerData`. |
+
+### Kết quả M7
+
+- **88 test pass** (thêm 4 test cho `PlayerData`).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Kết nối DataStore | `dataStoreState=Access`; ProfileStore báo "data will be saved" |
+| Profile mới | best 0, 0 ván |
+| Chơi đến thua (561 điểm) | best 561, 1 ván |
+| Dừng play rồi play lại | best 561, 1 ván; server gửi best đúng, HUD hiện "Best 561" |
+| Rời giữa ván khi đang có kỷ lục mới (563) | Play lại: best 563; số ván không đổi (ván dở không tính) |
+| Output phía server | Không có lỗi DataStore |
+
+- **Chưa kiểm tra được:** khóa session khi hai server cùng mở một người chơi (Studio chỉ có một server). Phần này dựa vào ProfileStore.
+- Store `PlayerData_Dev` đang có dữ liệu test của tài khoản dev (best 563). Không ảnh hưởng tới `PlayerData` của game thật.
+- **Lưu ý môi trường:** thêm mục mới vào cây trong `default.project.json` (như `ServerPackages`) cần khởi động lại `rojo serve` rồi Connect lại, giống khi đổi `$properties`.

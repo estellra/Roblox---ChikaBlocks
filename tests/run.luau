@@ -18,6 +18,7 @@ local specs = {
 	require("./Lockstep.spec"),
 	require("./ServerUtil.spec"),
 	require("./GameRuns.spec"),
+	require("./PlayerData.spec"),
 }
 
 for _, spec in specs do

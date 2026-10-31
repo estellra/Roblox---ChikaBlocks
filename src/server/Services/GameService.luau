@@ -1,14 +1,17 @@
 --!strict
 -- Owns every player's run on the server. The rules (validation, rate limits, outcomes) live in GameRuns;
--- this service wires them to the remotes and to player lifetime.
+-- this service wires them to the remotes, to player lifetime and to the saved data (best score, games played).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
 local Net = require(ReplicatedStorage.Shared.Net)
+local PlayerData = require("../PlayerData")
 
 local IS_STUDIO = RunService:IsStudio()
+local DATA_WAIT_SECONDS = 15 -- how long a first StartGame waits for the player's saved data to load
 
 local GameService = {}
 
@@ -29,6 +32,12 @@ end
 
 function GameService.start(_self: any)
 	Net.StartGame.OnServerEvent:Connect(function(player: Player)
+		-- The saved best decides "New best!", so the run starts once the data is in.
+		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
+		if not data then
+			return -- left, or kicked because the data couldn't load
+		end
+		runs:setBest(player, math.max(runs:getBest(player), data.bestScore))
 		local state = runs:start(player)
 		if state then
 			Net.GameState:FireClient(player, state, "start")
@@ -39,6 +48,14 @@ function GameService.start(_self: any)
 		function(player: Player, runId: unknown, moveIndex: unknown, slot: unknown, x: unknown, y: unknown)
 			local outcome = runs:place(player, runId, moveIndex, slot, x, y)
 			if outcome.kind == "accepted" then
+				local data = DataService.get(player)
+				if data then
+					if outcome.isOver then
+						PlayerData.recordRunEnd(data, outcome.score)
+					else
+						PlayerData.recordScore(data, outcome.score)
+					end
+				end
 				Net.MoveResult:FireClient(
 					player,
 					outcome.runId,

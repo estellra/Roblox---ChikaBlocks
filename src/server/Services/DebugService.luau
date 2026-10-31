@@ -3,13 +3,14 @@
 -- through Studio MCP can read the server's copy of a run and compare it with the client's. Does nothing
 -- outside Studio.
 --
--- Commands: state [userId]  (defaults to the first player)
+-- Commands: state [userId] | data [userId]  (default to the first player)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local DataService = require("./DataService")
 local GameService = require("./GameService")
 
 local SIZE = Config.GRID_SIZE
@@ -47,9 +48,18 @@ function DebugService.start(_self: any)
 	local bridge = Instance.new("BindableFunction")
 	bridge.Name = "ChikaServerDebug"
 	bridge.OnInvoke = function(command: string, userId: number?): string
+		local player = if userId then Players:GetPlayerByUserId(userId) else Players:GetPlayers()[1]
+		if not player then
+			return "no player"
+		end
 		if command == "state" then
-			local player = if userId then Players:GetPlayerByUserId(userId) else Players:GetPlayers()[1]
-			return if player then describe(player) else "no player"
+			return describe(player)
+		elseif command == "data" then
+			local data = DataService.get(player)
+			if not data then
+				return `{DataService.describeStore()} | no data loaded for {player.Name}`
+			end
+			return `{DataService.describeStore()} | version={data.version} best={data.bestScore} games={data.gamesPlayed} tutorialDone={data.tutorialDone}`
 		end
 		return `unknown command "{command}"`
 	end
