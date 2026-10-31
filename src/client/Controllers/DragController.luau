@@ -2,6 +2,7 @@
 -- Drag and drop from the tray to the board, for mouse and touch.
 -- The input adapter at the bottom turns pointer events into intents: pick(), movePointer(), drop(), cancel().
 -- Keyboard and gamepad (GamepadController) drive the same intents, using hover() to target cells instead of a pointer.
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -30,7 +31,7 @@ type Drag = {
 
 local DragController = {}
 
-DragController.TOUCH_LIFT_CELLS = 1.5 -- how far above the finger a touch-dragged piece sits
+DragController.TOUCH_LIFT_CELLS = 1.5 -- how far above the finger a touch-dragged piece sits (less near the screen's bottom)
 DragController.SNAP_ASSIST_CELLS = 0.75 -- how far from the nearest cell a drop may still snap to a free neighbour
 
 local drag: Drag? = nil
@@ -50,6 +51,12 @@ local function gridOf(views: Views): DragMath.Grid
 		size = grid.AbsoluteSize.X,
 		cells = Config.GRID_SIZE,
 	}
+end
+
+-- Bottom edge of the screen, in the coordinates of pointer positions and AbsolutePosition (below the top bar).
+function DragController.getScreenBottom(): number
+	local camera = workspace.CurrentCamera :: Camera
+	return camera.ViewportSize.Y - GuiService:GetGuiInset().Y
 end
 
 -- Moves the floating piece so its center is at (x, y) in screen pixels.
@@ -176,19 +183,16 @@ function DragController.movePointer(position: Vector2)
 		return
 	end
 	local piece, cell = current.piece, current.cell
-	local left, top = DragMath.pieceTopLeft(
-		position.X,
-		position.Y,
-		piece.width,
-		piece.height,
-		cell,
-		current.isTouch,
-		DragController.TOUCH_LIFT_CELLS
-	)
+	local grid = gridOf(getViews())
+	local lift = if current.isTouch
+		then DragMath.touchLift(position.Y, grid, DragController.TOUCH_LIFT_CELLS, DragController.getScreenBottom())
+		else 0
+	local left, top =
+		DragMath.pieceTopLeft(position.X, position.Y, piece.width, piece.height, cell, current.isTouch, lift)
 	placeFrame(current, left + piece.width * cell / 2, top + piece.height * cell / 2)
 
 	local session = GameController.getSession()
-	local x, y = DragMath.snap(left, top, gridOf(getViews()), function(cellX: number, cellY: number): boolean
+	local x, y = DragMath.snap(left, top, grid, function(cellX: number, cellY: number): boolean
 		return session:canPlace(current.slot, cellX, cellY)
 	end, DragController.SNAP_ASSIST_CELLS)
 	setTarget(current, x, y)

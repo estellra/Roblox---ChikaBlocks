@@ -7,6 +7,7 @@
 --           dragstats | dragpoint <slot> <x> <y> [touch] | pointer
 --           play [normal|tutorial] (leaves the menu like the Play button) | flow (menu, run mode, hints, keys)
 --           playdrag <moves> (plays through the drag intents) | stats (leak checks)
+--           touchdrop <slot> <x> <y> (drops through the touch path, reports where the finger had to be)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
@@ -16,6 +17,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
+local Pieces = require(ReplicatedStorage.Shared.Pieces)
 local DragController = require("./DragController")
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
@@ -116,6 +118,23 @@ local function playOne(rng: Random, random: boolean): boolean
 	return move ~= nil and GameController.tryPlace(move[1], move[2], move[3]) ~= nil
 end
 
+-- Pointer that drops `piece` on cell (x, y), held by a mouse or a finger.
+local function pointerFor(
+	views: GameController.Views,
+	piece: Pieces.Piece,
+	x: number,
+	y: number,
+	isTouch: boolean
+): (number, number)
+	local grid = views.board.grid
+	return DragMath.pointerFor({
+		x = grid.AbsolutePosition.X,
+		y = grid.AbsolutePosition.Y,
+		size = grid.AbsoluteSize.X,
+		cells = SIZE,
+	}, x, y, piece.width, piece.height, isTouch, DragController.TOUCH_LIFT_CELLS, DragController.getScreenBottom())
+end
+
 -- Plays a move the way a player does: pick from the tray, move the pointer onto the target, drop.
 local function dragOne(rng: Random): boolean
 	local move = chooseMove(rng, false)
@@ -127,13 +146,7 @@ local function dragOne(rng: Random): boolean
 	if not piece or not DragController.pick(move[1], false) then
 		return false
 	end
-	local grid = views.board.grid
-	local pointerX, pointerY = DragMath.pointerFor({
-		x = grid.AbsolutePosition.X,
-		y = grid.AbsolutePosition.Y,
-		size = grid.AbsoluteSize.X,
-		cells = SIZE,
-	}, move[2], move[3], piece.width, piece.height, false, DragController.TOUCH_LIFT_CELLS)
+	local pointerX, pointerY = pointerFor(views, piece, move[2], move[3], false)
 	DragController.movePointer(Vector2.new(pointerX, pointerY))
 	return DragController.drop()
 end
@@ -217,13 +230,7 @@ local function handle(rng: Random, command: string, ...: any): string
 		if not views or not piece then
 			return "no piece in that slot"
 		end
-		local grid = views.board.grid
-		local toX, toY = DragMath.pointerFor({
-			x = grid.AbsolutePosition.X,
-			y = grid.AbsolutePosition.Y,
-			size = grid.AbsoluteSize.X,
-			cells = SIZE,
-		}, x, y, piece.width, piece.height, mode == "touch", DragController.TOUCH_LIFT_CELLS)
+		local toX, toY = pointerFor(views, piece, x, y, mode == "touch")
 		local from = views.tray:center(slot)
 		local inset = GuiService:GetGuiInset()
 		return string.format(
@@ -235,6 +242,23 @@ local function handle(rng: Random, command: string, ...: any): string
 			toY,
 			inset.X,
 			inset.Y
+		)
+	elseif command == "touchdrop" then
+		local slot, x, y = ...
+		local views = GameController.getViews()
+		local piece = session.tray[slot]
+		if not views or not piece or not DragController.pick(slot, true) then
+			return "no piece in that slot"
+		end
+		local pointerX, pointerY = pointerFor(views, piece, x, y, true)
+		DragController.movePointer(Vector2.new(pointerX, pointerY))
+		local placed = DragController.drop()
+		return string.format(
+			"placed=%s finger=%.1f screenBottom=%.1f\n%s",
+			tostring(placed),
+			pointerY,
+			DragController.getScreenBottom(),
+			describeState()
 		)
 	elseif command == "playdrag" then
 		local moves = tonumber((...)) or 1000

@@ -138,7 +138,7 @@ Client                                         Server (GameService → GameRuns)
 | Nhặt / đặt | Space, Enter | A |
 | Trả khối về khay | Backspace | B |
 
-- **Debug chỉ chạy trong Studio:** client có thêm lệnh `play [normal|tutorial]` và `flow`; server có lệnh `resetdata` (đưa best, số ván, `tutorialDone` về 0 để thử lại lần đầu chơi).
+- **Debug chỉ chạy trong Studio:** client có thêm lệnh `play [normal|tutorial]`, `flow` và `touchdrop <slot> <x> <y>` (thả khối qua đường cảm ứng, báo ngón tay phải ở đâu); server có lệnh `resetdata` (đưa best, số ván, `tutorialDone` về 0 để thử lại lần đầu chơi).
 
 ### Quyết định khi review plan M9
 
@@ -152,7 +152,7 @@ Client                                         Server (GameService → GameRuns)
 
 ### Kết quả M9
 
-- **95 test pass** (thêm test cho `Tutorial`, ván tutorial trong `GameRuns`, `markTutorialDone`).
+- **99 test pass** (thêm test cho `Tutorial`, ván tutorial trong `GameRuns`, `markTutorialDone`, và `DragMath.touchLift`).
 
 | Kiểm tra trong Studio | Kết quả |
 |---|---|
@@ -163,11 +163,15 @@ Client                                         Server (GameService → GameRuns)
 | Bàn phím | Q/E chọn khối, Space nhặt và đặt, WASD/mũi tên di chuyển, giữ phím thì lặp và dừng ở mép bảng, Backspace trả khối; chỗ sai thì khối mờ và không đặt được; làm tutorial bằng bàn phím được |
 | iPhone 17 Pro dọc | Menu, tutorial và kéo cảm ứng đúng ô |
 | iPhone 17 Pro ngang | Menu, dòng hướng dẫn và bảng Game Over vừa màn hình |
+| Thả vào hàng cuối bằng cảm ứng, iPhone 17 Pro ngang | Trước khi sửa: ngón tay phải ở y=368 (ngoài màn hình, mép ở 323). Sau khi sửa: y=313,6; khối đặt được và xóa hàng |
+| Kéo cảm ứng ở iPhone 17 Pro dọc sau khi sửa | Độ nâng giữ nguyên 1,5 ô; khối rơi đúng ô |
 
 - **Lỗi phát hiện và đã sửa:**
   - Khi cầm bằng phím, chỗ không đặt được trông y như chỗ đặt được: thêm hiệu ứng mờ.
   - Câu hướng dẫn chỉ được chọn lúc bắt đầu ván, nên đổi sang bàn phím giữa chừng vẫn ghi "Drag…": giờ được đọc lại mỗi vòng.
   - Ở điện thoại ngang, dòng hướng dẫn rộng hơn bảng và đè lên điểm số: giờ lấy theo chiều rộng bảng.
 - **Chưa kiểm tra được:** bấm nút tay cầm thật. Công cụ MCP gửi nút tay cầm như phím bàn phím, còn `VirtualInputManager` cần quyền RobloxScript. Đã kiểm tra các binding được tạo đủ; cần thử bằng **Controller Emulator** của Studio hoặc tay cầm thật.
-- **Lỗi có sẵn từ M4 (chưa sửa):** ở điện thoại ngang, bảng chiếm hết chiều cao màn hình mà khối kéo bằng cảm ứng luôn nằm cao hơn ngón tay 1,5 ô. Đo trên iPhone 17 Pro: ngón tay chạm sát mép dưới thì khối chỉ xuống tới hàng 6, nên **không thả được vào hàng cuối**.
+- **Lỗi có sẵn từ M4, đã sửa:** ở điện thoại ngang, bảng chiếm hết chiều cao màn hình mà khối kéo bằng cảm ứng luôn nằm cao hơn ngón tay 1,5 ô. Trên iPhone 17 Pro, ngón tay chạm sát mép dưới thì khối chỉ xuống tới hàng 6, nên không thả được vào hàng cuối.
+  - Cách sửa (`DragMath.touchLift`): chỉ khi ngón tay không thể với tới hàng cuối với độ nâng đầy đủ, độ nâng mới giảm dần trong 3 ô cuối của vùng ngón tay với được. Hàng cuối với tới được ở 0,25 ô trên mép màn hình. Trong vùng này khối đi nhanh hơn ngón tay một chút (khoảng 1,5 lần ở iPhone ngang), và không bao giờ nằm dưới ngón tay.
+  - Màn dọc và PC không đổi, vì bên dưới bảng còn khay.
 - **Lưu ý khi test:** client giữ best theo kiểu chỉ tăng, nên sau `resetdata` HUD và menu vẫn hiện best cũ cho tới khi vào lại game. Khi chơi thật best không bao giờ giảm nên không ảnh hưởng.
