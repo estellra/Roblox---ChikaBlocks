@@ -2,8 +2,12 @@
 local PlayerData = require("../src/server/PlayerData")
 local TestKit = require("./TestKit")
 
+-- A new player's data, copied deeply as ProfileStore does.
 local function fresh(): PlayerData.PlayerData
-	return table.clone(PlayerData.TEMPLATE) :: any
+	local data = table.clone(PlayerData.TEMPLATE) :: any
+	data.milestonesClaimed = {}
+	data.badgesAwarded = {}
+	return data
 end
 
 return function(t: TestKit.TestKit)
@@ -15,8 +19,15 @@ return function(t: TestKit.TestKit)
 				gamesPlayed = 0,
 				tutorialDone = false,
 				onboardingStep = 0,
+				level = 1,
+				exp = 0,
+				milestonesClaimed = {},
+				badgesAwarded = {},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
+			-- Nested defaults are frozen too, so no code can change the template through a shallow copy.
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.milestonesClaimed)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.badgesAwarded)).toBe(true)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()

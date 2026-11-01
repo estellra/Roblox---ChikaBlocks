@@ -28,7 +28,15 @@ export type Views = {
 
 export type RunMode = "normal" | "tutorial"
 -- What the server sends with Profile (see GameService.Profile).
-export type Profile = { best: number, gamesPlayed: number, tutorialDone: boolean }
+export type Profile = {
+	best: number,
+	gamesPlayed: number,
+	tutorialDone: boolean,
+	level: number,
+	exp: number,
+	title: string?,
+}
+export type RunRewards = Hud.RunRewards
 
 -- What the server sends with GameState (see GameRuns.RunState).
 type RunState = { runId: number, mode: RunMode, best: number, session: GameSession.Snapshot }
@@ -45,6 +53,7 @@ local runId = 0 -- 0 until the server starts the first run
 local runMode: RunMode = "normal"
 local views: Views? = nil
 local profile: Profile? = nil
+local runRewards: RunRewards? = nil -- what the current run earned, once it is over and the server said
 local best = 0
 local bestBeforeRun = 0 -- best when the current run started, to tell a new best apart
 local gameOverToken = 0 -- bumped whenever the session is replaced so a pending game over panel never opens
@@ -91,6 +100,9 @@ local function presentGameOver(delaySeconds: number)
 		end
 		local isNewBest = bestBeforeRun > 0 and session.score > bestBeforeRun
 		views.hud:showGameOver(session.score, best, isNewBest)
+		if runRewards then
+			views.hud:showRewards(runRewards)
+		end
 	end)
 end
 
@@ -128,6 +140,7 @@ local function onGameState(state: RunState, reason: string)
 	if reason == "start" then
 		startToken += 1 -- answered; cancels the retry
 		bestBeforeRun = state.best
+		runRewards = nil
 	elseif IS_STUDIO then
 		warn(`[ChikaBlock] resynced with the server at move {state.session.moveCount}`)
 	end
@@ -173,6 +186,17 @@ local function onMoveResult(
 	end
 end
 
+-- Usually arrives before the game over panel opens (which waits for the last move's effects).
+local function onRunRewards(rewardsRunId: number, rewards: RunRewards)
+	if rewardsRunId ~= runId then
+		return
+	end
+	runRewards = rewards
+	if views and views.hud:isGameOverOpen() then
+		views.hud:showRewards(rewards)
+	end
+end
+
 local function onProfile(newProfile: Profile)
 	profile = newProfile
 	best = math.max(best, newProfile.best)
@@ -201,6 +225,7 @@ function GameController.start(_self: any)
 	Net.GameState.OnClientEvent:Connect(onGameState)
 	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
 	Net.Profile.OnClientEvent:Connect(onProfile)
+	Net.RunRewards.OnClientEvent:Connect(onRunRewards)
 	render()
 	Net.RequestProfile:FireServer()
 end
@@ -289,6 +314,11 @@ end
 -- nil until the server's first Profile arrives.
 function GameController.getProfile(): Profile?
 	return profile
+end
+
+-- What the current run earned; nil until it is over and the server has said.
+function GameController.getRunRewards(): RunRewards?
+	return runRewards
 end
 
 function GameController.getBest(): number

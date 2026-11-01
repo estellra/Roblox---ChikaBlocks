@@ -21,6 +21,7 @@ local specs = {
 	require("./PlayerData.spec"),
 	require("./Tutorial.spec"),
 	require("./Telemetry.spec"),
+	require("./Progression.spec"),
 }
 
 for _, spec in specs do

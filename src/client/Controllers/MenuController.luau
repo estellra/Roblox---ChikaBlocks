@@ -21,13 +21,18 @@ function MenuController.play(mode: GameController.RunMode?)
 	GameController.startRun(runMode)
 end
 
+local function refresh(view: MenuView.MenuView)
+	local profile = GameController.getProfile()
+	if profile then
+		view:setReady(GameController.getBest(), profile.level, profile.title)
+	end
+end
+
 function MenuController.show()
 	if not menu then
 		return
 	end
-	if GameController.getProfile() then
-		menu:setReady(GameController.getBest()) -- the best may have gone up during the last run
-	end
+	refresh(menu) -- the best may have gone up during the last run
 	menu:show()
 end
 
@@ -50,12 +55,10 @@ function MenuController.start(_self: any)
 	end)
 	menu = view
 	GameController.onProfileChanged(function()
-		view:setReady(GameController.getBest())
+		refresh(view)
 	end)
 	GameController.onMenuRequested(MenuController.show)
-	if GameController.getProfile() then
-		view:setReady(GameController.getBest()) -- arrived before this controller started
-	end
+	refresh(view) -- the profile may have arrived before this controller started
 	MenuController.show()
 	Net.ClientReady:FireServer()
 end

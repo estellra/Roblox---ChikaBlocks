@@ -1,5 +1,6 @@
 --!strict
--- Main menu: title, saved best, Play and How to play. A gray-box placeholder until the mockups arrive.
+-- Main menu: title, level and player title, saved best, Play and How to play. A gray-box placeholder until
+-- the mockups arrive.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
@@ -20,6 +21,7 @@ export type MenuView = typeof(setmetatable(
 	{} :: {
 		backdrop: ScreenGui,
 		gui: ScreenGui,
+		levelLabel: TextLabel,
 		bestLabel: TextLabel,
 		playButton: TextButton,
 		howToButton: TextButton,
@@ -71,9 +73,20 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 	backdrop.IgnoreGuiInset = true
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
 
+	local levelLabel = create("TextLabel", {
+		Name = "Level",
+		LayoutOrder = 2,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		FontFace = fonts.Title,
+		TextSize = sizes.Label + 2,
+		TextColor3 = colors.Title,
+		Text = "",
+	})
 	local bestLabel = create("TextLabel", {
 		Name = "Best",
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
@@ -82,8 +95,8 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 		TextColor3 = colors.TextMuted,
 		Text = "Best —",
 	})
-	local playButton = button("Play", "Loading…", 3, true)
-	local howToButton = button("HowToPlay", "How to play", 4, false)
+	local playButton = button("Play", "Loading…", 4, true)
+	local howToButton = button("HowToPlay", "How to play", 5, false)
 	local gui = create("ScreenGui", {
 		Name = "Menu",
 		DisplayOrder = 11,
@@ -119,6 +132,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 				TextColor3 = colors.Text,
 				Text = Theme.Text.GameTitle,
 			}),
+			levelLabel,
 			bestLabel,
 			playButton,
 			howToButton,
@@ -128,6 +142,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 	local self = setmetatable({
 		backdrop = backdrop,
 		gui = gui,
+		levelLabel = levelLabel,
 		bestLabel = bestLabel,
 		playButton = playButton,
 		howToButton = howToButton,
@@ -159,9 +174,10 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 end
 
 -- Called once the saved profile is known; until then Play shows "Loading…" and does nothing.
-function MenuView.setReady(self: MenuView, best: number)
+function MenuView.setReady(self: MenuView, best: number, level: number, title: string?)
 	self.ready = true
 	self.playButton.Text = "Play"
+	self.levelLabel.Text = if title then `Level {level}  ·  {title}` else `Level {level}`
 	self.bestLabel.Text = `Best {best}`
 end
 

@@ -118,7 +118,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 ### Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 
-- [ ] Level/EXP sau mỗi ván và quà theo mốc highscore.
+- [x] Level/EXP sau mỗi ván và quà theo mốc highscore và mốc level (danh hiệu, badge; cosmetic từ GĐ4). (M13; badge chờ ID)
 - [ ] Leaderboard: Highscore, Level, Robux đã donate.
 - [ ] Donate bằng nhiều Developer Product với các mức khác nhau.
 - [ ] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux.
@@ -158,6 +158,6 @@ Các câu hỏi này không chặn Giai đoạn 0–1, nhưng cần trả lời 
 2. **Ngôn ngữ UI:** đã chốt tiếng Anh (M9). Có thể thêm tiếng Việt qua LocalizationTable sau.
 3. **Giá Robux** (trước GĐ2–3): hồi sinh lần 1 và lần 2, xoay khối, các mức donate.
 4. **Publish dưới tài khoản cá nhân hay Group?** (trước GĐ2): nếu 2 người chia doanh thu thì nên dùng Group.
-5. **Quà theo mốc highscore** (trước GĐ3): là cosmetic, danh hiệu hay gì khác?
+5. **Quà theo mốc:** đã chốt. Mốc highscore và mốc level đều tặng danh hiệu kèm badge; thêm cosmetic từ GĐ4 (xem quyết định W trong [PHASE3.md](PHASE3.md)).
 6. **Luật PVP** (trước GĐ6): cùng seed và đua điểm trong 2–3 phút, hay xóa hàng để "tấn công" đẩy khối rác sang bảng đối thủ?
 7. **Lore** (tùy chọn): viết một câu chuyện ngắn cho linh vật mới.

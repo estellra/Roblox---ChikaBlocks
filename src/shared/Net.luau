@@ -11,7 +11,9 @@
 --   GameState(state, reason)                     full run state; reason is "start" or "resync"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
 --                                                a move was accepted; set = new piece ids when the tray refilled
---   Profile(profile)                             { best, gamesPlayed, tutorialDone }
+--   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, title? }
+--   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
+--                                                titles unlocked during the run (see GameService)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -50,4 +52,5 @@ return {
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),
+	RunRewards = remoteEvent("RunRewards"),
 }

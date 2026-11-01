@@ -24,6 +24,9 @@ export type Theme = {
 		Hand: Color3, -- tutorial hint pointer
 		Gain: Color3, -- floating "+points" text
 		Combo: Color3, -- floating "Combo xN" text
+		Title: Color3, -- the player's title and newly unlocked titles
+		ExpTrack: Color3, -- EXP bar background
+		ExpFill: Color3,
 		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT)
 	},
 	Transparency: {
@@ -44,6 +47,7 @@ export type Theme = {
 		HandMove: number, -- tutorial pointer sliding from the tray to the board
 		HandPause: number,
 		Tip: number, -- how long a tutorial tip stays up
+		ExpFill: number, -- EXP bar filling up on the game over panel (per segment)
 	},
 	Fonts: {
 		Title: Font,
@@ -104,6 +108,9 @@ local Theme: Theme = {
 		Hand = Color3.fromRGB(240, 240, 245),
 		Gain = Color3.fromRGB(240, 240, 245),
 		Combo = Color3.fromRGB(255, 214, 102),
+		Title = Color3.fromRGB(190, 150, 255),
+		ExpTrack = Color3.fromRGB(40, 43, 54),
+		ExpFill = Color3.fromRGB(153, 230, 128),
 		Pieces = {
 			Color3.fromRGB(255, 214, 102), -- Dot
 			Color3.fromRGB(102, 204, 255), -- Bar
@@ -133,6 +140,7 @@ local Theme: Theme = {
 		HandMove = 1.0,
 		HandPause = 0.5,
 		Tip = 3,
+		ExpFill = 0.6,
 	},
 	Fonts = {
 		Title = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),

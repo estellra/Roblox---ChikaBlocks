@@ -1,7 +1,9 @@
 --!strict
 -- Owns every player's run on the server. The rules (validation, rate limits, outcomes) live in GameRuns;
 -- this service wires them to the remotes, to player lifetime, to the saved data (best score, games
--- played, tutorial progress) and to analytics (Telemetry decides what to log).
+-- played, tutorial progress, EXP and level), to milestone rewards (RewardService) and to analytics
+-- (Telemetry decides what to log). A run's EXP is credited as its score grows, so a run left halfway
+-- still counts.
 local AnalyticsService = game:GetService("AnalyticsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,7 +13,9 @@ local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
 local Net = require(ReplicatedStorage.Shared.Net)
 local PlayerData = require("../PlayerData")
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local RateLimiter = require("../Util/RateLimiter")
+local RewardService = require("./RewardService")
 local Telemetry = require("../Telemetry")
 
 local IS_STUDIO = RunService:IsStudio()
@@ -23,7 +27,27 @@ local CUSTOM_FIELDS = {
 	Enum.AnalyticsCustomFieldKeys.CustomField03.Name,
 }
 
-export type Profile = { best: number, gamesPlayed: number, tutorialDone: boolean }
+export type Profile = {
+	best: number,
+	gamesPlayed: number,
+	tutorialDone: boolean,
+	level: number,
+	exp: number,
+	title: string?,
+}
+
+-- What a finished run earned, for the game over panel.
+export type RunRewards = {
+	expGained: number,
+	levelBefore: number,
+	expBefore: number,
+	level: number,
+	exp: number,
+	titles: { string }, -- unlocked during the run, in rank order
+}
+
+-- Progress during the player's current run.
+type RunProgress = { expGranted: number, levelBefore: number, expBefore: number, titles: { string } }
 
 local GameService = {}
 
@@ -31,6 +55,7 @@ local runs: GameRuns.GameRuns
 local telemetry: Telemetry.Telemetry
 local profileLimiter = RateLimiter.new(2, 1, os.clock)
 local readyLimiter = RateLimiter.new(1, 5, os.clock)
+local runProgress: { [Player]: RunProgress } = {}
 local recentEvents: { string } = {}
 
 local function remember(line: string)
@@ -74,6 +99,37 @@ local function profileOf(player: Player, data: PlayerData.PlayerData): Profile
 		best = math.max(runs:getBest(player), data.bestScore),
 		gamesPlayed = data.gamesPlayed,
 		tutorialDone = data.tutorialDone,
+		level = data.level,
+		exp = data.exp,
+		title = Progression.title(data.milestonesClaimed),
+	}
+end
+
+-- Credits the EXP the run's score has earned since the last move and claims any milestone reached.
+local function creditProgress(player: Player, data: PlayerData.PlayerData, score: number)
+	local progress = runProgress[player]
+	if progress then
+		local earned = Progression.expForScore(score)
+		if earned > progress.expGranted then
+			Progression.addExp(data, earned - progress.expGranted)
+			progress.expGranted = earned
+		end
+	end
+	for _, milestone in RewardService.sync(player, data) do
+		if progress then
+			table.insert(progress.titles, milestone.title)
+		end
+	end
+end
+
+local function rewardsOf(progress: RunProgress, data: PlayerData.PlayerData): RunRewards
+	return {
+		expGained = progress.expGranted,
+		levelBefore = progress.levelBefore,
+		expBefore = progress.expBefore,
+		level = data.level,
+		exp = data.exp,
+		titles = progress.titles,
 	}
 end
 
@@ -99,6 +155,7 @@ function GameService.start(_self: any)
 		end
 		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
 		if data then
+			RewardService.sync(player, data) -- milestones reached before they existed; badges owed
 			Net.Profile:FireClient(player, profileOf(player, data))
 		end
 	end)
@@ -128,6 +185,7 @@ function GameService.start(_self: any)
 				telemetry:runEnded(player, data, previous, "restart")
 			end
 			telemetry:runStarted(player, data)
+			runProgress[player] = { expGranted = 0, levelBefore = data.level, expBefore = data.exp, titles = {} }
 			Net.GameState:FireClient(player, state, "start")
 		end
 	end)
@@ -147,6 +205,7 @@ function GameService.start(_self: any)
 					if outcome.mode == "tutorial" and PlayerData.markTutorialDone(data) then
 						Net.Profile:FireClient(player, profileOf(player, data))
 					end
+					creditProgress(player, data, outcome.score)
 					telemetry:moveAccepted(player, data, outcome.linesCleared)
 				end
 				local summary = if outcome.isOver then runs:summary(player) else nil
@@ -162,6 +221,11 @@ function GameService.start(_self: any)
 					outcome.isOver,
 					outcome.best
 				)
+				local progress = runProgress[player]
+				if outcome.isOver and data and progress then
+					Net.RunRewards:FireClient(player, outcome.runId, rewardsOf(progress, data))
+					Net.Profile:FireClient(player, profileOf(player, data))
+				end
 			elseif outcome.kind == "resync" then
 				if IS_STUDIO then
 					warn(`[ChikaBlock] rejected a move from {player.Name}; sending the full state`)
@@ -184,6 +248,7 @@ function GameService.start(_self: any)
 			telemetry:runEnded(player, DataService.get(player), summary, "left")
 		end
 		runs:remove(player)
+		runProgress[player] = nil
 		profileLimiter:forget(player)
 		readyLimiter:forget(player)
 	end)

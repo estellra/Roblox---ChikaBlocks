@@ -1,13 +1,17 @@
 --!strict
--- Score display, gains floating over the board after line clears, and the game over panel.
+-- Score display, gains floating over the board after line clears, and the game over panel with what the
+-- run earned (EXP bar, level up, new titles), shown once the server's RunRewards arrive.
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local Theme = require("./Theme")
 local create = require("./Create")
+
+local PANEL_MARGIN = 8 -- pixels kept free above and below the game over panel when it has to shrink
 
 local RESTART_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Return] = true,
@@ -17,6 +21,16 @@ local RESTART_KEYS: { [Enum.KeyCode]: boolean } = {
 
 local Hud = {}
 Hud.__index = Hud
+
+-- What a finished run earned (sent by the server with RunRewards; see GameService.RunRewards).
+export type RunRewards = {
+	expGained: number,
+	levelBefore: number,
+	expBefore: number,
+	level: number,
+	exp: number,
+	titles: { string },
+}
 
 export type Hud = typeof(setmetatable(
 	{} :: {
@@ -28,6 +42,12 @@ export type Hud = typeof(setmetatable(
 		finalScoreLabel: TextLabel,
 		newBestLabel: TextLabel,
 		finalBestLabel: TextLabel,
+		rewards: Frame, -- hidden until the run's rewards arrive
+		expLabel: TextLabel,
+		expFill: Frame,
+		levelUpLabel: TextLabel,
+		titlesLabel: TextLabel,
+		rewardsToken: number, -- bumped to stop a running EXP bar animation
 		restartButton: TextButton,
 		menuButton: TextButton,
 		onRestart: () -> (),
@@ -113,9 +133,44 @@ function Hud.new(
 	local newBestLabel = label("NewBest", "New best!", fonts.Title, sizes.Label + 2, colors.Combo, 3)
 	newBestLabel.Visible = false
 	local finalBestLabel = label("FinalBest", "Best 0", fonts.Body, sizes.Label, colors.TextMuted, 4)
+	local expLabel = label("Exp", "", fonts.Body, sizes.Label, colors.TextMuted, 1)
+	local expFill = create("Frame", {
+		Name = "Fill",
+		Size = UDim2.fromScale(0, 1),
+		BackgroundColor3 = colors.ExpFill,
+		BorderSizePixel = 0,
+	}, { create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	local levelUpLabel = label("LevelUp", "", fonts.Title, sizes.Label + 2, colors.Combo, 3)
+	local titlesLabel = label("Titles", "", fonts.Title, sizes.Label, colors.Title, 4)
+	titlesLabel.TextWrapped = true
+	local rewards = create("Frame", {
+		Name = "Rewards",
+		LayoutOrder = 5,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 6),
+		}),
+		expLabel,
+		create("Frame", {
+			Name = "ExpBar",
+			LayoutOrder = 2,
+			Size = UDim2.new(0.8, 0, 0, 10),
+			BackgroundColor3 = colors.ExpTrack,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+		}, { create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), expFill }),
+		levelUpLabel,
+		titlesLabel,
+	})
 	local restartButton = create("TextButton", {
 		Name = "PlayAgain",
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 		Size = UDim2.new(0.8, 0, 0, 52),
 		BackgroundColor3 = colors.Button,
 		BorderSizePixel = 0,
@@ -130,7 +185,7 @@ function Hud.new(
 	})
 	local menuButton = create("TextButton", {
 		Name = "Menu",
-		LayoutOrder = 6,
+		LayoutOrder = 7,
 		Size = UDim2.new(0.8, 0, 0, 52),
 		BackgroundColor3 = colors.ButtonSecondary,
 		BorderSizePixel = 0,
@@ -153,7 +208,9 @@ function Hud.new(
 		Active = true, -- swallow clicks so nothing under the panel reacts
 		Parent = backdrop,
 	})
-	create("Frame", {
+	-- The panel grows with what the run earned; on short screens (phones held sideways) it shrinks to fit.
+	local panelScale = create("UIScale", { Scale = 1 })
+	local panel = create("Frame", {
 		Name = "Panel",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -165,6 +222,7 @@ function Hud.new(
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
 		create("UISizeConstraint", { MaxSize = Vector2.new(420, math.huge) }),
+		panelScale,
 		create("UIPadding", {
 			PaddingTop = UDim.new(0, 24),
 			PaddingBottom = UDim.new(0, 24),
@@ -180,9 +238,22 @@ function Hud.new(
 		finalScoreLabel,
 		newBestLabel,
 		finalBestLabel,
+		rewards,
 		restartButton,
 		menuButton,
 	})
+
+	-- Size the panel would have unscaled, against the room the overlay has. Setting the same scale again
+	-- changes nothing, so this settles after one adjustment.
+	local function fitPanel()
+		local scale = panelScale.Scale
+		local height = panel.AbsoluteSize.Y / scale
+		local available = overlay.AbsoluteSize.Y - 2 * PANEL_MARGIN
+		local fitted = if height > 0 and available > 0 then math.min(1, available / height) else 1
+		if math.abs(fitted - scale) > 0.001 then
+			panelScale.Scale = fitted
+		end
+	end
 
 	return setmetatable({
 		scoreLabel = scoreLabel,
@@ -193,11 +264,22 @@ function Hud.new(
 		finalScoreLabel = finalScoreLabel,
 		newBestLabel = newBestLabel,
 		finalBestLabel = finalBestLabel,
+		rewards = rewards,
+		expLabel = expLabel,
+		expFill = expFill,
+		levelUpLabel = levelUpLabel,
+		titlesLabel = titlesLabel,
+		rewardsToken = 0,
 		restartButton = restartButton,
 		menuButton = menuButton,
 		onRestart = onRestart,
 		keyConnection = nil,
-		connections = { restartButton.Activated:Connect(onRestart), menuButton.Activated:Connect(onMenu) },
+		connections = {
+			restartButton.Activated:Connect(onRestart),
+			menuButton.Activated:Connect(onMenu),
+			panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPanel),
+			overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPanel),
+		},
 	}, Hud)
 end
 
@@ -271,7 +353,45 @@ function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boo
 	end
 end
 
+-- Fills in what the run earned on the open panel: the EXP bar fills from where the run started (up to full
+-- and over again on a level up), then level up and new titles.
+function Hud.showRewards(self: Hud, rewards: RunRewards)
+	self.rewardsToken += 1
+	local token = self.rewardsToken
+	local leveledUp = rewards.level > rewards.levelBefore
+	self.expLabel.Text = `Level {rewards.level}  ·  +{rewards.expGained} EXP`
+	self.levelUpLabel.Text = `Level up! You're level {rewards.level}`
+	self.levelUpLabel.Visible = leveledUp
+	self.titlesLabel.Text = (if #rewards.titles == 1 then "New title: " else "New titles: ")
+		.. table.concat(rewards.titles, ", ")
+	self.titlesLabel.Visible = #rewards.titles > 0
+	self.rewards.Visible = true
+
+	local before = rewards.expBefore / Progression.expToNext(rewards.levelBefore)
+	local after = rewards.exp / Progression.expToNext(rewards.level)
+	local info = TweenInfo.new(Theme.Motion.ExpFill, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	self.expFill.Size = UDim2.fromScale(before, 1)
+	if not leveledUp then
+		TweenService:Create(self.expFill, info, { Size = UDim2.fromScale(after, 1) }):Play()
+		return
+	end
+	local toFull = TweenService:Create(self.expFill, info, { Size = UDim2.fromScale(1, 1) })
+	toFull.Completed:Once(function()
+		if token == self.rewardsToken then
+			self.expFill.Size = UDim2.fromScale(0, 1)
+			TweenService:Create(self.expFill, info, { Size = UDim2.fromScale(after, 1) }):Play()
+		end
+	end)
+	toFull:Play()
+end
+
+function Hud.isGameOverOpen(self: Hud): boolean
+	return self.overlay.Enabled
+end
+
 function Hud.hideGameOver(self: Hud)
+	self.rewardsToken += 1
+	self.rewards.Visible = false
 	self.overlay.Enabled = false
 	self.backdrop.Enabled = false
 	local selected = GuiService.SelectedObject

@@ -8,6 +8,10 @@ export type PlayerData = {
 	gamesPlayed: number, -- runs that ended in game over
 	tutorialDone: boolean,
 	onboardingStep: number, -- last onboarding funnel step logged (see Telemetry)
+	level: number,
+	exp: number, -- progress toward the next level (see Progression)
+	milestonesClaimed: { [string]: boolean }, -- milestone id -> true
+	badgesAwarded: { [string]: boolean }, -- milestone id -> true once its badge is awarded
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
@@ -31,13 +35,18 @@ local PlayerData = {}
 
 PlayerData.VERSION = CURRENT_VERSION
 
--- Defaults for a new player. ProfileStore's Reconcile also copies fields added here later into old profiles.
+-- Defaults for a new player. ProfileStore's Reconcile also copies fields added here later into old profiles
+-- (deep-copying the tables), so a field whose default fits old players needs no migration.
 PlayerData.TEMPLATE = table.freeze({
 	version = CURRENT_VERSION,
 	bestScore = 0,
 	gamesPlayed = 0,
 	tutorialDone = false,
 	onboardingStep = 0,
+	level = 1,
+	exp = 0,
+	milestonesClaimed = table.freeze({}),
+	badgesAwarded = table.freeze({}),
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.

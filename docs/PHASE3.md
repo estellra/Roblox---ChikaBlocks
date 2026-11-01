@@ -1,6 +1,6 @@
 # Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 
-> Plan đã duyệt; M12 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
+> Plan đã duyệt; M12 và M13 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
 
 ## Bối cảnh
 
@@ -17,7 +17,7 @@
 | Mốc | Nội dung | Cần trước | Làm được ngay? |
 |---|---|---|---|
 | **M12** Analytics | Funnel tutorial, các sự kiện ván chơi qua `AnalyticsService` | Không | ✅ Xong |
-| **M13** Level và EXP | EXP sau mỗi ván, level, quà theo mốc highscore | Quyết định W, X | ✅ sau khi chốt |
+| **M13** Level và EXP | EXP sau mỗi ván, level, quà theo mốc highscore và mốc level | Quyết định W, X | ✅ Xong (badge chờ ID) |
 | **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ sau khi chốt |
 | **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ⏳ chờ bạn |
 | **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z | ⏳ |
@@ -35,8 +35,9 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 | Trường | Dùng cho | Mặc định |
 |---|---|---|
 | `onboardingStep` | M12: bước funnel cuối cùng đã log (✅ đã có) | 0; profile cũ đã chơi hết ít nhất 1 ván thì 6, mới xong tutorial thì 3 |
-| `exp`, `level` | M13 | 0, 1 |
-| `milestonesClaimed` | M13: các mốc highscore đã nhận quà | `{}` |
+| `exp`, `level` | M13 (✅ đã có) | 0, 1 |
+| `milestonesClaimed` | M13: các mốc (highscore và level) đã nhận quà (✅ đã có) | `{}` |
+| `badgesAwarded` | M13: các mốc đã trao badge xong (✅ đã có) | `{}` |
 | `rotations` | M15: lượt xoay đã mua, chưa dùng | 0 |
 | `robuxDonated` | M16: tổng Robux đã donate (lấy `CurrencySpent` từ receipt) | 0 |
 | `purchaseIds` | M8/M15/M16: các `PurchaseId` đã xử lý, giữ 100 cái gần nhất | `{}` |
@@ -84,8 +85,44 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 - **`Progression`** (shared, logic thuần, test bằng Lune): EXP nhận được từ điểm ván, EXP cần để lên level, các mốc highscore. Số liệu nằm trong `Config`.
 - **Server tính EXP** từ điểm do chính server tính, cộng vào profile khi ván kết thúc (kể cả ván bỏ giữa chừng thì tính theo điểm lúc rời).
 - **Màn Game Over:** thêm thanh EXP chạy lên và dòng "Level up!" nếu lên level. Menu hiện level hiện tại.
-- **Quà theo mốc highscore** (vd. 1.000 / 5.000 / 10.000 / 25.000 điểm): xem quyết định W.
-- **Test:** EXP và level ở các ngưỡng, nhận quà mỗi mốc đúng một lần, migrate profile v1 sang v2.
+- **Quà theo mốc** (quyết định W): mốc highscore và mốc level nằm chung một bảng `Milestones` trong `Config`. Mỗi mốc gồm id, loại (`score` hoặc `level`), ngưỡng và phần thưởng `{ title, badge, cosmetic }`. Ô `cosmetic` để trống tới GĐ4.
+
+| Loại | Mốc ví dụ | Danh hiệu ví dụ |
+|---|---|---|
+| Highscore | 1.000 / 5.000 / 10.000 / 25.000 | Block Rookie / Line Clearer / Combo Master / Grid Legend |
+| Level | 5 / 10 / 20 / 30 / 50 | Regular / Puzzler / Block Smith / Veteran / Block Master |
+
+  - **Server cấp quà** khi best hoặc level tăng, và kiểm tra lại mỗi lần người chơi vào game. Quà được suy ra từ best và level đã lưu, nên mốc hoặc phần thưởng thêm sau này (vd. cosmetic ở GĐ4) tự được cấp cho người đã đạt mốc từ trước, không ai bị thiệt.
+  - **Danh hiệu là cosmetic title** chỉ kiếm được bằng thành tích, không bán. Mặc định hiện danh hiệu xếp cao nhất người chơi đang có (thứ tự xếp trong bảng, xen kẽ hai loại). Cho người chơi tự chọn danh hiệu để tới GĐ4, làm cùng cửa hàng cosmetic.
+  - **Badge:** mỗi mốc một badge (9 badge theo bảng trên). Bạn tạo badge trong Creator Hub rồi gửi ID cho mình. Chưa có ID thì game vẫn chạy, chỉ bỏ qua bước trao badge. Server dùng `BadgeService:AwardBadgeAsync` (bọc `pcall`). Lần trao lỗi sẽ được thử lại ở lần vào game sau.
+  - **Màn Game Over:** hiện "New title unlocked!" khi vừa đạt mốc.
+- **Test:** EXP và level ở các ngưỡng; mỗi mốc chỉ cấp quà một lần; mốc thêm sau được cấp bù cho người đã đạt; chọn đúng danh hiệu cao nhất; trao badge lỗi thì lần sau thử lại.
+
+### Kết quả M13
+
+- **Thiết kế thực tế:**
+  - `Progression` (`src/shared/Progression.luau`, logic thuần, dùng chung hai phía): EXP theo điểm, EXP cần cho mỗi level, nhận mốc, danh hiệu đang hiện, badge còn nợ. Số liệu và bảng 9 mốc nằm trong `Config` (`EXP_SCORE_DIVISOR`, `LEVEL_EXP_BASE`, `LEVEL_EXP_STEP`, `MILESTONES`).
+  - **EXP được cộng dần theo từng nước** (theo điểm server tính), không đợi hết ván. Nhờ vậy ván bỏ giữa chừng hay bị mở lại vẫn được tính đủ, mà không phụ thuộc thứ tự xử lý khi người chơi rời game.
+  - `RewardService`: nhận mốc mới mỗi khi điểm hoặc level tăng, và mỗi lần người chơi vào game (cấp bù mốc thêm sau). Badge được trao ở luồng riêng, kiểm tra `UserHasBadgeAsync` trước; lỗi thì để lần sau thử lại. Hiện cả 9 mốc có `badgeId = 0` nên chưa trao badge nào.
+  - Remote mới `RunRewards(runId, rewards)` gửi khi thua: EXP nhận được, level trước và sau, danh hiệu mở trong ván. `Profile` có thêm `level`, `exp`, `title`.
+  - Profile giữ `version = 2`. Các trường mới đều có mặc định hợp lý cho người chơi cũ, nên `Reconcile` tự điền, không cần migrate.
+  - Menu hiện "Level N · Danh hiệu". Màn Game Over có thanh EXP chạy (đầy rồi chạy lại khi lên level), "Level up!" và "New title: …". Bảng tự thu nhỏ (`UIScale`) khi màn hình không đủ cao.
+  - Debug server: `data` hiện level, EXP, mốc, badge, danh hiệu; thêm `addexp` và `setbest`; `resetdata` xóa cả tiến trình.
+- **117 test pass** (thêm 9 test cho `Progression`, cập nhật test template `PlayerData`).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Profile cũ vào game | Được điền level 1, 0 EXP; menu hiện "Level 1" |
+| Ván 997 điểm | +99 EXP, thanh EXP 99%; chưa đạt mốc 1.000 |
+| Ván 2.094 điểm | Lên level 3, thanh EXP 45,5% (91/200, khớp server); "New title: Block Rookie" |
+| `addexp 500` | Lên level 5, nhận mốc `level5`; menu đổi sang "Level 5 · Regular" (xếp cao hơn Block Rookie) |
+| Vào lại game | Level 5 · Regular vẫn còn |
+| iPhone 17 Pro ngang, Game Over có lên level và danh hiệu mới | Bảng thu nhỏ còn 78%, nằm trọn trong màn hình |
+| Output | Không có lỗi |
+
+- **Chưa kiểm tra được:** trao badge thật (cần bạn tạo 9 badge trong Creator Hub và gửi ID để điền vào `Config.MILESTONES`).
+- **Lưu ý:** khi bảng Game Over thu nhỏ trên điện thoại ngang, nút cao khoảng 40 pt, hơi dưới mức 44 pt khuyến nghị. M10 sẽ dàn lại bảng này theo mockup.
+- **Sửa lại con số ở quyết định X:** lúc đề xuất mình tính sai. Với công thức đã chốt, 10 ván 1.000 điểm lên level 6; 10 ván 3.000 điểm lên level 10 (không phải 5–6 như đã ghi). Xem quyết định X bên dưới.
 
 ## M14: Leaderboard
 
@@ -130,8 +167,8 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 
 | Điểm | Câu hỏi | Đề xuất |
 |---|---|---|
-| **W.** Quà theo mốc highscore (câu hỏi mở số 5) | Cosmetic, danh hiệu hay gì khác? | **Danh hiệu** hiện cạnh tên trên leaderboard và menu, kèm **Badge** của Roblox (hiện trên profile người chơi, giúp game được thấy nhiều hơn). Cosmetic để GĐ4 có cửa hàng rồi tính. |
-| **X.** Tốc độ lên level | Nhanh hay chậm? | EXP = điểm ván / 10; level kế tiếp cần `100 + 50 × (level − 1)` EXP. Với ván trung bình khoảng 3.000 điểm thì 10 ván đầu được khoảng 5–6 level, sau đó chậm dần. Tune trong `Config`. |
+| **W.** Quà theo mốc (câu hỏi mở số 5) | Cosmetic, danh hiệu hay gì khác? | ✅ **Chốt (bổ sung của bạn):** cả mốc highscore **và mốc level** đều có quà: **danh hiệu** (cosmetic title, hiện cạnh tên ở menu và leaderboard) kèm **Badge** của Roblox; từ GĐ4 thêm **cosmetic** cho cùng các mốc. Danh hiệu chỉ kiếm bằng thành tích, không bán. |
+| **X.** Tốc độ lên level | Nhanh hay chậm? | ✅ **Chốt:** EXP = điểm ván / 10; level kế tiếp cần `100 + 50 × (level − 1)` EXP. Tốc độ thật: 10 ván 1.000 điểm lên level 6, 10 ván 3.000 điểm lên level 10 (lúc đề xuất ghi nhầm là 5–6). Tune trong `Config`. |
 | **Y.** Kiểu leaderboard | Bảng tự vẽ trong menu hay bảng có sẵn của Roblox? | **Tự vẽ trong menu.** Bảng có sẵn của Roblox nằm trong player list, mà game đã tắt player list (game chỉ có UI). Tự vẽ thì có được tab theo tuần và M10 vẽ lại cho đồng bộ. |
 | **Z.** Lượt xoay đã mua | Chỉ dùng trong ván đang chơi, hay giữ lại cho ván sau? | **Giữ lại** (lưu trong profile). Người chơi thấy mua không phí, và dễ bán gói nhiều lượt. |
 | **AA.** Donate | Bao nhiêu mức, giá bao nhiêu? Có hiện tên người donate công khai không? | 4 mức (vd. 10 / 50 / 100 / 500 Robux) và **có** bảng Supporters công khai. |
