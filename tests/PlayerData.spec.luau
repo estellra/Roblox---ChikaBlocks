@@ -14,8 +14,32 @@ return function(t: TestKit.TestKit)
 				bestScore = 0,
 				gamesPlayed = 0,
 				tutorialDone = false,
+				onboardingStep = 0,
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
+		end)
+
+		t.it("places version 1 players in the onboarding funnel by what they had already played", function()
+			local veteran = PlayerData.migrate({ version = 1, bestScore = 500, gamesPlayed = 3, tutorialDone = true })
+			t.expect(veteran.version).toBe(2)
+			t.expect(veteran.onboardingStep).toBe(6)
+			t.expect(veteran.bestScore).toBe(500)
+			local midTutorial =
+				PlayerData.migrate({ version = 1, bestScore = 13, gamesPlayed = 0, tutorialDone = true })
+			t.expect(midTutorial.onboardingStep).toBe(3)
+			local newcomer = PlayerData.migrate({ version = 1, bestScore = 0, gamesPlayed = 0, tutorialDone = false })
+			t.expect(newcomer.onboardingStep).toBe(0)
+		end)
+
+		t.it("leaves current data alone", function()
+			local data = PlayerData.migrate({
+				version = 2,
+				bestScore = 10,
+				gamesPlayed = 1,
+				tutorialDone = true,
+				onboardingStep = 4,
+			})
+			t.expect(data.onboardingStep).toBe(4)
 		end)
 
 		t.it("stamps the current version on data saved without one", function()

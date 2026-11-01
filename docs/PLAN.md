@@ -116,12 +116,14 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 - → Publish bản test (friends/private) rồi public.
 
 ### Giai đoạn 3: Giữ chân người chơi và kiếm tiền
+Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
+
 - [ ] Level/EXP sau mỗi ván và quà theo mốc highscore.
 - [ ] Leaderboard: Highscore, Level, Robux đã donate.
 - [ ] Donate bằng nhiều Developer Product với các mức khác nhau.
 - [ ] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux.
 - [ ] Rewarded video ad: xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lần xoay.
-- [ ] AnalyticsService: theo dõi funnel tutorial, lần xóa hàng đầu tiên, game over, mua hồi sinh.
+- [ ] AnalyticsService: theo dõi funnel tutorial, lần xóa hàng đầu tiên, game over, mua hồi sinh. (M12 xong phần funnel và số liệu ván; phần mua hồi sinh làm cùng M8.)
 
 ### Giai đoạn 4: Cosmetic
 - [ ] Theme cho bảng chơi, skin cho khối, gói VFX và SFX khi combo.

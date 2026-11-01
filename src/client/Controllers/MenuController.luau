@@ -3,7 +3,9 @@
 -- Play starts the tutorial run until the player has finished it once, then normal runs; How to play always
 -- starts the tutorial run.
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Net = require(ReplicatedStorage.Shared.Net)
 local GameController = require("./GameController")
 local MenuView = require("../Views/MenuView")
 
@@ -55,6 +57,7 @@ function MenuController.start(_self: any)
 		view:setReady(GameController.getBest()) -- arrived before this controller started
 	end
 	MenuController.show()
+	Net.ClientReady:FireServer()
 end
 
 return MenuController

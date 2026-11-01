@@ -1,7 +1,8 @@
 --!strict
 -- Owns every player's run on the server. The rules (validation, rate limits, outcomes) live in GameRuns;
--- this service wires them to the remotes, to player lifetime and to the saved data (best score, games
--- played, tutorial progress).
+-- this service wires them to the remotes, to player lifetime, to the saved data (best score, games
+-- played, tutorial progress) and to analytics (Telemetry decides what to log).
+local AnalyticsService = game:GetService("AnalyticsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11,16 +12,62 @@ local GameRuns = require("../GameRuns")
 local Net = require(ReplicatedStorage.Shared.Net)
 local PlayerData = require("../PlayerData")
 local RateLimiter = require("../Util/RateLimiter")
+local Telemetry = require("../Telemetry")
 
 local IS_STUDIO = RunService:IsStudio()
 local DATA_WAIT_SECONDS = 15 -- how long a request waits for the player's saved data to load
+local MAX_RECENT_EVENTS = 50 -- analytics events kept in Studio for the debug bridge
+local CUSTOM_FIELDS = {
+	Enum.AnalyticsCustomFieldKeys.CustomField01.Name,
+	Enum.AnalyticsCustomFieldKeys.CustomField02.Name,
+	Enum.AnalyticsCustomFieldKeys.CustomField03.Name,
+}
 
 export type Profile = { best: number, gamesPlayed: number, tutorialDone: boolean }
 
 local GameService = {}
 
 local runs: GameRuns.GameRuns
+local telemetry: Telemetry.Telemetry
 local profileLimiter = RateLimiter.new(2, 1, os.clock)
+local readyLimiter = RateLimiter.new(1, 5, os.clock)
+local recentEvents: { string } = {}
+
+local function remember(line: string)
+	if IS_STUDIO then
+		table.insert(recentEvents, line)
+		if #recentEvents > MAX_RECENT_EVENTS then
+			table.remove(recentEvents, 1)
+		end
+	end
+end
+
+-- Analytics calls must never break the game, so failures are only reported in Studio.
+local function logSafely(what: string, call: () -> ())
+	local ok, err = pcall(call)
+	if not ok and IS_STUDIO then
+		warn(`[ChikaBlock] analytics {what} failed: {err}`)
+	end
+end
+
+local analyticsSink: Telemetry.Sink = {
+	onboardingStep = function(player: Player, step: number, name: string)
+		remember(`onboarding {step} {name} ({player.Name})`)
+		logSafely(name, function()
+			AnalyticsService:LogOnboardingFunnelStepEvent(player, step, name)
+		end)
+	end,
+	custom = function(player: Player, name: string, value: number, fields: { string })
+		local customFields = {}
+		for i, field in fields do
+			customFields[CUSTOM_FIELDS[i]] = field
+		end
+		remember(`{name}={value} [{table.concat(fields, ",")}] ({player.Name})`)
+		logSafely(name, function()
+			AnalyticsService:LogCustomEvent(player, name, value, customFields)
+		end)
+	end,
+}
 
 local function profileOf(player: Player, data: PlayerData.PlayerData): Profile
 	return {
@@ -42,6 +89,7 @@ function GameService.init(_self: any)
 			return Random.new():NextInteger(1, 2 ^ 31 - 1)
 		end,
 	})
+	telemetry = Telemetry.new(analyticsSink)
 end
 
 function GameService.start(_self: any)
@@ -55,6 +103,16 @@ function GameService.start(_self: any)
 		end
 	end)
 
+	Net.ClientReady.OnServerEvent:Connect(function(player: Player)
+		if not readyLimiter:allow(player) then
+			return
+		end
+		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
+		if data then
+			telemetry:menuShown(player, data)
+		end
+	end)
+
 	Net.StartGame.OnServerEvent:Connect(function(player: Player, mode: unknown)
 		-- The saved best decides "New best!", so the run starts once the data is in.
 		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
@@ -62,8 +120,14 @@ function GameService.start(_self: any)
 			return -- left, or kicked because the data couldn't load
 		end
 		runs:setBest(player, math.max(runs:getBest(player), data.bestScore))
+		local previous = runs:summary(player)
 		local state = runs:start(player, mode)
 		if state then
+			-- A run left without a move is a retried request rather than a real restart.
+			if previous and not previous.isOver and previous.moves > 0 then
+				telemetry:runEnded(player, data, previous, "restart")
+			end
+			telemetry:runStarted(player, data)
 			Net.GameState:FireClient(player, state, "start")
 		end
 	end)
@@ -83,6 +147,11 @@ function GameService.start(_self: any)
 					if outcome.mode == "tutorial" and PlayerData.markTutorialDone(data) then
 						Net.Profile:FireClient(player, profileOf(player, data))
 					end
+					telemetry:moveAccepted(player, data, outcome.linesCleared)
+				end
+				local summary = if outcome.isOver then runs:summary(player) else nil
+				if summary then
+					telemetry:runEnded(player, data, summary, "gameover")
 				end
 				Net.MoveResult:FireClient(
 					player,
@@ -110,8 +179,13 @@ function GameService.start(_self: any)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player: Player)
+		local summary = runs:summary(player)
+		if summary and not summary.isOver then
+			telemetry:runEnded(player, DataService.get(player), summary, "left")
+		end
 		runs:remove(player)
 		profileLimiter:forget(player)
+		readyLimiter:forget(player)
 	end)
 end
 
@@ -121,6 +195,11 @@ function GameService.sendProfile(player: Player)
 	if data then
 		Net.Profile:FireClient(player, profileOf(player, data))
 	end
+end
+
+-- For the Studio debug bridge: the latest analytics events, oldest first.
+function GameService.getRecentEvents(): { string }
+	return recentEvents
 end
 
 -- For the Studio debug bridge.

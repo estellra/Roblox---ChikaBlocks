@@ -36,6 +36,7 @@ export type PlaceOutcome =
 		mode: RunMode,
 		moveIndex: number,
 		score: number,
+		linesCleared: number, -- rows plus columns this move cleared
 		set: { string }?,
 		isOver: boolean,
 		best: number,
@@ -43,7 +44,10 @@ export type PlaceOutcome =
 	| { kind: "resync", state: RunState }
 	| { kind: "ignored", reason: string }
 
-type Run = { id: number, mode: RunMode, session: any }
+-- A run in a few numbers, for analytics.
+export type RunSummary = { mode: RunMode, score: number, moves: number, maxCombo: number, isOver: boolean }
+
+type Run = { id: number, mode: RunMode, session: any, maxCombo: number }
 
 local MODES: { [string]: boolean } = { normal = true, tutorial = true }
 
@@ -125,7 +129,7 @@ function GameRuns.start(self: GameRuns, key: any, mode: unknown?): RunState?
 	else
 		session = deps.GameSession.new(dealNext)
 	end
-	local run = { id = self.nextRunId, mode = runMode, session = session }
+	local run = { id = self.nextRunId, mode = runMode, session = session, maxCombo = 0 }
 	self.nextRunId += 1
 	self.runs[key] = run
 	return stateOf(self, key, run)
@@ -169,6 +173,7 @@ function GameRuns.place(
 		return { kind = "resync", state = stateOf(self, key, run) }
 	end
 
+	run.maxCombo = math.max(run.maxCombo, result.combo)
 	local best = math.max(self.bests[key] or 0, session.score)
 	self.bests[key] = best
 	local set: { string }? = nil
@@ -185,6 +190,7 @@ function GameRuns.place(
 		mode = run.mode,
 		moveIndex = index,
 		score = session.score,
+		linesCleared = #result.clearedRows + #result.clearedCols,
 		set = set,
 		isOver = session.isOver,
 		best = best,
@@ -204,6 +210,22 @@ end
 function GameRuns.peek(self: GameRuns, key: any): RunState?
 	local run = self.runs[key]
 	return if run then stateOf(self, key, run) else nil
+end
+
+-- The player's current run in a few numbers, or nil when they have none.
+function GameRuns.summary(self: GameRuns, key: any): RunSummary?
+	local run = self.runs[key]
+	if not run then
+		return nil
+	end
+	local session = run.session
+	return {
+		mode = run.mode,
+		score = session.score,
+		moves = session.moveCount,
+		maxCombo = run.maxCombo,
+		isOver = session.isOver,
+	}
 end
 
 function GameRuns.getBest(self: GameRuns, key: any): number

@@ -222,7 +222,31 @@ return function(t: TestKit.TestKit)
 			if outcome.kind == "accepted" then
 				t.expect(outcome.mode).toBe("tutorial")
 				t.expect(outcome.score).toBe(3 + 10) -- three cells placed, one line cleared
+				t.expect(outcome.linesCleared).toBe(1)
 			end
+			t.expect(runs:summary(PLAYER))
+				.toEqual({ mode = "tutorial", score = 13, moves = 1, maxCombo = 1, isOver = false })
+		end)
+
+		t.it("sums up a run for analytics and has nothing for a player without one", function()
+			local runs, advance = newRuns(SQUARES)
+			t.expect(runs:summary(PLAYER)).toBe(nil)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			t.expect(runs:summary(PLAYER))
+				.toEqual({ mode = "normal", score = 0, moves = 0, maxCombo = 0, isOver = false })
+			local positions = { { 0, 0 }, { 3, 0 }, { 0, 3 }, { 3, 3 } }
+			for move, position in positions do
+				local outcome =
+					runs:place(PLAYER, state.runId, move - 1, ((move - 1) % 3) + 1, position[1], position[2])
+				if outcome.kind == "accepted" then
+					t.expect(outcome.linesCleared).toBe(0)
+				end
+				advance(0.2)
+			end
+			t.expect(runs:summary(PLAYER))
+				.toEqual({ mode = "normal", score = 36, moves = 4, maxCombo = 0, isOver = true })
+			runs:remove(PLAYER)
+			t.expect(runs:summary(PLAYER)).toBe(nil)
 		end)
 
 		t.it("starts normal runs by default and refuses unknown modes", function()

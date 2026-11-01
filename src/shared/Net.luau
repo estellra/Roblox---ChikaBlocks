@@ -4,6 +4,7 @@
 -- Client -> server
 --   StartGame(mode)                              start or restart the player's run; mode "normal" or "tutorial"
 --   RequestProfile()                             send the saved profile (best, games played, tutorial done)
+--   ClientReady()                                the client finished loading and shows the menu (analytics)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
@@ -45,6 +46,7 @@ return {
 	PlacePiece = remoteEvent("PlacePiece"),
 	RequestState = remoteEvent("RequestState"),
 	RequestProfile = remoteEvent("RequestProfile"),
+	ClientReady = remoteEvent("ClientReady"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),

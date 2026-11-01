@@ -7,11 +7,24 @@ export type PlayerData = {
 	bestScore: number,
 	gamesPlayed: number, -- runs that ended in game over
 	tutorialDone: boolean,
+	onboardingStep: number, -- last onboarding funnel step logged (see Telemetry)
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
 -- stops writing it, and never reuse a field name for a different meaning.
-local MIGRATIONS: { (data: { [string]: any }) -> () } = {}
+local MIGRATIONS: { (data: { [string]: any }) -> () } = {
+	-- v1 -> v2: onboarding funnel progress. Players from before it have already been through what they played;
+	-- anyone with a finished run counts as past all six steps, so they don't enter the funnel late.
+	[1] = function(data)
+		if (data.gamesPlayed or 0) > 0 then
+			data.onboardingStep = 6
+		elseif data.tutorialDone then
+			data.onboardingStep = 3
+		else
+			data.onboardingStep = 0
+		end
+	end,
+}
 local CURRENT_VERSION = #MIGRATIONS + 1
 
 local PlayerData = {}
@@ -24,6 +37,7 @@ PlayerData.TEMPLATE = table.freeze({
 	bestScore = 0,
 	gamesPlayed = 0,
 	tutorialDone = false,
+	onboardingStep = 0,
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.
