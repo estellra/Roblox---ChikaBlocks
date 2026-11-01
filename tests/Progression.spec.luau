@@ -84,6 +84,8 @@ return function(t: TestKit.TestKit)
 			data.level = 5
 			Progression.claimMilestones(data)
 			t.expect(Progression.title(data.milestonesClaimed)).toBe("Regular")
+			t.expect(Progression.titleIndex(data.milestonesClaimed)).toBe(2)
+			t.expect(Progression.titleIndex({})).toBe(0)
 		end)
 
 		t.it("gives a milestone added later to players who already reached it", function()

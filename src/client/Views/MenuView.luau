@@ -1,6 +1,6 @@
 --!strict
--- Main menu: title, level and player title, saved best, Play and How to play. A gray-box placeholder until
--- the mockups arrive.
+-- Main menu: title, level and player title, saved best, Play, Leaderboard and How to play. A gray-box
+-- placeholder until the mockups arrive.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
@@ -24,6 +24,7 @@ export type MenuView = typeof(setmetatable(
 		levelLabel: TextLabel,
 		bestLabel: TextLabel,
 		playButton: TextButton,
+		leaderboardButton: TextButton,
 		howToButton: TextButton,
 		ready: boolean, -- false until the saved profile has arrived
 		onPlay: () -> (),
@@ -52,7 +53,7 @@ local function button(name: string, text: string, order: number, primary: boolea
 	})
 end
 
-function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () -> ()): MenuView
+function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () -> (), onHowToPlay: () -> ()): MenuView
 	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
 
 	-- Opaque full-screen background under the notch and top bar; the content sits in the safe area above it.
@@ -96,7 +97,8 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 		Text = "Best —",
 	})
 	local playButton = button("Play", "Loading…", 4, true)
-	local howToButton = button("HowToPlay", "How to play", 5, false)
+	local leaderboardButton = button("Leaderboard", "Leaderboard", 5, false)
+	local howToButton = button("HowToPlay", "How to play", 6, false)
 	local gui = create("ScreenGui", {
 		Name = "Menu",
 		DisplayOrder = 11,
@@ -135,6 +137,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 			levelLabel,
 			bestLabel,
 			playButton,
+			leaderboardButton,
 			howToButton,
 		}),
 	})
@@ -145,6 +148,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 		levelLabel = levelLabel,
 		bestLabel = bestLabel,
 		playButton = playButton,
+		leaderboardButton = leaderboardButton,
 		howToButton = howToButton,
 		ready = false,
 		onPlay = onPlay,
@@ -156,6 +160,14 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onHowToPlay: () ->
 		playButton.Activated:Connect(function()
 			if self.ready then
 				onPlay()
+			end
+		end)
+	)
+	table.insert(
+		self.connections,
+		leaderboardButton.Activated:Connect(function()
+			if self.ready then
+				onLeaderboard()
 			end
 		end)
 	)
@@ -200,7 +212,7 @@ function MenuView.hide(self: MenuView)
 	self.backdrop.Enabled = false
 	self.gui.Enabled = false
 	local selected = GuiService.SelectedObject
-	if selected == self.playButton or selected == self.howToButton then
+	if selected == self.playButton or selected == self.leaderboardButton or selected == self.howToButton then
 		GuiService.SelectedObject = nil
 	end
 	if self.keyConnection then

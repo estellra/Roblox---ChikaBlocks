@@ -6,6 +6,7 @@
 -- Commands: state | layout | place <slot> <x> <y> | autoplay <moves> | gameover | restart
 --           dragstats | dragpoint <slot> <x> <y> [touch] | pointer
 --           play [normal|tutorial] (leaves the menu like the Play button) | flow (menu, run mode, hints, keys)
+--           leaderboard [open|close] (opens it from the menu and lists what it shows)
 --           playdrag <moves> (plays through the drag intents) | stats (leak checks)
 --           touchdrop <slot> <x> <y> (drops through the touch path, reports where the finger had to be)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
@@ -22,6 +23,7 @@ local DragController = require("./DragController")
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
 local GamepadController = require("./GamepadController")
+local LeaderboardController = require("./LeaderboardController")
 local MenuController = require("./MenuController")
 local TutorialController = require("./TutorialController")
 
@@ -196,6 +198,15 @@ local function handle(rng: Random, command: string, ...: any): string
 		end
 		task.wait(0.1) -- let listeners (tutorial hint) react to the new run
 		return describeState()
+	elseif command == "leaderboard" then
+		local action = ...
+		if action == "open" then
+			MenuController.openLeaderboard()
+			task.wait(1) -- the server's answer
+		elseif action == "close" then
+			LeaderboardController.close()
+		end
+		return `open={LeaderboardController.isOpen()} menuOpen={MenuController.isOpen()}\n{LeaderboardController.describe()}`
 	elseif command == "flow" then
 		local profile = GameController.getProfile()
 		local keys = GamepadController.getStats()

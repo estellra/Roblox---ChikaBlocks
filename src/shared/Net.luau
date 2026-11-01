@@ -5,6 +5,7 @@
 --   StartGame(mode)                              start or restart the player's run; mode "normal" or "tutorial"
 --   RequestProfile()                             send the saved profile (best, games played, tutorial done)
 --   ClientReady()                                the client finished loading and shows the menu (analytics)
+--   RequestLeaderboard()                         send the cached leaderboards
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
@@ -14,6 +15,8 @@
 --   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, title? }
 --   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
 --                                                titles unlocked during the run (see GameService)
+--   Leaderboard(snapshot)                        top entries of every board and the player's own values
+--                                                (see LeaderboardService.Snapshot)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -49,8 +52,10 @@ return {
 	RequestState = remoteEvent("RequestState"),
 	RequestProfile = remoteEvent("RequestProfile"),
 	ClientReady = remoteEvent("ClientReady"),
+	RequestLeaderboard = remoteEvent("RequestLeaderboard"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),
 	RunRewards = remoteEvent("RunRewards"),
+	Leaderboard = remoteEvent("Leaderboard"),
 }

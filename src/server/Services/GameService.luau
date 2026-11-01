@@ -11,6 +11,7 @@ local RunService = game:GetService("RunService")
 
 local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
+local LeaderboardService = require("./LeaderboardService")
 local Net = require(ReplicatedStorage.Shared.Net)
 local PlayerData = require("../PlayerData")
 local Progression = require(ReplicatedStorage.Shared.Progression)
@@ -108,13 +109,16 @@ end
 -- Credits the EXP the run's score has earned since the last move and claims any milestone reached.
 local function creditProgress(player: Player, data: PlayerData.PlayerData, score: number)
 	local progress = runProgress[player]
+	local gained = 0
 	if progress then
 		local earned = Progression.expForScore(score)
 		if earned > progress.expGranted then
-			Progression.addExp(data, earned - progress.expGranted)
+			gained = earned - progress.expGranted
+			Progression.addExp(data, gained)
 			progress.expGranted = earned
 		end
 	end
+	LeaderboardService.recordRun(data, score, gained)
 	for _, milestone in RewardService.sync(player, data) do
 		if progress then
 			table.insert(progress.titles, milestone.title)
@@ -225,6 +229,7 @@ function GameService.start(_self: any)
 				if outcome.isOver and data and progress then
 					Net.RunRewards:FireClient(player, outcome.runId, rewardsOf(progress, data))
 					Net.Profile:FireClient(player, profileOf(player, data))
+					LeaderboardService.flush(player, data)
 				end
 			elseif outcome.kind == "resync" then
 				if IS_STUDIO then

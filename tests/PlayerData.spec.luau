@@ -7,6 +7,7 @@ local function fresh(): PlayerData.PlayerData
 	local data = table.clone(PlayerData.TEMPLATE) :: any
 	data.milestonesClaimed = {}
 	data.badgesAwarded = {}
+	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
 	return data
 end
 
@@ -23,11 +24,13 @@ return function(t: TestKit.TestKit)
 				exp = 0,
 				milestonesClaimed = {},
 				badgesAwarded = {},
+				weekly = { week = "", bestScore = 0, exp = 0 },
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
 			-- Nested defaults are frozen too, so no code can change the template through a shallow copy.
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.milestonesClaimed)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.badgesAwarded)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.weekly)).toBe(true)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()

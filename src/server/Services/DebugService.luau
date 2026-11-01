@@ -8,6 +8,7 @@
 -- events lists the latest analytics events (onboarding steps and run summaries).
 -- resetdata wipes the player's PlayerData_Dev profile (Studio's store) to replay the first-time flow.
 -- addexp and setbest change progress the way a run would, claiming milestones and sending the profile.
+-- boards writes the player's values, reads every leaderboard now (instead of within a minute) and lists them.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -16,6 +17,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local DataService = require("./DataService")
 local GameService = require("./GameService")
+local LeaderboardService = require("./LeaderboardService")
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local RewardService = require("./RewardService")
 
@@ -92,9 +94,18 @@ function DebugService.start(_self: any)
 			data.level, data.exp = 1, 0
 			table.clear(data.milestonesClaimed)
 			table.clear(data.badgesAwarded)
+			data.weekly.week, data.weekly.bestScore, data.weekly.exp = "", 0, 0
 			GameService.getRuns():setBest(player, 0)
 			GameService.sendProfile(player)
 			return `reset {player.Name}: best=0 games=0 tutorialDone=false onboardingStep=0 level=1 exp=0 milestones=none`
+		elseif command == "boards" then
+			local data = DataService.get(player)
+			if data then
+				LeaderboardService.flush(player, data)
+				task.wait(2) -- the writes run on their own threads
+			end
+			LeaderboardService.refresh()
+			return LeaderboardService.describe()
 		elseif command == "addexp" or command == "setbest" then
 			local data = DataService.get(player)
 			if not data or not value then

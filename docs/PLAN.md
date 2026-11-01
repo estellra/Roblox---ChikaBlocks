@@ -119,7 +119,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 
 - [x] Level/EXP sau mỗi ván và quà theo mốc highscore và mốc level (danh hiệu, badge; cosmetic từ GĐ4). (M13; badge chờ ID)
-- [ ] Leaderboard: Highscore, Level, Robux đã donate.
+- [ ] Leaderboard: Highscore, Level, Robux đã donate. (M14 xong Highscore và Level, toàn thời gian và theo tuần; bảng donate làm riêng ở M16.)
 - [ ] Donate bằng nhiều Developer Product với các mức khác nhau.
 - [ ] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux.
 - [ ] Rewarded video ad: xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lần xoay.

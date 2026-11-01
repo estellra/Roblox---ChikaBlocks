@@ -1,6 +1,6 @@
 # Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 
-> Plan đã duyệt; M12 và M13 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
+> Plan đã duyệt; M12, M13 và M14 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
 
 ## Bối cảnh
 
@@ -18,7 +18,7 @@
 |---|---|---|---|
 | **M12** Analytics | Funnel tutorial, các sự kiện ván chơi qua `AnalyticsService` | Không | ✅ Xong |
 | **M13** Level và EXP | EXP sau mỗi ván, level, quà theo mốc highscore và mốc level | Quyết định W, X | ✅ Xong (badge chờ ID) |
-| **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ sau khi chốt |
+| **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ Xong |
 | **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ⏳ chờ bạn |
 | **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z | ⏳ |
 | **M16** Donate | Nhiều mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA | ⏳ |
@@ -38,6 +38,7 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 | `exp`, `level` | M13 (✅ đã có) | 0, 1 |
 | `milestonesClaimed` | M13: các mốc (highscore và level) đã nhận quà (✅ đã có) | `{}` |
 | `badgesAwarded` | M13: các mốc đã trao badge xong (✅ đã có) | `{}` |
+| `weekly` | M14: tuần ISO, điểm cao nhất và EXP kiếm được trong tuần (✅ đã có) | `{ week = "", bestScore = 0, exp = 0 }` |
 | `rotations` | M15: lượt xoay đã mua, chưa dùng | 0 |
 | `robuxDonated` | M16: tổng Robux đã donate (lấy `CurrencySpent` từ receipt) | 0 |
 | `purchaseIds` | M8/M15/M16: các `PurchaseId` đã xử lý, giữ 100 cái gần nhất | `{}` |
@@ -136,6 +137,30 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 - Studio dùng store riêng (đuôi `_Dev`) như M7, để không lẫn với game thật.
 - **Test:** logic chọn tên store theo tuần và gộp top (Lune); trong Studio, chơi vài ván rồi xem bảng.
 
+### Kết quả M14
+
+- **Thiết kế thực tế:**
+  - `Leaderboards` (`src/server/Leaderboards.luau`, logic thuần): 4 bảng `Highscore_all`, `Highscore_week`, `Level_all`, `Level_week`. Tuần theo chuẩn ISO (bắt đầu 0h thứ Hai, giờ UTC); store tuần mang tên tuần (vd. `Highscore_2026W45`), nên sang tuần mới là bảng trống. Studio dùng store đuôi `_Dev`.
+  - **Tab "This week" của bảng Level xếp theo EXP kiếm được trong tuần**, vì bản thân level không reset theo tuần.
+  - **Danh hiệu lưu chung với điểm:** giá trị = chỉ số × 100 + vị trí danh hiệu (`Progression.titleIndex`). Nhờ vậy bảng hiện được danh hiệu mà không phải đọc profile của từng người, và thứ tự vẫn xếp theo điểm (thêm 1 điểm luôn hơn mọi danh hiệu).
+  - `LeaderboardService`: chỉ ghi bảng có thay đổi; ghi sau mỗi lần thua, khi người chơi rời game, và mỗi phút trong lúc chơi. Mỗi phút đọc top 50 của cả 4 bảng, tra tên hiển thị theo lô (`UserService:GetUserInfosByUserIdsAsync`), lưu cache để gửi cho client. Bảng không đọc được thì giữ bản cũ. Không ghi bảng mà người chơi chưa có gì (điểm 0, level 1).
+  - Remote mới `RequestLeaderboard` (giới hạn 1 lần mỗi 2 giây) và `Leaderboard(snapshot)`: 4 bảng cùng giá trị của chính người chơi.
+  - `LeaderboardView` (gray-box, M10 vẽ lại theo mockup) mở từ nút "Leaderboard" mới trên menu. Có tab All time / This week và Highscore / Level, mỗi dòng gồm hạng, tên, danh hiệu, giá trị; cuối màn là giá trị của chính bạn. Đóng bằng Back, Backspace hoặc nút B tay cầm. Màn thấp (điện thoại ngang) thì ẩn tiêu đề và gom 4 tab vào một hàng.
+  - Debug: server có lệnh `boards` (ghi, đọc lại ngay, in 4 bảng); client có lệnh `leaderboard [open|close]`.
+- **123 test pass** (thêm 6 test cho `Leaderboards`: tuần ISO qua năm mới, tên store, mã hóa, thống kê tuần, chỉ ghi khi đổi).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Chơi một ván (802 điểm) rồi `boards` | Ghi và đọc lại đủ 4 bảng từ `OrderedDataStore` thật: highscore 1.344, highscore tuần 802, level 3, EXP tuần 80, kèm "Block Rookie" |
+| Bấm nút Leaderboard trên menu (PC) | Mở màn, hiện #1 với tên, danh hiệu, 1.344; "Your best: 1344" |
+| Bấm "This week" rồi "Level" | Hiện 80 EXP; "Your EXP this week: 80" |
+| Back, Backspace | Đóng màn, về menu; Enter trên menu vẫn bắt đầu ván |
+| iPhone 17 Pro ngang | Lần đầu danh sách chỉ thấy 1–2 dòng; đã sửa thành dạng gọn (4 tab một hàng, ẩn tiêu đề), thấy khoảng 5 dòng |
+| Output | Không có lỗi |
+
+- **Chưa kiểm tra được:** nhiều người chơi trên cùng bảng (Studio chỉ có một tài khoản), và lúc chuyển tuần thật. Logic chuyển tuần đã có test.
+- **Giới hạn:** `OrderedDataStore` không cho tra thứ hạng của một người cụ thể, nên ngoài top 50 chỉ hiện giá trị của bạn, không hiện hạng.
+
 ## M15: Xoay khối
 
 - Hiện mỗi hướng xoay là một khối riêng trong `Pieces`. Xoay = đổi khối trong khay sang khối của hướng kế tiếp. Cần thêm bảng `rotateCW` cho mọi khối; khối đối xứng (1x1, vuông) thì không xoay được.
@@ -169,7 +194,7 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 |---|---|---|
 | **W.** Quà theo mốc (câu hỏi mở số 5) | Cosmetic, danh hiệu hay gì khác? | ✅ **Chốt (bổ sung của bạn):** cả mốc highscore **và mốc level** đều có quà: **danh hiệu** (cosmetic title, hiện cạnh tên ở menu và leaderboard) kèm **Badge** của Roblox; từ GĐ4 thêm **cosmetic** cho cùng các mốc. Danh hiệu chỉ kiếm bằng thành tích, không bán. |
 | **X.** Tốc độ lên level | Nhanh hay chậm? | ✅ **Chốt:** EXP = điểm ván / 10; level kế tiếp cần `100 + 50 × (level − 1)` EXP. Tốc độ thật: 10 ván 1.000 điểm lên level 6, 10 ván 3.000 điểm lên level 10 (lúc đề xuất ghi nhầm là 5–6). Tune trong `Config`. |
-| **Y.** Kiểu leaderboard | Bảng tự vẽ trong menu hay bảng có sẵn của Roblox? | **Tự vẽ trong menu.** Bảng có sẵn của Roblox nằm trong player list, mà game đã tắt player list (game chỉ có UI). Tự vẽ thì có được tab theo tuần và M10 vẽ lại cho đồng bộ. |
+| **Y.** Kiểu leaderboard | Bảng tự vẽ trong menu hay bảng có sẵn của Roblox? | ✅ **Chốt:** tự vẽ trong menu, tab All time / This week và Highscore / Level, kèm danh hiệu. M10 vẽ lại theo mockup. Bảng donate (Supporters) làm riêng ở M16, không chung với bảng thi đấu. |
 | **Z.** Lượt xoay đã mua | Chỉ dùng trong ván đang chơi, hay giữ lại cho ván sau? | **Giữ lại** (lưu trong profile). Người chơi thấy mua không phí, và dễ bán gói nhiều lượt. |
 | **AA.** Donate | Bao nhiêu mức, giá bao nhiêu? Có hiện tên người donate công khai không? | 4 mức (vd. 10 / 50 / 100 / 500 Robux) và **có** bảng Supporters công khai. |
 | Từ M8 | Giá hồi sinh lần 1 và lần 2, giá lượt xoay; publish dưới **Group** hay tài khoản cá nhân | Group nếu hai người chia doanh thu. Giá chốt khi làm M8. |

@@ -12,6 +12,8 @@ export type PlayerData = {
 	exp: number, -- progress toward the next level (see Progression)
 	milestonesClaimed: { [string]: boolean }, -- milestone id -> true
 	badgesAwarded: { [string]: boolean }, -- milestone id -> true once its badge is awarded
+	-- This week's best score and EXP for the weekly leaderboards; reset when the week changes (see Leaderboards).
+	weekly: { week: string, bestScore: number, exp: number },
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
@@ -47,6 +49,7 @@ PlayerData.TEMPLATE = table.freeze({
 	exp = 0,
 	milestonesClaimed = table.freeze({}),
 	badgesAwarded = table.freeze({}),
+	weekly = table.freeze({ week = "", bestScore = 0, exp = 0 }),
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.

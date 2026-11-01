@@ -69,15 +69,22 @@ function Progression.claimMilestones(data: ProgressData): { Milestone }
 	return claimed
 end
 
--- The title to show: the claimed milestone that comes last in the table (the table is ordered by rank).
-function Progression.title(milestonesClaimed: { [string]: boolean }): string?
-	local title: string? = nil
-	for _, milestone in Progression.MILESTONES do
+-- Position in MILESTONES of the title to show: the claimed milestone that comes last (the table is ordered
+-- by rank). 0 when nothing is claimed. Leaderboards store this number next to the stat.
+function Progression.titleIndex(milestonesClaimed: { [string]: boolean }): number
+	local index = 0
+	for i, milestone in Progression.MILESTONES do
 		if milestonesClaimed[milestone.id] then
-			title = milestone.title
+			index = i
 		end
 	end
-	return title
+	return index
+end
+
+-- The title to show, if any.
+function Progression.title(milestonesClaimed: { [string]: boolean }): string?
+	local milestone = Progression.MILESTONES[Progression.titleIndex(milestonesClaimed)]
+	return if milestone then milestone.title else nil
 end
 
 -- Claimed milestones whose badge exists but hasn't been awarded yet (a failed award is retried later).

@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage.Shared.Net)
 local GameController = require("./GameController")
+local LeaderboardController = require("./LeaderboardController")
 local MenuView = require("../Views/MenuView")
 
 local MenuController = {}
@@ -42,17 +43,29 @@ function MenuController.hide()
 	end
 end
 
+-- Swaps the menu for the leaderboard screen; going back brings the menu back.
+function MenuController.openLeaderboard()
+	MenuController.hide()
+	LeaderboardController.open(MenuController.show)
+end
+
+-- True on the menu and on screens opened from it (the leaderboard).
 function MenuController.isOpen(): boolean
-	return menu ~= nil and menu:isOpen()
+	return (menu ~= nil and menu:isOpen()) or LeaderboardController.isOpen()
 end
 
 function MenuController.start(_self: any)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
-	local view = MenuView.new(playerGui, function()
-		MenuController.play()
-	end, function()
-		MenuController.play("tutorial")
-	end)
+	local view = MenuView.new(
+		playerGui,
+		function()
+			MenuController.play()
+		end,
+		MenuController.openLeaderboard,
+		function()
+			MenuController.play("tutorial")
+		end
+	)
 	menu = view
 	GameController.onProfileChanged(function()
 		refresh(view)

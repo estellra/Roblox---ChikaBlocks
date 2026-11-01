@@ -22,6 +22,7 @@ local specs = {
 	require("./Tutorial.spec"),
 	require("./Telemetry.spec"),
 	require("./Progression.spec"),
+	require("./Leaderboards.spec"),
 }
 
 for _, spec in specs do
