@@ -8,6 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local Clay = require("./Clay")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -168,36 +169,11 @@ function Hud.new(
 		levelUpLabel,
 		titlesLabel,
 	})
-	local restartButton = create("TextButton", {
-		Name = "PlayAgain",
-		LayoutOrder = 6,
-		Size = UDim2.new(0.8, 0, 0, 52),
-		BackgroundColor3 = colors.Button,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		FontFace = fonts.Title,
-		TextSize = sizes.Button,
-		TextColor3 = colors.ButtonText,
-		Text = "Play again",
-	}, {
-		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
-	})
-	local menuButton = create("TextButton", {
-		Name = "Menu",
-		LayoutOrder = 7,
-		Size = UDim2.new(0.8, 0, 0, 52),
-		BackgroundColor3 = colors.ButtonSecondary,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		FontFace = fonts.Title,
-		TextSize = sizes.Button,
-		TextColor3 = colors.ButtonSecondaryText,
-		Text = "Menu",
-	}, {
-		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
-	})
+	local buttonSize = UDim2.new(0.8, 0, 0, 52 + Theme.Spacing.ButtonLip)
+	local restartRoot =
+		Clay.button({ name = "PlayAgain", text = "Play again", style = "primary", order = 6, size = buttonSize })
+	local menuRoot = Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 7, size = buttonSize })
+	local restartButton, menuButton = Clay.face(restartRoot), Clay.face(menuRoot)
 	-- The dimmer covers the whole screen; the panel lives in the safe-area overlay above it.
 	create("Frame", {
 		Name = "Dim",
@@ -221,6 +197,7 @@ function Hud.new(
 		Parent = overlay,
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
+		create("UIStroke", { Color = colors.Outline, Thickness = Theme.Stroke.Panel }),
 		create("UISizeConstraint", { MaxSize = Vector2.new(420, math.huge) }),
 		panelScale,
 		create("UIPadding", {
@@ -239,8 +216,8 @@ function Hud.new(
 		newBestLabel,
 		finalBestLabel,
 		rewards,
-		restartButton,
-		menuButton,
+		restartRoot,
+		menuRoot,
 	})
 
 	-- Size the panel would have unscaled, against the room the overlay has. Setting the same scale again

@@ -1,10 +1,11 @@
 --!strict
 -- Main menu: title, level and player title, saved best, Play, Leaderboard and How to play. A gray-box
--- placeholder until the mockups arrive.
+-- look comes from the Figma mockups; the layout is revisited screen by screen in M10c.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 
+local Clay = require("./Clay")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -34,23 +35,8 @@ export type MenuView = typeof(setmetatable(
 	MenuView
 ))
 
-local function button(name: string, text: string, order: number, primary: boolean): TextButton
-	local colors = Theme.Colors
-	return create("TextButton", {
-		Name = name,
-		LayoutOrder = order,
-		Size = UDim2.new(1, 0, 0, 56),
-		BackgroundColor3 = if primary then colors.Button else colors.ButtonSecondary,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		FontFace = Theme.Fonts.Title,
-		TextSize = Theme.TextSize.Button,
-		TextColor3 = if primary then colors.ButtonText else colors.ButtonSecondaryText,
-		Text = text,
-	}, {
-		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
-	})
+local function button(name: string, text: string, order: number, primary: boolean): Frame
+	return Clay.button({ name = name, text = text, order = order, style = if primary then "primary" else "secondary" })
 end
 
 function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () -> (), onHowToPlay: () -> ()): MenuView
@@ -63,13 +49,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 		ResetOnSpawn = false,
 		Enabled = false,
 	}, {
-		create("Frame", {
-			Name = "Fill",
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = colors.Background,
-			BorderSizePixel = 0,
-			Active = true, -- swallow clicks meant for the game underneath
-		}),
+		Clay.sky("Fill", true), -- swallows clicks meant for the game underneath
 	})
 	backdrop.IgnoreGuiInset = true
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
@@ -96,9 +76,11 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 		TextColor3 = colors.TextMuted,
 		Text = "Best —",
 	})
-	local playButton = button("Play", "Loading…", 4, true)
-	local leaderboardButton = button("Leaderboard", "Leaderboard", 5, false)
-	local howToButton = button("HowToPlay", "How to play", 6, false)
+	local playRoot = button("Play", "Loading…", 4, true)
+	local leaderboardRoot = button("Leaderboard", "Leaderboard", 5, false)
+	local howToRoot = button("HowToPlay", "How to play", 6, false)
+	local playButton, leaderboardButton, howToButton =
+		Clay.face(playRoot), Clay.face(leaderboardRoot), Clay.face(howToRoot)
 	local gui = create("ScreenGui", {
 		Name = "Menu",
 		DisplayOrder = 11,
@@ -136,9 +118,9 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 			}),
 			levelLabel,
 			bestLabel,
-			playButton,
-			leaderboardButton,
-			howToButton,
+			playRoot,
+			leaderboardRoot,
+			howToRoot,
 		}),
 	})
 

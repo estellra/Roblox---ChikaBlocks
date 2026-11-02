@@ -5,6 +5,7 @@
 -- A one-line hint (controls for keyboard and gamepad) sits under the tray in both layouts.
 -- The layout is re-applied whenever the safe area changes size (rotation, window resize, device switch).
 
+local Clay = require("./Clay")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -71,14 +72,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 		Name = "Background",
 		DisplayOrder = 0,
 		ResetOnSpawn = false,
-	}, {
-		create("Frame", {
-			Name = "Fill",
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = Theme.Colors.Background,
-			BorderSizePixel = 0,
-		}),
-	})
+	}, { Clay.sky("Fill") })
 	background.IgnoreGuiInset = true
 	background.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
 

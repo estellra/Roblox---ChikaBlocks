@@ -1,25 +1,33 @@
 --!strict
--- Design tokens. Views read colors, fonts, text sizes, radii and spacing only from here, so the final look
--- (phase 2 mockups) or a purchasable theme (phase 4) changes these values without touching view code.
--- These are gray-box placeholder values.
+-- Design tokens. Views read colors, fonts, text sizes, radii, spacing and image ids only from here, so a
+-- purchasable theme (phase 4) changes these values without touching view code. The values follow the Figma
+-- mockups (ChikaBlocks-UI, page Foundations): soft pastel surfaces, dark brown outlines, chunky buttons.
 
 export type Theme = {
 	Text: {
 		GameTitle: string,
 	},
 	Colors: {
-		Background: Color3,
+		Background: Color3, -- the sky behind everything, top (see SkyBottom)
+		SkyBottom: Color3,
+		Cloud: Color3,
+		Outline: Color3, -- outlines of buttons, panels and the board
 		Board: Color3,
 		CellEmpty: Color3,
 		TraySlot: Color3,
 		Text: Color3,
 		TextMuted: Color3,
-		Overlay: Color3,
+		Overlay: Color3, -- scrim behind panels
 		Panel: Color3,
-		Button: Color3,
+		Button: Color3, -- primary button: face, lip underneath, text
+		ButtonShadow: Color3,
 		ButtonText: Color3,
 		ButtonSecondary: Color3,
+		ButtonSecondaryShadow: Color3,
 		ButtonSecondaryText: Color3,
+		Reward: Color3, -- gold: revive, combo
+		RewardShadow: Color3,
+		RewardText: Color3,
 		Selection: Color3, -- outline of the tray slot chosen with keyboard or gamepad
 		Hand: Color3, -- tutorial hint pointer
 		Gain: Color3, -- floating "+points" text
@@ -28,6 +36,7 @@ export type Theme = {
 		ExpTrack: Color3, -- EXP bar background
 		ExpFill: Color3,
 		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT)
+		PieceOutlines: { Color3 }, -- the darker edge of each piece color
 	},
 	Transparency: {
 		Overlay: number,
@@ -48,10 +57,12 @@ export type Theme = {
 		HandPause: number,
 		Tip: number, -- how long a tutorial tip stays up
 		ExpFill: number, -- EXP bar filling up on the game over panel (per segment)
+		ButtonPress: number,
 	},
 	Fonts: {
-		Title: Font,
-		Body: Font,
+		Title: Font, -- headings, score, buttons (Fredoka)
+		Body: Font, -- body text (Nunito Bold)
+		Label: Font, -- small labels (Nunito ExtraBold)
 	},
 	TextSize: {
 		ScoreMin: number,
@@ -74,6 +85,11 @@ export type Theme = {
 		Panel: UDim,
 		Button: UDim,
 	},
+	Stroke: { -- outline thickness in pixels
+		Button: number,
+		Panel: number,
+		Pill: number,
+	},
 	Spacing: {
 		ScreenPadding: UDim, -- around the whole layout
 		Gap: UDim, -- between the HUD, board and tray
@@ -81,50 +97,71 @@ export type Theme = {
 		CellInset: number, -- fraction of a cell left empty around each block
 		TrayGap: UDim,
 		TraySlotPadding: UDim, -- inside each tray slot, so a 5-cell piece doesn't touch the edges
+		ButtonLip: number, -- pixels of the colored edge under a button
 	},
+	Images: { [string]: string }, -- rbxassetid:// of the exported mockup images (assets/)
 	MinTouchTarget: Vector2,
 }
 
-local BUILDER_SANS = "rbxasset://fonts/families/BuilderSans.json"
+local FREDOKA = "rbxasset://fonts/families/FredokaOne.json" -- one heavy weight, closest to Fredoka Bold
+local NUNITO = "rbxasset://fonts/families/Nunito.json"
 
 local Theme: Theme = {
 	Text = {
 		GameTitle = "ChiikaBlocks",
 	},
 	Colors = {
-		Background = Color3.fromRGB(34, 36, 44),
-		Board = Color3.fromRGB(48, 51, 62),
-		CellEmpty = Color3.fromRGB(62, 66, 80),
-		TraySlot = Color3.fromRGB(48, 51, 62),
-		Text = Color3.fromRGB(240, 240, 245),
-		TextMuted = Color3.fromRGB(160, 164, 180),
-		Overlay = Color3.fromRGB(0, 0, 0),
-		Panel = Color3.fromRGB(56, 60, 74),
-		Button = Color3.fromRGB(96, 168, 255),
-		ButtonText = Color3.fromRGB(20, 22, 28),
-		ButtonSecondary = Color3.fromRGB(74, 79, 96),
-		ButtonSecondaryText = Color3.fromRGB(240, 240, 245),
-		Selection = Color3.fromRGB(255, 214, 102),
-		Hand = Color3.fromRGB(240, 240, 245),
-		Gain = Color3.fromRGB(240, 240, 245),
-		Combo = Color3.fromRGB(255, 214, 102),
-		Title = Color3.fromRGB(190, 150, 255),
-		ExpTrack = Color3.fromRGB(40, 43, 54),
-		ExpFill = Color3.fromRGB(153, 230, 128),
+		Background = Color3.fromHex("#cfebff"),
+		SkyBottom = Color3.fromHex("#fff1f6"),
+		Cloud = Color3.fromHex("#f1f8ff"),
+		Outline = Color3.fromHex("#4e3d4a"),
+		Board = Color3.fromHex("#fffbf3"),
+		CellEmpty = Color3.fromHex("#eaf4fb"),
+		TraySlot = Color3.fromHex("#ffffff"),
+		Text = Color3.fromHex("#4e3d4a"),
+		TextMuted = Color3.fromHex("#7d6b78"),
+		Overlay = Color3.fromHex("#4e3d4a"),
+		Panel = Color3.fromHex("#fffbf3"),
+		Button = Color3.fromHex("#ff9dbb"),
+		ButtonShadow = Color3.fromHex("#e57fa0"),
+		ButtonText = Color3.fromHex("#4e3d4a"),
+		ButtonSecondary = Color3.fromHex("#a9dbff"),
+		ButtonSecondaryShadow = Color3.fromHex("#62b2e8"),
+		ButtonSecondaryText = Color3.fromHex("#2f4a66"),
+		Reward = Color3.fromHex("#ffd36e"),
+		RewardShadow = Color3.fromHex("#e0a93a"),
+		RewardText = Color3.fromHex("#4e3d4a"),
+		Selection = Color3.fromHex("#ffd36e"),
+		Hand = Color3.fromHex("#ffffff"),
+		Gain = Color3.fromHex("#4e3d4a"),
+		Combo = Color3.fromHex("#e0a93a"),
+		Title = Color3.fromHex("#9f86e6"),
+		ExpTrack = Color3.fromHex("#eaf4fb"),
+		ExpFill = Color3.fromHex("#74c690"),
 		Pieces = {
-			Color3.fromRGB(255, 214, 102), -- Dot
-			Color3.fromRGB(102, 204, 255), -- Bar
-			Color3.fromRGB(255, 153, 102), -- Corner
-			Color3.fromRGB(153, 230, 128), -- Block
-			Color3.fromRGB(255, 128, 170), -- L
-			Color3.fromRGB(190, 150, 255), -- T
-			Color3.fromRGB(102, 230, 204), -- Zigzag
-			Color3.fromRGB(255, 110, 110), -- BigCorner
+			Color3.fromHex("#ffe08a"), -- 1 butter (Dot)
+			Color3.fromHex("#9fd8ff"), -- 2 sky (Bar)
+			Color3.fromHex("#ffc4a0"), -- 3 peach (Corner)
+			Color3.fromHex("#b4ebc4"), -- 4 mint (Block)
+			Color3.fromHex("#ffb3c9"), -- 5 pink (L)
+			Color3.fromHex("#cfbdff"), -- 6 lavender (T)
+			Color3.fromHex("#9ee6e0"), -- 7 aqua (Zigzag)
+			Color3.fromHex("#ff9e9e"), -- 8 coral (BigCorner)
+		},
+		PieceOutlines = {
+			Color3.fromHex("#e0b850"),
+			Color3.fromHex("#62b2e8"),
+			Color3.fromHex("#e8956a"),
+			Color3.fromHex("#74c690"),
+			Color3.fromHex("#e57fa0"),
+			Color3.fromHex("#9f86e6"),
+			Color3.fromHex("#5cc4bc"),
+			Color3.fromHex("#e06a6a"),
 		},
 	},
 	Transparency = {
-		Overlay = 0.35,
-		TraySlot = 0.4,
+		Overlay = 0.4,
+		TraySlot = 0,
 		Ghost = 0.5,
 		Blocked = 0.6,
 		NoMoves = 0.45,
@@ -141,10 +178,12 @@ local Theme: Theme = {
 		HandPause = 0.5,
 		Tip = 3,
 		ExpFill = 0.6,
+		ButtonPress = 0.06,
 	},
 	Fonts = {
-		Title = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
-		Body = Font.new(BUILDER_SANS, Enum.FontWeight.Medium),
+		Title = Font.new(FREDOKA),
+		Body = Font.new(NUNITO, Enum.FontWeight.Bold),
+		Label = Font.new(NUNITO, Enum.FontWeight.ExtraBold),
 	},
 	TextSize = {
 		ScoreMin = 24,
@@ -161,11 +200,16 @@ local Theme: Theme = {
 		Button = 22,
 	},
 	Radius = {
-		Board = UDim.new(0, 12),
+		Board = UDim.new(0, 20),
 		Cell = UDim.new(0.18, 0),
-		TraySlot = UDim.new(0, 10),
-		Panel = UDim.new(0, 16),
-		Button = UDim.new(0, 10),
+		TraySlot = UDim.new(0, 14),
+		Panel = UDim.new(0, 24),
+		Button = UDim.new(0, 18),
+	},
+	Stroke = {
+		Button = 3,
+		Panel = 3,
+		Pill = 2,
 	},
 	Spacing = {
 		ScreenPadding = UDim.new(0.02, 0),
@@ -174,6 +218,22 @@ local Theme: Theme = {
 		CellInset = 0.08,
 		TrayGap = UDim.new(0.03, 0),
 		TraySlotPadding = UDim.new(0.08, 0),
+		ButtonLip = 5,
+	},
+	Images = {
+		Pause = "rbxassetid://106908472995505",
+		Settings = "rbxassetid://122465849623180",
+		Home = "rbxassetid://116096270975744",
+		Replay = "rbxassetid://87647643240417",
+		Trophy = "rbxassetid://95906368551480",
+		Sound = "rbxassetid://124579777068793",
+		Close = "rbxassetid://103108059044688",
+		Crown = "rbxassetid://81606146791219",
+		Hand = "rbxassetid://124249155588203",
+		Sparkle = "rbxassetid://133617760185793",
+		MascotHappy = "rbxassetid://118309270467534",
+		MascotCheer = "rbxassetid://93948772498372",
+		MascotSad = "rbxassetid://112838677243386",
 	},
 	MinTouchTarget = Vector2.new(44, 44),
 }

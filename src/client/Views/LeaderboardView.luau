@@ -6,11 +6,13 @@
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 
+local Clay = require("./Clay")
 local Theme = require("./Theme")
 local create = require("./Create")
 
 local MAX_ROWS = 50
 local ROW_HEIGHT = 44
+local TAB_HEIGHT = 44 + Theme.Spacing.ButtonLip -- the face meets the minimum touch size; the lip comes on top
 local COMPACT_HEIGHT = 480 -- below this (phones held sideways) the heading goes and the tabs share one row
 local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Escape] = true,
@@ -37,7 +39,7 @@ export type LeaderboardView = typeof(setmetatable(
 		backdrop: ScreenGui,
 		gui: ScreenGui,
 		heading: TextLabel,
-		tabs: { [string]: TextButton }, -- "all", "week", "Highscore", "Level"
+		tabs: { [string]: Frame }, -- "all", "week", "Highscore", "Level" (Clay buttons)
 		rows: { Row },
 		list: ScrollingFrame,
 		status: TextLabel,
@@ -76,21 +78,13 @@ local function text(
 	return label
 end
 
-local function tabButton(name: string, label: string, order: number): TextButton
-	return create("TextButton", {
-		Name = name,
-		LayoutOrder = order,
-		Size = UDim2.new(0.5, -4, 0, 40),
-		BackgroundColor3 = Theme.Colors.ButtonSecondary,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		FontFace = Theme.Fonts.Title,
-		TextSize = Theme.TextSize.Label,
-		TextColor3 = Theme.Colors.ButtonSecondaryText,
-		Text = label,
-	}, {
-		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
+local function tabButton(name: string, label: string, order: number): Frame
+	return Clay.button({
+		name = name,
+		text = label,
+		style = "secondary",
+		order = order,
+		size = UDim2.new(0.5, -4, 0, TAB_HEIGHT),
 	})
 end
 
@@ -145,13 +139,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		ResetOnSpawn = false,
 		Enabled = false,
 	}, {
-		create("Frame", {
-			Name = "Fill",
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = colors.Background,
-			BorderSizePixel = 0,
-			Active = true,
-		}),
+		Clay.sky("Fill", true),
 	})
 	backdrop.IgnoreGuiInset = true
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
@@ -221,21 +209,14 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		LayoutOrder = 6,
 		Size = UDim2.new(1, 0, 0, 24),
 	})
-	local closeButton = create("TextButton", {
-		Name = "Back",
-		LayoutOrder = 7,
-		Size = UDim2.new(1, 0, 0, 48),
-		BackgroundColor3 = colors.ButtonSecondary,
-		BorderSizePixel = 0,
-		AutoButtonColor = true,
-		FontFace = fonts.Title,
-		TextSize = sizes.Button,
-		TextColor3 = colors.ButtonSecondaryText,
-		Text = "Back",
-	}, {
-		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
+	local closeRoot = Clay.button({
+		name = "Back",
+		text = "Back",
+		style = "secondary",
+		order = 7,
+		size = UDim2.new(1, 0, 0, 48 + Theme.Spacing.ButtonLip),
 	})
+	local closeButton = Clay.face(closeRoot)
 	local gui = create("ScreenGui", {
 		Name = "Leaderboard",
 		DisplayOrder = 13,
@@ -263,7 +244,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 			list,
 			status,
 			you,
-			closeButton,
+			closeRoot,
 		}),
 	})
 
@@ -293,25 +274,25 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	end
 	table.insert(
 		self.connections,
-		tabs.all.Activated:Connect(function()
+		Clay.face(tabs.all).Activated:Connect(function()
 			choose("all", nil)
 		end)
 	)
 	table.insert(
 		self.connections,
-		tabs.week.Activated:Connect(function()
+		Clay.face(tabs.week).Activated:Connect(function()
 			choose("week", nil)
 		end)
 	)
 	table.insert(
 		self.connections,
-		tabs.Highscore.Activated:Connect(function()
+		Clay.face(tabs.Highscore).Activated:Connect(function()
 			choose(nil, "Highscore")
 		end)
 	)
 	table.insert(
 		self.connections,
-		tabs.Level.Activated:Connect(function()
+		Clay.face(tabs.Level).Activated:Connect(function()
 			choose(nil, "Level")
 		end)
 	)
@@ -335,7 +316,7 @@ end
 function LeaderboardView.layout(self: LeaderboardView)
 	local compact = self.gui.AbsoluteSize.Y > 0 and self.gui.AbsoluteSize.Y < COMPACT_HEIGHT
 	self.heading.Visible = not compact
-	local size = if compact then UDim2.new(0.25, -6, 0, 40) else UDim2.new(0.5, -4, 0, 40)
+	local size = if compact then UDim2.new(0.25, -6, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
 	for _, button in self.tabs do
 		button.Size = size
 	end
@@ -352,8 +333,7 @@ end
 function LeaderboardView.render(self: LeaderboardView)
 	for key, button in self.tabs do
 		local selected = key == self.period or key == self.board
-		button.BackgroundColor3 = if selected then Theme.Colors.Button else Theme.Colors.ButtonSecondary
-		button.TextColor3 = if selected then Theme.Colors.ButtonText else Theme.Colors.ButtonSecondaryText
+		Clay.setStyle(button, if selected then "primary" else "secondary")
 	end
 
 	local snapshot = self.snapshot
@@ -397,7 +377,7 @@ function LeaderboardView.open(self: LeaderboardView)
 	self.gui.Enabled = true
 	self:render()
 	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
-		GuiService.SelectedObject = self.tabs.all
+		GuiService.SelectedObject = Clay.face(self.tabs.all)
 	end
 	if not self.keyConnection then
 		self.keyConnection = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)

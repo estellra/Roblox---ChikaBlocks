@@ -10,7 +10,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup, linh vật, SFX/VFX, khay to hơn ở màn ngang | Linh vật, mockup | |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật, SFX/VFX | Chốt AB–AI | 🔶 M10a xong, còn M10b–e |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -175,3 +175,104 @@ Client                                         Server (GameService → GameRuns)
   - Cách sửa (`DragMath.touchLift`): chỉ khi ngón tay không thể với tới hàng cuối với độ nâng đầy đủ, độ nâng mới giảm dần trong 3 ô cuối của vùng ngón tay với được. Hàng cuối với tới được ở 0,25 ô trên mép màn hình. Trong vùng này khối đi nhanh hơn ngón tay một chút (khoảng 1,5 lần ở iPhone ngang), và không bao giờ nằm dưới ngón tay.
   - Màn dọc và PC không đổi, vì bên dưới bảng còn khay.
 - **Lưu ý khi test:** client giữ best theo kiểu chỉ tăng, nên sau `resetdata` HUD và menu vẫn hiện best cũ cho tới khi vào lại game. Khi chơi thật best không bao giờ giảm nên không ảnh hưởng.
+
+## M10: Giao diện thật
+
+Nguồn: file Figma ChikaBlocks-UI (trang Foundations và Screens). Trang Moodboard ghi rõ "reference only, do not use in game" (có nhân vật của bên thứ ba) nên **không lấy bất cứ thứ gì từ trang đó**. Mình chỉ đọc ba trang: Foundations (token và component), Screens (màn hình dọc 390×844 và ngang 1280×720), và 8 bộ theme.
+
+### Mockup có gì
+
+| Màn hình | Bản dọc | Bản ngang | Ghi chú |
+|---|---|---|---|
+| Gameplay | ✅ | ✅ | Dọc: điểm ở trên, bảng giữa, khay 3 ô nằm ngang ở dưới. Ngang: bảng bên trái, thẻ HUD (nút pause, điểm, best, combo) và khay dọc bên phải |
+| Main Menu | ✅ | ✅ | Logo hai dòng, mascot, "Best", nút Play và Leaderboard, dòng khẩu hiệu, nút âm thanh và cài đặt |
+| Dragging | ✅ | ✅ | Khối nổi cao hơn ngón tay khoảng 1,5 ô (khớp M4), ô sẽ đặt hiện viền nét đứt hồng |
+| Combo Popup | ✅ | ✅ | Mascot kèm bong bóng "Combo x3!", chữ "+180" vàng, các tia sáng |
+| Game Over | ✅ | ✅ | "No more moves!", điểm, Best, **Revive R$ 25** ("Clears the center 4×4 · 1 of 2 left"), Play again, Menu |
+| Tutorial | ✅ | ✅ | Khung hướng dẫn có mascot, nút Skip, đường kéo nét đứt, bàn tay chỉ, ô khay được viền vàng |
+| 8 theme × 6 màn (PC) | | ✅ | Mochi Blush, Polar Pip, Custard Bun, Mint Cloud, Bramble, Lilac Puff, Night Hoot, Tangerine, mỗi theme một linh vật gốc. Đây là cosmetic của GĐ4 |
+
+Mockup **chưa có**: màn Leaderboard, màn Pause, màn Cài đặt, thanh EXP và danh hiệu ở Game Over, chỗ hiện level, nút "How to play", dòng gợi ý phím cho bàn phím và tay cầm, và hiệu ứng chờ bộ khối mới.
+
+### Token lấy được từ Foundations
+
+| Nhóm | Giá trị |
+|---|---|
+| Chữ | `text/primary` #4e3d4a, `text/muted` #7d6b78, chữ trên nút xanh #2f4a66 |
+| Nền | `surface/panel` #fffbf3 (bảng, thẻ HUD, panel), `surface/tray-slot` #ffffff, `surface/cell-empty` #eaf4fb, nền trời chuyển màu xanh nhạt sang hồng nhạt kèm các đám mây |
+| Nút chính (hồng) | #ff9dbb, viền dưới #e57fa0 |
+| Nút phụ (xanh) | #a9dbff, viền dưới #62b2e8 |
+| Nút thưởng (vàng) | #ffd36e, viền dưới #e0a93a (Revive, ô Combo) |
+| 8 màu khối | butter #ffe08a, sky #9fd8ff, peach #ffc4a0, mint #b4ebc4, pink #ffb3c9, lavender #cfbdff, aqua #9ee6e0, coral #ff9e9e; mỗi màu có một màu viền đậm hơn |
+| Bo góc | nút 18, panel 24, bảng 20 |
+| Đổ bóng | "Clay": bóng mềm, kèm viền sáng bên trong ở mép trên; "Lifted": bóng đổ sâu cho khối đang kéo; "Glow/Gold": quầng vàng |
+| Font | Fredoka Bold 56 (Display), 44 (điểm), 30 (tiêu đề); Fredoka SemiBold 22 (nút); Nunito ExtraBold 15 (nhãn); Nunito Bold 13 (chú thích) |
+
+**Font trong Roblox:** có `FredokaOne` (một độ đậm, rất gần Fredoka Bold) và `Nunito` (có nhiều độ đậm). Font `Fredoka` nhiều độ đậm không có. Mình dùng `FredokaOne` cho tiêu đề, điểm và nút. Nút trong mockup là SemiBold nên sẽ đậm hơn một chút, khác biệt nhỏ.
+
+### Hướng làm
+
+1. **Theme dạng token** (`Theme.luau`) thay hết bảng màu xám hiện tại bằng bảng trên. Giữ cấu trúc token đã có nên các `View` không phải đổi cách gọi. Gom màu thành một bảng palette để GĐ4 thay theme bằng cách đổi palette (8 theme trong mockup có cùng bố cục, chỉ khác màu và linh vật).
+2. **Bộ component dùng chung**, vẽ bằng Frame, `UICorner`, `UIStroke`, `UIGradient` để không cần tải nhiều ảnh:
+   - Nút kiểu clay: thân nút, viền ngoài đậm, "mép dưới" dày vài px khác màu, lún xuống khi nhấn.
+   - Thẻ HUD, pill (Best, Combo), panel, ô khay, nút icon tròn, bong bóng thoại, nền trời với mây và khối trôi trang trí (dùng lại `PieceView`).
+   - Ô khối bóng: nền màu, viền màu đậm, vệt sáng nhỏ ở góc trên trái.
+3. **Làm từng màn, cả dọc và ngang**, theo thứ tự: Gameplay (bảng, khay, HUD, kéo thả) → Menu → Game Over → Tutorial → Combo popup → Leaderboard và Pause (tự thiết kế theo cùng phong cách, bạn duyệt).
+4. **Bố cục** giữ cơ chế hiện tại (vùng HUD, bảng, khay chia theo tỉ lệ, `CoreUISafeInsets`). Mockup đã tính sẵn 58 px thanh trên cùng của Roblox cho bản dọc.
+5. **Đối chiếu mockup**: mỗi màn chụp ảnh trong Studio ở 1280×720 và 390×844 (cùng iPhone ngang), đặt cạnh frame Figma để bạn so.
+6. **Hiệu ứng**: nút lún khi nhấn, khối bật nhẹ khi đặt, mascot hiện bong bóng khi combo, tia sáng, thanh EXP chạy. Âm thanh xem quyết định cuối.
+
+### Ảnh dùng trong game
+
+Ảnh được xuất từ Figma vào thư mục `assets/` (13 file PNG, nền trong suốt). Logo **không** phải ảnh: trong Figma nó là hai lớp chữ (`Chika` và `Blocks` trong `Logo (working title)`), nên game dựng bằng chữ `FredokaOne` cộng viền.
+
+| Ảnh | File | Kích thước | Ghi chú |
+|---|---|---|---|
+| Icon Pause, Settings, Home, Replay, Trophy, Sound, Close | `pause.png`... | 96×96 (4x) | Một màu #4e3d4a (màu chữ chính) |
+| Vương miện (Best) | `crown.png` | 72×72 (4x) | Vàng #ffd36e có viền nâu |
+| Bàn tay chỉ (tutorial) | `Hand pointer (tutorial).png` | 208×208 (4x) | Trắng, viền nâu |
+| Tia sáng | `Sparkle (decor).png` | 96×96 (4x) | Vàng, viền nâu |
+| Mascot Happy, Cheer, Sad | `Mood=*.png` | 288×288 (3x) | Hình vuông bo tròn có chóp hồng |
+
+Đám mây, bong bóng thoại, khung, nút, nền trời và khối bóng vẽ bằng UI, không cần ảnh. 8 linh vật theme chưa cần ở M10, chỉ cần khi làm cosmetic ở GĐ4.
+
+**Lưu ý cho GĐ4:** icon đang là màu nâu đậm nên chỉ hợp theme sáng. Roblox tô màu ảnh bằng cách nhân màu, nên theme tối (Night Hoot) cần bản icon trắng. Khi đó mình tạo bản trắng từ chính các file này.
+
+### Quyết định cần chốt
+
+| Điểm | Vấn đề | Đề xuất |
+|---|---|---|
+| **AB.** Tên game trên logo | Mockup viết **ChikaBlocks** và ghi lớp logo là "working title"; tên đã chốt ở M9 là **ChiikaBlocks** (tên place trên Roblox là ChikaBlocks) | Theo mockup (ChikaBlocks): ngắn hơn và cách xa tên "Chiikawa" hơn, giảm rủi ro bản quyền. Chưa đổi gì cho tới khi bạn chốt; `Theme.Text.GameTitle` là một chỗ duy nhất để đổi |
+| **AC.** Mascot mặc định | Màn hình dùng mascot **hình vuông bo tròn có chóp hồng** (ghi là placeholder). Trang theme thì có 8 linh vật khác (Mochi là hải cẩu trắng nơ hồng...) | Dùng mascot hình vuông làm mặc định trong M10. 8 linh vật là cosmetic GĐ4. Nếu bạn muốn Mochi là mặc định thì gửi ảnh Mochi 3 trạng thái |
+| **AD.** Nút "How to play" | Mockup menu không có | Thêm nút "?" tròn cạnh nút âm thanh và cài đặt. Lần chơi đầu vẫn tự vào tutorial |
+| **AE.** Level và danh hiệu | Mockup không có chỗ hiện | Thêm một pill nhỏ dưới "Best" ở menu ("Lv 5 · Regular"), và hàng EXP trong panel Game Over |
+| **AF.** Nút pause | Mockup có nút pause nhưng không có màn pause | Panel nhỏ cùng phong cách với 3 nút Resume / Play again / Menu. Ván không dừng thời gian (game không có đồng hồ) nên pause chỉ để mở Menu an toàn |
+| **AG.** Nút Cài đặt và Âm thanh | Mockup có hai nút nhưng không có nội dung | Âm thanh: bật hoặc tắt tiếng, lưu theo người chơi. Cài đặt: panel nhỏ có bật tắt nhạc, hiệu ứng âm thanh và nút "How to play". Cần chốt có làm âm thanh trong M10 không (xem AH) |
+| **AH.** Âm thanh | Roadmap có SFX và VFX cơ bản, mockup không nói gì về âm thanh | Làm 5 hiệu ứng âm thanh (đặt khối, xóa hàng, combo, game over, bấm nút) và một bản nhạc nền, dùng âm thanh miễn phí trong thư viện Roblox, bạn nghe duyệt. Nếu chưa muốn thì để sang sau, M10 chỉ làm giao diện nút bật tắt |
+| **AI.** Nút Revive trên Game Over | Mockup có sẵn "Revive · R$ 25" nhưng M8 chưa làm | M10 dựng sẵn nút và dòng "Clears the center 4×4 · 1 of 2 left" nhưng **ẩn** cho tới khi M8 xong |
+
+### Thứ tự và khối lượng
+
+| Bước | Nội dung | Cần ảnh? |
+|---|---|---|
+| M10a ✅ | Theme token, font, bộ component, nền trời và mây | Không (đã có ảnh) |
+| M10b | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang) | Icon pause, crown |
+| M10c | Menu, Game Over (có EXP, Revive ẩn), Pause | Logo, mascot, icon |
+| M10d | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
+| M10e | Leaderboard và Cài đặt theo cùng phong cách, âm thanh (nếu chốt AH) | Icon trophy, close, sound |
+
+Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test hiện có phải còn nguyên), ảnh chụp đối chiếu Figma và một commit, giống các mốc trước.
+
+### Kết quả M10a
+
+- **Ảnh:** 13 file trong `assets/` đã tải lên Roblox (qua Studio) và kiểm tra tải được; ID nằm trong `Theme.Images`. Ảnh gốc giữ trong repo để tải lại khi cần.
+- **`Theme.luau`** viết lại theo token Figma (Foundations): màu bề mặt, chữ, nút (chính hồng, phụ xanh, thưởng vàng, mỗi loại có màu mép dưới), 8 màu khối kèm màu viền, bo góc nút 18, panel 24, bảng 20, độ dày viền, font. Mọi `View` vẫn đọc token như cũ nên cả game đổi sang bảng màu sáng ngay.
+- **Font:** tiêu đề, điểm và nút dùng `FredokaOne`; chữ thường dùng `Nunito` Bold, nhãn nhỏ dùng `Nunito` ExtraBold. Font `Fredoka` nhiều độ đậm không có trong Roblox.
+- **`Clay.luau`** (mới):
+  - `Clay.button`: nút viền nâu với mép dưới màu đậm hơn, lún xuống khi nhấn. Là một Frame chứa phần mép và `Face` (TextButton, dùng `Clay.face()` để lấy). Kích thước tối thiểu theo mức 44 px cho cảm ứng.
+  - `Clay.setStyle`: đổi màu nút (tab đang chọn).
+  - `Clay.sky`: nền trời gradient `#cfebff` → `#fff1f6` kèm 4 đám mây vẽ bằng UI.
+- **Áp dụng:** nền toàn game, menu và Leaderboard dùng nền trời; nút ở menu, Game Over, Leaderboard (tab và Back) là nút clay; panel Game Over có viền.
+- **Kiểm tra trong Studio** (PC 1365×768): menu, gameplay, Game Over và Leaderboard đều hiển thị đúng bảng màu mới; Output không có lỗi. 123 test pass.
+- **Bài học:** `CanvasGroup.GroupTransparency` không có tác dụng trong ảnh chụp của Studio (đổi từ 0 đến 0.9 vẫn giống nhau), nên mây dùng một màu đặc nhạt thay vì làm mờ.
+- **Chưa làm (thuộc các bước sau):** khối bóng có viền và vệt sáng, viền bảng, thẻ HUD, bố cục menu và Game Over theo mockup, mascot, icon, logo dạng chữ hai dòng, tutorial và combo popup.

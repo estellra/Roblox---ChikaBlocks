@@ -62,7 +62,7 @@ function TutorialView.new(layer: GuiObject): TutorialView
 		ZIndex = 10,
 	}, {
 		create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-		create("UIStroke", { Color = Theme.Colors.Background, Thickness = 3 }),
+		create("UIStroke", { Color = Theme.Colors.Outline, Thickness = 3 }),
 	})
 	local instruction = banner("Instruction", Theme.Colors.Text)
 	local tip = banner("Tip", Theme.Colors.Combo)
