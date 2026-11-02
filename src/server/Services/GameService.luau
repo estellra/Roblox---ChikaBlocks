@@ -22,6 +22,7 @@ local Telemetry = require("../Telemetry")
 local IS_STUDIO = RunService:IsStudio()
 local DATA_WAIT_SECONDS = 15 -- how long a request waits for the player's saved data to load
 local MAX_RECENT_EVENTS = 50 -- analytics events kept in Studio for the debug bridge
+local RUN_FLUSH_GAP_SECONDS = 20 -- at least this long between a player's leaderboard writes after runs
 local CUSTOM_FIELDS = {
 	Enum.AnalyticsCustomFieldKeys.CustomField01.Name,
 	Enum.AnalyticsCustomFieldKeys.CustomField02.Name,
@@ -255,7 +256,7 @@ function GameService.start(_self: any)
 				if outcome.isOver and data and progress then
 					Net.RunRewards:FireClient(player, outcome.runId, rewardsOf(progress, data))
 					Net.Profile:FireClient(player, profileOf(player, data))
-					LeaderboardService.flush(player, data)
+					LeaderboardService.flush(player, data, RUN_FLUSH_GAP_SECONDS)
 				end
 				if outcome.isOver then
 					notifyGameOver(player, outcome.runId)

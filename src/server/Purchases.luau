@@ -15,7 +15,8 @@ export type Receipt = { PlayerId: number, ProductId: number, PurchaseId: string 
 export type Decision = "granted" | "notProcessedYet"
 
 export type Deps = {
-	isRevive: (productId: number) -> boolean,
+	-- The price tier of a revive product (1 is the cheapest), nil for any other product.
+	tierOf: (productId: number) -> number?,
 	-- The player's loaded data; nil when they have left or it didn't load in time.
 	getData: (playerId: number) -> PlayerData.PlayerData?,
 	-- Yields until the data holding `purchaseId` is saved; false if that can't be confirmed (session ended).
@@ -27,13 +28,19 @@ export type Deps = {
 
 local Purchases = {}
 
+-- The price tier of the player's next revive: one per revive already used in the run, the last from then on.
+function Purchases.reviveTier(revivesUsed: number, tiers: number): number
+	return math.clamp(revivesUsed + 1, 1, tiers)
+end
+
 -- The product for the player's next revive: one per revive already used in the run, the last one from then on.
 function Purchases.reviveProduct(products: { number }, revivesUsed: number): number
-	return products[math.clamp(revivesUsed + 1, 1, #products)]
+	return products[Purchases.reviveTier(revivesUsed, #products)]
 end
 
 function Purchases.process(receipt: Receipt, deps: Deps): Decision
-	if not deps.isRevive(receipt.ProductId) then
+	local tier = deps.tierOf(receipt.ProductId)
+	if not tier then
 		deps.warn(`no handler for product {receipt.ProductId} (purchase {receipt.PurchaseId})`)
 		return "notProcessedYet"
 	end
@@ -45,7 +52,7 @@ function Purchases.process(receipt: Receipt, deps: Deps): Decision
 	local purchaseId = receipt.PurchaseId
 	local isNew = not PlayerData.hasPurchase(data, purchaseId)
 	if isNew then
-		PlayerData.addReviveToken(data)
+		PlayerData.addReviveToken(data, tier)
 		PlayerData.rememberPurchase(data, purchaseId)
 	end
 	if not deps.confirmSaved(receipt.PlayerId, purchaseId) then

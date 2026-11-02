@@ -9,6 +9,7 @@ local function fresh(): PlayerData.PlayerData
 	data.badgesAwarded = {}
 	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
 	data.purchaseIds = {}
+	data.reviveTokens = { 0, 0, 0 }
 	return data
 end
 
@@ -26,7 +27,7 @@ return function(t: TestKit.TestKit)
 				milestonesClaimed = {},
 				badgesAwarded = {},
 				weekly = { week = "", bestScore = 0, exp = 0 },
-				reviveTokens = 0,
+				reviveTokens = { 0, 0, 0 },
 				purchaseIds = {},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
@@ -35,11 +36,12 @@ return function(t: TestKit.TestKit)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.badgesAwarded)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.weekly)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.purchaseIds)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.reviveTokens)).toBe(true)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()
 			local veteran = PlayerData.migrate({ version = 1, bestScore = 500, gamesPlayed = 3, tutorialDone = true })
-			t.expect(veteran.version).toBe(2)
+			t.expect(veteran.version).toBe(PlayerData.VERSION)
 			t.expect(veteran.onboardingStep).toBe(6)
 			t.expect(veteran.bestScore).toBe(500)
 			local midTutorial =
@@ -91,14 +93,35 @@ return function(t: TestKit.TestKit)
 
 		t.it("keeps paid revives until they are used", function()
 			local data = fresh()
-			t.expect(PlayerData.useReviveToken(data)).toBe(false)
-			PlayerData.addReviveToken(data)
-			PlayerData.addReviveToken(data)
-			t.expect(PlayerData.useReviveToken(data)).toBe(true)
-			t.expect(data.reviveTokens).toBe(1)
-			t.expect(PlayerData.useReviveToken(data)).toBe(true)
-			t.expect(PlayerData.useReviveToken(data)).toBe(false)
-			t.expect(data.reviveTokens).toBe(0)
+			t.expect(PlayerData.useReviveToken(data, 1)).toBe(false)
+			PlayerData.addReviveToken(data, 1)
+			PlayerData.addReviveToken(data, 1)
+			t.expect(PlayerData.reviveTokenCount(data, 1)).toBe(2)
+			t.expect(PlayerData.useReviveToken(data, 1)).toBe(true)
+			t.expect(data.reviveTokens).toEqual({ 1, 0, 0 })
+			t.expect(PlayerData.useReviveToken(data, 1)).toBe(true)
+			t.expect(PlayerData.useReviveToken(data, 1)).toBe(false)
+		end)
+
+		t.it("lets a dearer revive stand in for a cheaper one but never the other way round", function()
+			local data = fresh()
+			PlayerData.addReviveToken(data, 1) -- bought at 10 Robux
+			t.expect(PlayerData.reviveTokenCount(data, 2)).toBe(0) -- no use for the 15 Robux revive
+			t.expect(PlayerData.useReviveToken(data, 3)).toBe(false)
+			PlayerData.addReviveToken(data, 3) -- bought at 25 Robux
+			t.expect(PlayerData.reviveTokenCount(data, 1)).toBe(2)
+			t.expect(PlayerData.reviveTokenCount(data, 2)).toBe(1)
+			t.expect(PlayerData.useReviveToken(data, 1)).toBe(true) -- the cheapest allowed goes first
+			t.expect(data.reviveTokens).toEqual({ 0, 0, 1 })
+			t.expect(PlayerData.useReviveToken(data, 2)).toBe(true)
+			t.expect(data.reviveTokens).toEqual({ 0, 0, 0 })
+		end)
+
+		t.it("moves the old single revive count to the highest tier", function()
+			local old = PlayerData.migrate({ version = 2, bestScore = 5, reviveTokens = 4 })
+			t.expect(old.reviveTokens).toEqual({ 0, 0, 4 })
+			local none = PlayerData.migrate({ version = 2 })
+			t.expect(none.reviveTokens).toEqual({ 0, 0, 0 })
 		end)
 
 		t.it("remembers handled purchases, the latest hundred", function()

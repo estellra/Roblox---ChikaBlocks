@@ -19,6 +19,7 @@ local RateLimiter = require("../Util/RateLimiter")
 
 local IS_STUDIO = RunService:IsStudio()
 local REFRESH_SECONDS = 60
+local SHUTDOWN_WAIT_SECONDS = 20 -- how long a closing server waits for leaderboard writes (the limit is 30)
 
 export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
 
@@ -36,6 +37,8 @@ local boards: { [string]: { Entry } } = {}
 local updatedAt = 0
 local names: { [number]: string } = {} -- display names by user id, kept for the server's lifetime
 local requestLimiter = RateLimiter.new(1, 2, os.clock)
+local writesInFlight = 0 -- DataStore writes started and not finished, so shutdown can wait for them
+local lastFlush: { [Player]: number } = {} -- when each player's boards were last written
 
 local function storeFor(key: string, time: number): OrderedDataStore
 	return DataStoreService:GetOrderedDataStore(Leaderboards.storeName(key, time, IS_STUDIO))
@@ -47,8 +50,15 @@ local function titleFor(index: number): string?
 end
 
 -- Writes whatever changed since the last write. A failed write is left out of `written`, so the next
--- flush tries it again.
-function LeaderboardService.flush(player: Player, data: PlayerData.PlayerData)
+-- flush tries it again. With `minGap`, a player flushed less than that many seconds ago waits for the next
+-- refresh, so quick runs cannot spend the write budget.
+function LeaderboardService.flush(player: Player, data: PlayerData.PlayerData, minGap: number?)
+	local clock = os.clock()
+	local previous = lastFlush[player]
+	if minGap and previous and clock - previous < minGap then
+		return
+	end
+	lastFlush[player] = clock
 	local now = os.time()
 	Leaderboards.rollWeek(data.weekly, now)
 	local done = written[player]
@@ -58,10 +68,12 @@ function LeaderboardService.flush(player: Player, data: PlayerData.PlayerData)
 	end
 	local values = Leaderboards.values(data, Progression.titleIndex(data.milestonesClaimed), now)
 	for key, value in Leaderboards.changes(values, done) do
+		writesInFlight += 1
 		task.spawn(function()
 			local ok, err = pcall(function()
 				storeFor(key, now):SetAsync(tostring(player.UserId), value)
 			end)
+			writesInFlight -= 1
 			if ok then
 				done[key] = value
 			elseif IS_STUDIO then
@@ -203,7 +215,22 @@ function LeaderboardService.start(_self: any)
 			LeaderboardService.flush(player, data)
 		end
 		written[player] = nil
+		lastFlush[player] = nil
 		requestLimiter:forget(player)
+	end)
+
+	-- A closing server writes what its players have and waits for the writes to finish.
+	game:BindToClose(function()
+		for _, player in Players:GetPlayers() do
+			local data = DataService.get(player)
+			if data then
+				LeaderboardService.flush(player, data)
+			end
+		end
+		local deadline = os.clock() + SHUTDOWN_WAIT_SECONDS
+		while writesInFlight > 0 and os.clock() < deadline do
+			task.wait(0.1)
+		end
 	end)
 
 	task.spawn(function()

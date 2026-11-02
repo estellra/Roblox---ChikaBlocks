@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local DataService = require("./DataService")
+local GameRuns = require("../GameRuns")
 local GameService = require("./GameService")
 local PlayerData = require("../PlayerData")
 local Purchases = require("../Purchases")
@@ -32,8 +33,14 @@ local prices: { [number]: number } = {} -- Robux price of each product, read fro
 local requestLimiter = RateLimiter.new(1, 1, os.clock)
 local pendingCounter = 0
 
-local function isReviveProduct(productId: number): boolean
-	return table.find(Config.REVIVE_PRODUCTS, productId) ~= nil
+-- The price tier of a revive product (1 is the cheapest), nil for any other product.
+local function tierOf(productId: number): number?
+	return table.find(Config.REVIVE_PRODUCTS, productId)
+end
+
+-- The price tier of the run's next revive.
+local function nextTier(summary: GameRuns.RunSummary): number
+	return Purchases.reviveTier(summary.revives, #Config.REVIVE_PRODUCTS)
 end
 
 -- Reads the three prices once (cached for the server's lifetime); a failed read just means no price is shown.
@@ -58,16 +65,23 @@ function PurchaseService.sendOffer(player: Player, runId: number)
 		return
 	end
 	local productId = Purchases.reviveProduct(Config.REVIVE_PRODUCTS, summary.revives)
-	Net.ReviveOffer:FireClient(player, runId, { tokens = data.reviveTokens, price = prices[productId] })
+	local tokens = PlayerData.reviveTokenCount(data, nextTier(summary))
+	Net.ReviveOffer:FireClient(player, runId, { tokens = tokens, price = prices[productId] })
 	GameService.logRevive(player, 1)
 end
 
--- Uses a paid revive on the run. False (and nothing spent) when the run can't be revived right now.
+-- Uses a paid revive on the run, one bought at the price of this revive or a higher one. False (and nothing
+-- spent) when there is none or the run can't be revived right now.
 local function reviveWithToken(player: Player, data: PlayerData.PlayerData, runId: number): boolean
-	if data.reviveTokens <= 0 or not GameService.revive(player, runId) then
+	local summary = GameService.getRuns():summary(player)
+	if not summary then
 		return false
 	end
-	PlayerData.useReviveToken(data)
+	local tier = nextTier(summary)
+	if PlayerData.reviveTokenCount(data, tier) <= 0 or not GameService.revive(player, runId) then
+		return false
+	end
+	PlayerData.useReviveToken(data, tier)
 	return true
 end
 
@@ -93,7 +107,7 @@ local function onRequestRevive(player: Player, runId: unknown)
 	end
 	GameService.logRevive(player, 2)
 
-	if data.reviveTokens > 0 then
+	if PlayerData.reviveTokenCount(data, nextTier(summary)) > 0 then
 		if not reviveWithToken(player, data, runId) then
 			Net.ReviveResult:FireClient(player, runId, false)
 		end
@@ -142,7 +156,7 @@ local function afterGrant(playerId: number, data: PlayerData.PlayerData)
 end
 
 local receiptDeps: Purchases.Deps = {
-	isRevive = isReviveProduct,
+	tierOf = tierOf,
 	getData = function(playerId: number): PlayerData.PlayerData?
 		local player = Players:GetPlayerByUserId(playerId)
 		return if player then DataService.waitForData(player, DATA_WAIT_SECONDS) else nil

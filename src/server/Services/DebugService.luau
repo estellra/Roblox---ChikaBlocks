@@ -30,6 +30,11 @@ local DebugService = {}
 
 local debugReceipts = 0
 
+-- Paid revives per price tier, e.g. "1/0/2".
+local function tokenSummary(data: any): string
+	return table.concat(data.reviveTokens, "/")
+end
+
 local function keys(set: { [string]: boolean }): string
 	local list = {}
 	for key in set do
@@ -87,9 +92,9 @@ function DebugService.start(_self: any)
 			end
 			return `{DataService.describeStore()} | version={data.version} best={data.bestScore} games={data.gamesPlayed} tutorialDone={data.tutorialDone} onboardingStep={data.onboardingStep} level={data.level} exp={data.exp}/{Progression.expToNext(
 				data.level
-			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} reviveTokens={data.reviveTokens} purchases={#data.purchaseIds} title={Progression.title(
-				data.milestonesClaimed
-			)}`
+			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} reviveTokens={tokenSummary(
+				data
+			)} purchases={#data.purchaseIds} title={Progression.title(data.milestonesClaimed)}`
 		elseif command == "resetdata" then
 			local data = DataService.get(player)
 			if not data then
@@ -99,7 +104,7 @@ function DebugService.start(_self: any)
 			data.level, data.exp = 1, 0
 			table.clear(data.milestonesClaimed)
 			table.clear(data.badgesAwarded)
-			data.reviveTokens = 0
+			data.reviveTokens = { 0, 0, 0 }
 			table.clear(data.purchaseIds)
 			data.weekly.week, data.weekly.bestScore, data.weekly.exp = "", 0, 0
 			GameService.getRuns():setBest(player, 0)
@@ -114,7 +119,7 @@ function DebugService.start(_self: any)
 				PurchaseId = extra or `debug-{debugReceipts}`,
 			})
 			local data = DataService.get(player)
-			return `{decision} reviveTokens={if data then data.reviveTokens else "?"}`
+			return `{decision} reviveTokens={if data then tokenSummary(data) else "?"}`
 		elseif command == "boards" then
 			local data = DataService.get(player)
 			if data then

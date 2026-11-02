@@ -12,6 +12,7 @@ local function newData(): PlayerData.PlayerData
 	data.badgesAwarded = {}
 	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
 	data.purchaseIds = {}
+	data.reviveTokens = { 0, 0, 0 }
 	return data
 end
 
@@ -19,8 +20,8 @@ end
 local function world(data: PlayerData.PlayerData?, saves: boolean)
 	local state = { data = data, saves = saves, afterGrants = 0, warnings = {} :: { string } }
 	local deps: Purchases.Deps = {
-		isRevive = function(productId: number): boolean
-			return table.find(PRODUCTS, productId) ~= nil
+		tierOf = function(productId: number): number?
+			return table.find(PRODUCTS, productId)
 		end,
 		getData = function(_playerId: number): PlayerData.PlayerData?
 			return state.data
@@ -38,6 +39,10 @@ local function world(data: PlayerData.PlayerData?, saves: boolean)
 	return state, deps
 end
 
+local function total(data: PlayerData.PlayerData): number
+	return data.reviveTokens[1] + data.reviveTokens[2] + data.reviveTokens[3]
+end
+
 local function receipt(productId: number, purchaseId: string): Purchases.Receipt
 	return { PlayerId = PLAYER_ID, ProductId = productId, PurchaseId = purchaseId }
 end
@@ -52,11 +57,26 @@ return function(t: TestKit.TestKit)
 			t.expect(Purchases.reviveProduct(PRODUCTS, 40)).toBe(333)
 		end)
 
+		t.it("picks the tier of a revive: the run's revives so far, at most the last tier", function()
+			t.expect(Purchases.reviveTier(0, 3)).toBe(1)
+			t.expect(Purchases.reviveTier(1, 3)).toBe(2)
+			t.expect(Purchases.reviveTier(2, 3)).toBe(3)
+			t.expect(Purchases.reviveTier(9, 3)).toBe(3)
+		end)
+
+		t.it("files a purchase under the tier of its product, so cheap ones cannot pay for dear revives", function()
+			local data = newData()
+			local _, deps = world(data, true)
+			Purchases.process(receipt(111, "a"), deps)
+			Purchases.process(receipt(333, "b"), deps)
+			t.expect(data.reviveTokens).toEqual({ 1, 0, 1 })
+		end)
+
 		t.it("grants a revive once the purchase is saved and uses it", function()
 			local data = newData()
 			local state, deps = world(data, true)
 			t.expect(Purchases.process(receipt(111, "a"), deps)).toBe("granted")
-			t.expect(data.reviveTokens).toBe(1)
+			t.expect(total(data)).toBe(1)
 			t.expect(data.purchaseIds).toEqual({ "a" })
 			t.expect(state.afterGrants).toBe(1)
 		end)
@@ -67,26 +87,26 @@ return function(t: TestKit.TestKit)
 			for _ = 1, 3 do
 				t.expect(Purchases.process(receipt(111, "a"), deps)).toBe("granted")
 			end
-			t.expect(data.reviveTokens).toBe(1)
+			t.expect(total(data)).toBe(1)
 			t.expect(state.afterGrants).toBe(1)
 			-- A different purchase is a different grant.
 			t.expect(Purchases.process(receipt(222, "b"), deps)).toBe("granted")
-			t.expect(data.reviveTokens).toBe(2)
+			t.expect(total(data)).toBe(2)
 		end)
 
 		t.it("doesn't say granted until the data is saved, and doesn't grant twice when asked again", function()
 			local data = newData()
 			local state, deps = world(data, false)
 			t.expect(Purchases.process(receipt(111, "a"), deps)).toBe("notProcessedYet")
-			t.expect(data.reviveTokens).toBe(1)
+			t.expect(total(data)).toBe(1)
 			t.expect(state.afterGrants).toBe(0)
 
 			t.expect(Purchases.process(receipt(111, "a"), deps)).toBe("notProcessedYet") -- still unsaved
-			t.expect(data.reviveTokens).toBe(1)
+			t.expect(total(data)).toBe(1)
 
 			state.saves = true
 			t.expect(Purchases.process(receipt(111, "a"), deps)).toBe("granted")
-			t.expect(data.reviveTokens).toBe(1)
+			t.expect(total(data)).toBe(1)
 			-- The revive was already counted on the first try, so the second does not use it on a run.
 			t.expect(state.afterGrants).toBe(0)
 		end)
@@ -101,7 +121,7 @@ return function(t: TestKit.TestKit)
 			local data = newData()
 			local state, deps = world(data, true)
 			t.expect(Purchases.process(receipt(999, "a"), deps)).toBe("notProcessedYet")
-			t.expect(data.reviveTokens).toBe(0)
+			t.expect(total(data)).toBe(0)
 			t.expect(#state.warnings).toBe(1)
 		end)
 
@@ -114,7 +134,7 @@ return function(t: TestKit.TestKit)
 			t.expect(#data.purchaseIds).toBe(100)
 			t.expect(data.purchaseIds[1]).toBe("p6")
 			t.expect(data.purchaseIds[100]).toBe("p105")
-			t.expect(data.reviveTokens).toBe(105)
+			t.expect(total(data)).toBe(105)
 		end)
 	end)
 end

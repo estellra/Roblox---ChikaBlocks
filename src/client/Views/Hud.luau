@@ -140,7 +140,7 @@ local function newPanel(name: string, overlay: ScreenGui, children: { Instance }
 
 	-- Size the panel would have unscaled, against the room the overlay has. Setting the same scale again
 	-- changes nothing, so this settles after one adjustment.
-	local function fit()
+	local function apply()
 		local current = scale.Scale
 		local height = panel.AbsoluteSize.Y / current
 		local available = overlay.AbsoluteSize.Y - 2 * PANEL_MARGIN
@@ -148,6 +148,20 @@ local function newPanel(name: string, overlay: ScreenGui, children: { Instance }
 		if math.abs(fitted - current) > 0.001 then
 			scale.Scale = fitted
 		end
+	end
+
+	-- Called from size signals, which the scale change fires again: run once per burst, outside the handlers, or
+	-- the nested calls pile up past the engine's re-entrancy limit.
+	local pending = false
+	local function fit()
+		if pending then
+			return
+		end
+		pending = true
+		task.defer(function()
+			pending = false
+			apply()
+		end)
 	end
 	return panel, fit
 end

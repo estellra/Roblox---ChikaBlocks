@@ -11,7 +11,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Đã có giá và 3 product | ✅ Xong |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
 | **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | ✅ Xong (âm thanh để sau) |
-| **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
+| **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Bạn publish và mời người thử ([QA.md](QA.md)) | 🟡 Code đã rà và thử tải xong; chờ bạn publish và thử với người thật |
 
 ## M6: Server giữ quyền quyết định
 
@@ -253,6 +253,7 @@ Client                                              Server
 - **Analytics:** funnel `ReviveOffer` (1 Offered, 2 Requested, 3 Paid, 4 Revived; lượt đã mua không có bước 3), session id `runId.số lần đã hồi sinh`.
 - **Dữ liệu:** profile thêm `reviveTokens` và `purchaseIds` (version vẫn là 2, `Reconcile` tự điền mặc định). `Config.REVIVE_PRODUCTS` giữ ba ID, `MAX_REVIVES_PER_RUN` là `math.huge`.
 - **Debug (chỉ Studio):** `fakepurchase [userId] [productId] [purchaseId]` đưa biên lai giả vào đúng hàm xử lý thật; `data` hiện `reviveTokens` và số giao dịch đã nhớ; `resetdata` xoá cả hai.
+- **Cập nhật ở M11:** lượt đã mua nay gắn với mức giá của product (dữ liệu version 3, xem mục M11). Mô tả `version vẫn là 2` ở dòng "Dữ liệu" phía trên là của lúc làm M8.
 - **137 test pass** (thêm 13: `Purchases` 7, hồi sinh và `endsRun` trong `GameRuns` 3, `PlayerData` 2, funnel trong `Telemetry` 1; cập nhật test `GameSession` vì không còn giới hạn).
 
 | Kiểm tra trong Studio | Kết quả |
@@ -436,3 +437,42 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 
 - **Để lại sau:** âm thanh (hiệu ứng và nhạc, kèm nút Âm thanh và panel Cài đặt), 8 linh vật và theme cosmetic (GĐ4), bản icon trắng cho theme tối.
 - **Khác mockup:** ô đích dùng viền liền thay nét đứt; pill level, nút "?" và Leaderboard dạng thẻ là phần mình bổ sung.
+
+## M11: Publish thử và QA
+
+Mình chưa publish được (cần Studio và tài khoản của bạn), nên M11 gồm hai phần: **rà soát code và thử tải trong Studio** (đã xong) và **bộ tài liệu để bạn publish và mời người thử** ([QA.md](QA.md)).
+
+### Rà soát code (theo checklist `roblox-code-review`)
+
+| Mức | Phát hiện | Xử lý |
+|---|---|---|
+| **Cao** | Lượt hồi sinh đã mua không phân biệt mức giá: mua 1 lượt 10 R$ có thể dùng cho lần hồi sinh thứ hai hoặc ba (đáng ra 15 và 25 R$) | `reviveTokens` thành ba ô theo mức giá `{10, 15, 25}`. Một lượt chỉ dùng cho lần hồi sinh có mức ≤ mức đã mua (dùng mức thấp nhất đủ dùng trước). Dữ liệu **version 3**: `MIGRATIONS[2]` đổi số cũ thành `{0, 0, n}` (lượt cũ được xem là mức cao nhất, nên không ai bị mất) |
+| **Trung bình** | Máy chủ đóng lúc còn ghi bảng xếp hạng dở dang thì mất bản ghi | `LeaderboardService`: đếm `writesInFlight`, `game:BindToClose` flush mọi người rồi chờ tối đa 20 giây |
+| **Trung bình** | Nút Revive có thể kẹt ở "Please wait…" nếu server không trả lời | Client tự gỡ sau 20 giây (`requestRevive`) |
+| **Trung bình** | Chơi ván ngắn liên tục: mỗi ván ghi 4 đến 6 bảng, vượt ngân sách ghi của OrderedDataStore (Studio báo "request was added to queue" khi chạy 25 ván trong 40 giây) | Flush cuối ván giãn tối thiểu 20 giây mỗi người (`flush(player, data, minGap)`). Vòng làm mới 60 giây, `PlayerRemoving` và `BindToClose` vẫn flush đủ nên không mất dữ liệu |
+| **Thấp** | `Maximum event re-entrancy depth exceeded for AbsoluteSizeChanged` trong `Hud.fit` thỉnh thoảng xuất hiện khi mở và đóng nhiều panel nhanh | `fit` gộp thành một lượt `task.defer`, không chạy lồng trong tín hiệu kích thước. Chạy 25 ván liên tục không còn lỗi |
+
+Những điểm đã kiểm và **không cần sửa**: mọi remote đều kiểm kiểu và giới hạn tần suất; mã debug chỉ chạy trong Studio; các bảng theo người chơi đều dọn khi rời game; ProfileStore khoá phiên và kick người chơi nếu tải dữ liệu thất bại (không ghi đè bằng dữ liệu mặc định); tên trên bảng xếp hạng là display name của Roblox (đã lọc phía Roblox); cache `names` nhỏ và chỉ giữ tới hết đời server.
+
+### Thử trong Studio
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Lượt 10 R$ ở lần hồi sinh thứ hai (cần 15 R$) | Nút vẫn hiện "Revive · R$ 15", lượt **không** bị dùng |
+| Mua thêm lượt 15 R$ | Hiện "Revive · Free", "You have 1" (chỉ đếm lượt dùng được cho lần này). Hồi sinh dùng lượt 15 R$, giữ nguyên lượt 10 R$ (`reviveTokens=1/0/0`) |
+| Hơn 80 ván liên tiếp (năm đợt) kèm hồi sinh | Không có lỗi hay cảnh báo từ game. Số phần tử GUI (khoảng 1.540), heap Lua (khoảng 2,3 đến 2,7 MB), kết nối kéo, hiệu ứng, popup đều **ổn định**, không rò rỉ |
+| Mạng chậm (Network Simulator, độ trễ nhận 0,6 giây) | 4 ván liên tiếp rồi game over và hồi sinh: client và server **khớp** (`run=4 score=55 moves=11`, cùng khay), không có cảnh báo "resynced" |
+| Bảng xếp hạng sau 25 ván nhanh | Cả bốn bảng đúng, không còn cảnh báo hàng đợi DataStore |
+| Output | Chỉ còn cảnh báo `ContentId rbxassetid://203785492` do Studio (đã ghi từ GĐ1, không phải code game) |
+
+- **141 test pass** (thêm 4 test cho token theo mức giá và migration của `Purchases` và `PlayerData`). `stylua`, `selene`, `rojo build` đều sạch.
+
+### Chưa làm được, cần bạn
+
+- **Giao dịch Robux thật** trên bản đã publish (mua 10 R$, huỷ giữa chừng, thoát ngay sau khi mua). Có sẵn trong QA.md, mục 2.
+- **Phép thử "người mới hiểu trong 15 giây"** với người thật, và thử trên điện thoại thật. Hướng dẫn gửi tester ở QA.md, mục 3.
+- **Mạng chậm thật** (3G, Wi-Fi yếu): Network Simulator trong Studio chỉ mô phỏng độ trễ nhận, không mô phỏng mất gói.
+- **Giá hiển thị:** Roblox có thể hiện giá theo vùng trong hộp mua khác với giá cơ bản trên nút.
+- **Hạng của chính người chơi** nằm ngoài top 50: `OrderedDataStore` không cho biết, giao diện chỉ hiện top 50 và điểm của bạn.
+- Chín **badge ID** (M13) vẫn chờ bạn tạo.
+- Bảng xếp hạng **nhiều người chơi** và bảng tuần mới được thử với một người.

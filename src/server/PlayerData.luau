@@ -14,7 +14,7 @@ export type PlayerData = {
 	badgesAwarded: { [string]: boolean }, -- milestone id -> true once its badge is awarded
 	-- This week's best score and EXP for the weekly leaderboards; reset when the week changes (see Leaderboards).
 	weekly: { week: string, bestScore: number, exp: number },
-	reviveTokens: number, -- paid revives not used yet (see Purchases)
+	reviveTokens: { number }, -- paid revives not used yet, counted per price tier 1..3 (see Purchases)
 	purchaseIds: { string }, -- receipts already handled, the latest 100, newest last
 }
 
@@ -33,6 +33,12 @@ local MIGRATIONS: { (data: { [string]: any }) -> () } = {
 		end
 	end,
 }
+-- v2 -> v3: paid revives are counted per price tier. Before, one number counted them all; those go to the
+-- highest tier, which can be used for any revive.
+MIGRATIONS[2] = function(data)
+	local old = data.reviveTokens
+	data.reviveTokens = { 0, 0, if type(old) == "number" then old else 0 }
+end
 local CURRENT_VERSION = #MIGRATIONS + 1
 
 local MAX_REMEMBERED_PURCHASES = 100
@@ -54,7 +60,7 @@ PlayerData.TEMPLATE = table.freeze({
 	milestonesClaimed = table.freeze({}),
 	badgesAwarded = table.freeze({}),
 	weekly = table.freeze({ week = "", bestScore = 0, exp = 0 }),
-	reviveTokens = 0,
+	reviveTokens = table.freeze({ 0, 0, 0 }),
 	purchaseIds = table.freeze({}),
 })
 
@@ -105,17 +111,32 @@ function PlayerData.rememberPurchase(data: PlayerData, purchaseId: string)
 	end
 end
 
-function PlayerData.addReviveToken(data: PlayerData)
-	data.reviveTokens += 1
+-- Adds a revive bought at price tier `tier` (1 is the cheapest product).
+function PlayerData.addReviveToken(data: PlayerData, tier: number)
+	data.reviveTokens[tier] = (data.reviveTokens[tier] or 0) + 1
 end
 
--- Spends one paid revive; false when there is none.
-function PlayerData.useReviveToken(data: PlayerData): boolean
-	if data.reviveTokens <= 0 then
-		return false
+-- How many paid revives can be used for a revive that costs tier `required`: those bought at that tier or a
+-- higher one. A cheaper revive can't be used for a dearer one, or buying the cheapest product again and again
+-- would get every revive at its price.
+function PlayerData.reviveTokenCount(data: PlayerData, required: number): number
+	local count = 0
+	for tier = required, #data.reviveTokens do
+		count += data.reviveTokens[tier]
 	end
-	data.reviveTokens -= 1
-	return true
+	return count
+end
+
+-- Spends a paid revive for a revive that costs tier `required`: the lowest tier that is allowed. False when
+-- there is none.
+function PlayerData.useReviveToken(data: PlayerData, required: number): boolean
+	for tier = required, #data.reviveTokens do
+		if data.reviveTokens[tier] > 0 then
+			data.reviveTokens[tier] -= 1
+			return true
+		end
+	end
+	return false
 end
 
 return PlayerData

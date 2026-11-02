@@ -43,6 +43,7 @@ type RunState = { runId: number, mode: RunMode, best: number, session: GameSessi
 type Prediction = { score: number, isOver: boolean }
 
 local IS_STUDIO = RunService:IsStudio()
+local REVIVE_WAIT_SECONDS = 20 -- how long Revive shows "Please wait…" without an answer
 local START_RETRY_SECONDS = 3 -- ask again if the server hasn't answered StartGame by then
 local CONFIRM_TIMEOUT_SECONDS = 2 -- ask for the full state if a move is still unconfirmed by then
 
@@ -54,6 +55,7 @@ local runMode: RunMode = "normal"
 local views: Views? = nil
 local profile: Profile? = nil
 local runRewards: RunRewards? = nil -- what the current run earned, once it is over and the server said
+local reviveWaitToken = 0 -- identifies the latest Revive press, for its timeout
 local reviveOffer: { runId: number, tokens: number, price: number? }? = nil -- what the server offered after game over
 local best = 0
 local bestBeforeRun = 0 -- best when the current run started, to tell a new best apart
@@ -312,6 +314,15 @@ function GameController.requestRevive()
 	end
 	views.hud:setReviveBusy(true)
 	Net.RequestRevive:FireServer(runId)
+	-- The server answers a refused request, but not one that got lost; the button comes back after a while. (If
+	-- the purchase prompt is open, pressing it again is ignored there.)
+	reviveWaitToken += 1
+	local token = reviveWaitToken
+	task.delay(REVIVE_WAIT_SECONDS, function()
+		if token == reviveWaitToken then
+			applyReviveOffer()
+		end
+	end)
 end
 
 -- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.
