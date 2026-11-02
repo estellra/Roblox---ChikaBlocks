@@ -110,7 +110,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 - [x] Server validate nước đi và tính điểm (như mục 2). Chi tiết: [PHASE2.md](PHASE2.md).
 - [x] Lưu highscore bằng ProfileStore.
 - [ ] Hồi sinh bằng Developer Product, xử lý `ProcessReceipt` an toàn khi bị gọi lặp.
-- [ ] UI theme pastel, menu chính, màn Game Over, popup linh vật, SFX và VFX cơ bản.
+- [x] UI theme pastel, menu chính, màn Game Over, popup linh vật (M10, theo mockup Figma). SFX và nhạc để các giai đoạn sau.
 - [x] Tutorial lần đầu chơi. Hỗ trợ gamepad và bàn phím (M9).
 - **Xong khi:** đạt ≥95% số lần test không lỗi, người mới hiểu cách chơi trong 15 giây, kéo thả không thấy trễ.
 - → Publish bản test (friends/private) rồi public.

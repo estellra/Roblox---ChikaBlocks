@@ -10,7 +10,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a–d xong; còn M10e |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | ✅ Xong (âm thanh để sau) |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -259,7 +259,7 @@ Mockup **chưa có**: màn Leaderboard, màn Pause, màn Cài đặt, thanh EXP 
 | M10b ✅ | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang), panel Pause | Icon pause, crown |
 | M10c ✅ | Menu, Game Over (có EXP, Revive ẩn) | Mascot |
 | M10d ✅ | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
-| M10e | Leaderboard và Cài đặt theo cùng phong cách, âm thanh (nếu chốt AH) | Icon trophy, close, sound |
+| M10e ✅ | Leaderboard theo cùng phong cách (Cài đặt và âm thanh để sau) | Icon trophy, close |
 
 Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test hiện có phải còn nguyên), ảnh chụp đối chiếu Figma và một commit, giống các mốc trước.
 
@@ -317,3 +317,27 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 - **Lỗi phát hiện và đã sửa:** `UIStroke` đặt dưới `TextButton` mặc định viền cả chữ (`Contextual`), làm nút Skip trông không có viền và chữ bị béo; đã đặt `ApplyStrokeMode = Border`.
 - **Kiểm tra trong Studio:** PC (1280×720), iPhone 17 Pro dọc và ngang. Đã làm đủ luồng: tutorial hiện đúng, kéo chuột vào ô đích (xóa hàng, thẻ "Nice!", thanh điểm quay lại), bấm Skip thật (`tutorialDone=true`, sự kiện ghi đúng một lần), popup combo thật khi bot chơi. Output không có lỗi. 124 test pass (thêm 1 test cho `Telemetry`).
 - **Chưa làm:** Leaderboard theo phong cách mới và tinh chỉnh chung (M10e).
+
+### Kết quả M10e
+
+- **Leaderboard** (`LeaderboardView.luau` viết lại; mockup chưa có màn này nên mình tự thiết kế theo cùng phong cách, bạn xem và góp ý nếu muốn đổi):
+  - Một thẻ kem có viền nâu trên nền trời: biểu tượng cúp và tiêu đề "Leaderboard", nút tròn **X** ở góc trên phải (icon đã xuất), 4 tab clay (All time / This week, Highscore / Level), danh sách, pill "Your best" có vương miện ở cuối.
+  - **Huy chương** cho hạng 1, 2, 3 (vàng, bạc, đồng, có viền nâu); các dòng khác xen kẽ nền nhạt. **Dòng của chính bạn nổi lên màu vàng** nhờ `userId` được thêm vào mỗi dòng (server gửi kèm, không cần so tên). Số có dấu phẩy.
+  - Màn thấp (điện thoại ngang): bỏ tiêu đề, 4 tab nằm chung một hàng cạnh nút X, nên thấy được nhiều dòng hơn. Đóng bằng nút X, Escape, Backspace hoặc nút B tay cầm.
+  - Nút Back ở cuối được thay bằng nút X để nhường chỗ cho danh sách.
+- **Theme:** thêm `MedalSilver`, `MedalBronze` (hạng nhất dùng vàng của `Reward`).
+- **Kiểm tra trong Studio:** iPhone 17 Pro ngang và dọc, với bảng giả gồm 8 và 12 người (có dòng của người chơi ở hạng 4); đã bấm nút X thật, về lại menu. Output không có lỗi. 124 test pass.
+- **Lỗi phát hiện và đã sửa:** nút X lúc đầu nằm trong bố cục danh sách (xuất hiện ở giữa phía trên) vì `UIListLayout` xếp mọi con trực tiếp; đã tách nội dung vào một khung riêng.
+
+### Tổng kết M10
+
+| Bước | Kết quả |
+|---|---|
+| M10a | Theme, font, nút clay, nền trời, 13 ảnh đã tải lên Roblox |
+| M10b | Màn chơi: khối bóng, bảng, khay, HUD, panel Pause |
+| M10c | Menu và Game Over (Revive dựng sẵn, ẩn đến khi có M8) |
+| M10d | Tutorial (thẻ, mũi tên chấm, bàn tay, Skip) và popup combo |
+| M10e | Leaderboard |
+
+- **Để lại sau:** âm thanh (hiệu ứng và nhạc, kèm nút Âm thanh và panel Cài đặt), 8 linh vật và theme cosmetic (GĐ4), bản icon trắng cho theme tối.
+- **Khác mockup:** ô đích dùng viền liền thay nét đứt; pill level, nút "?" và Leaderboard dạng thẻ là phần mình bổ sung.

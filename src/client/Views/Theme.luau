@@ -29,6 +29,8 @@ export type Theme = {
 		Reward: Color3, -- gold: revive, combo
 		RewardShadow: Color3,
 		RewardText: Color3,
+		MedalSilver: Color3, -- second place on the leaderboard (first is Reward gold)
+		MedalBronze: Color3,
 		Selection: Color3, -- outline of the tray slot chosen with keyboard or gamepad
 		Hand: Color3, -- tutorial hint pointer
 		Gain: Color3, -- floating "+points" text
@@ -134,6 +136,8 @@ local Theme: Theme = {
 		Reward = Color3.fromHex("#ffd36e"),
 		RewardShadow = Color3.fromHex("#e0a93a"),
 		RewardText = Color3.fromHex("#4e3d4a"),
+		MedalSilver = Color3.fromHex("#cfd8e3"),
+		MedalBronze = Color3.fromHex("#e8956a"),
 		Selection = Color3.fromHex("#ffd36e"),
 		Hand = Color3.fromHex("#ffffff"),
 		Gain = Color3.fromHex("#4e3d4a"),

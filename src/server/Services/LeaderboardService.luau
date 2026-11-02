@@ -20,7 +20,7 @@ local RateLimiter = require("../Util/RateLimiter")
 local IS_STUDIO = RunService:IsStudio()
 local REFRESH_SECONDS = 60
 
-export type Entry = { rank: number, name: string, title: string?, value: number }
+export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
 
 -- What a client receives: the boards by key ("Highscore_all", ...) and the player's own values.
 export type Snapshot = {
@@ -144,6 +144,7 @@ function LeaderboardService.refresh()
 			local stat, titleIndex = Leaderboards.decode(item.value)
 			entries[rank] = {
 				rank = rank,
+				userId = item.userId,
 				name = names[item.userId] or "Player",
 				title = titleFor(titleIndex),
 				value = stat,

@@ -1,18 +1,22 @@
 --!strict
--- Leaderboard screen over the menu: All time / This week and Highscore / Level tabs, the top entries with
--- each player's title, and the player's own value. A gray-box placeholder until the mockups arrive; it only
--- draws what LeaderboardController hands it.
--- Back works by click/tap, Escape or Backspace, and the gamepad B button.
+-- Leaderboard screen over the menu, in the same style as the other screens: a cream card on the sky with the
+-- trophy, the All time / This week and Highscore / Level tabs, the top entries (medals for the first three,
+-- each player's title, the player's own row picked out in gold) and the player's own value. It only draws
+-- what LeaderboardController hands it.
+-- Closing works by the X button, Escape or Backspace, and the gamepad B button.
 local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local Clay = require("./Clay")
+local Format = require("./Format")
 local Theme = require("./Theme")
 local create = require("./Create")
 
 local MAX_ROWS = 50
-local ROW_HEIGHT = 44
+local ROW_HEIGHT = 48
 local TAB_HEIGHT = 44 + Theme.Spacing.ButtonLip -- the face meets the minimum touch size; the lip comes on top
+local CLOSE_SIZE = 44
 local COMPACT_HEIGHT = 480 -- below this (phones held sideways) the heading goes and the tabs share one row
 local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Escape] = true,
@@ -22,14 +26,14 @@ local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 
 export type Period = "all" | "week"
 export type Board = "Highscore" | "Level"
-export type Entry = { rank: number, name: string, title: string?, value: number }
+export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number,
 	you: { best: number, level: number, weekBest: number, weekExp: number },
 }
 
-type Row = { frame: Frame, rank: TextLabel, name: TextLabel, title: TextLabel, value: TextLabel }
+type Row = { frame: Frame, medal: Frame, rank: TextLabel, name: TextLabel, title: TextLabel, value: TextLabel }
 
 local LeaderboardView = {}
 LeaderboardView.__index = LeaderboardView
@@ -38,12 +42,13 @@ export type LeaderboardView = typeof(setmetatable(
 	{} :: {
 		backdrop: ScreenGui,
 		gui: ScreenGui,
-		heading: TextLabel,
+		header: Frame,
+		tabArea: Frame,
 		tabs: { [string]: Frame }, -- "all", "week", "Highscore", "Level" (Clay buttons)
 		rows: { Row },
 		list: ScrollingFrame,
 		status: TextLabel,
-		you: TextLabel,
+		youPill: Frame,
 		closeButton: TextButton,
 		period: Period,
 		board: Board,
@@ -85,28 +90,60 @@ local function tabButton(name: string, label: string, order: number): Frame
 		style = "secondary",
 		order = order,
 		size = UDim2.new(0.5, -4, 0, TAB_HEIGHT),
+		textSize = Theme.TextSize.Label,
 	})
 end
 
+-- The color of the medal behind a rank: gold, silver, bronze, or nothing.
+local function medalColor(rank: number): Color3?
+	if rank == 1 then
+		return Theme.Colors.Reward
+	elseif rank == 2 then
+		return Theme.Colors.MedalSilver
+	elseif rank == 3 then
+		return Theme.Colors.MedalBronze
+	end
+	return nil
+end
+
 local function newRow(index: number): Row
-	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
-	local rank = text("Rank", "", fonts.Title, sizes.Label, colors.TextMuted, {
-		Size = UDim2.new(0, 36, 1, 0),
+	local colors, fonts = Theme.Colors, Theme.Fonts
+	local rank = text("Rank", "", fonts.Title, 16, colors.Text, {
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+	})
+	local medal = create("Frame", {
+		Name = "Medal",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 6, 0.5, 0),
+		Size = UDim2.fromOffset(32, 32),
+		BackgroundColor3 = colors.Reward,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, {
+		create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		create("UIStroke", {
+			Color = colors.Outline,
+			Thickness = Theme.Stroke.Pill,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Enabled = false,
+		}),
+		rank,
+	})
+	local name = text("Name", "", fonts.Label, 16, colors.Text, {
+		Position = UDim2.fromOffset(48, 4),
+		Size = UDim2.new(1, -150, 0.5, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	local name = text("Name", "", fonts.Title, sizes.Label, colors.Text, {
-		Position = UDim2.fromOffset(40, 2),
-		Size = UDim2.new(1, -140, 0.55, 0),
+	local title = text("Title", "", fonts.Body, 12, colors.Title, {
+		Position = UDim2.new(0, 48, 0.5, 0),
+		Size = UDim2.new(1, -150, 0.4, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	local title = text("Title", "", fonts.Body, sizes.Label - 3, colors.Title, {
-		Position = UDim2.new(0, 40, 0.55, 0),
-		Size = UDim2.new(1, -140, 0.4, 0),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	local value = text("Value", "", fonts.Title, sizes.Label, colors.Text, {
+	local value = text("Value", "", fonts.Title, 20, colors.Text, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 0),
+		Position = UDim2.new(1, -10, 0, 0),
 		Size = UDim2.new(0, 96, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
@@ -114,33 +151,30 @@ local function newRow(index: number): Row
 		Name = `Row{index}`,
 		LayoutOrder = index,
 		Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
-		BackgroundColor3 = colors.Board,
+		BackgroundColor3 = colors.CellEmpty,
 		BackgroundTransparency = if index % 2 == 0 then 1 else 0,
 		BorderSizePixel = 0,
 		Visible = false,
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
-		rank,
+		medal,
 		name,
 		title,
 		value,
 	})
-	return { frame = frame, rank = rank, name = name, title = title, value = value }
+	return { frame = frame, medal = medal, rank = rank, name = name, title = title, value = value }
 end
 
 function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): LeaderboardView
-	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
+	local colors, fonts = Theme.Colors, Theme.Fonts
 
-	-- Opaque full-screen background over the menu; the content sits in the safe area above it.
+	-- Opaque full-screen sky over the menu; the card sits in the safe area above it.
 	local backdrop = create("ScreenGui", {
 		Name = "LeaderboardBackdrop",
 		DisplayOrder = 12,
 		ResetOnSpawn = false,
 		Enabled = false,
-	}, {
-		Clay.sky("Fill", true),
-	})
+	}, { Clay.sky("Fill", true) })
 	backdrop.IgnoreGuiInset = true
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
 
@@ -158,6 +192,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 	}, {
+		create("UIPadding", { PaddingRight = UDim.new(0, 0) }),
 		create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -170,18 +205,36 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		tabs.Highscore,
 		tabs.Level,
 	})
-	local heading = text("Heading", "Leaderboard", fonts.Title, sizes.Title, colors.Text, {
+
+	local header = create("Frame", {
+		Name = "Header",
 		LayoutOrder = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundTransparency = 1,
+	}, {
+		create("ImageLabel", {
+			Name = "Trophy",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.fromOffset(36, 36),
+			BackgroundTransparency = 1,
+			Image = Theme.Images.Trophy,
+		}),
+		text("Heading", "Leaderboard", fonts.Title, Theme.TextSize.Title, colors.Text, {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 46, 0.5, 0),
+			Size = UDim2.new(1, -110, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}),
 	})
+
 	local rows = table.create(MAX_ROWS)
 	for i = 1, MAX_ROWS do
 		rows[i] = newRow(i)
 	end
 	local list = create("ScrollingFrame", {
 		Name = "List",
-		LayoutOrder = 4,
+		LayoutOrder = 3,
 		Size = UDim2.fromScale(1, 0),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -198,25 +251,69 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	for _, row in rows do
 		row.frame.Parent = list
 	end
-	local status = text("Status", "", fonts.Body, sizes.Label, colors.TextMuted, {
-		LayoutOrder = 5,
+	local status = text("Status", "", fonts.Body, Theme.TextSize.Label, colors.TextMuted, {
+		LayoutOrder = 4,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
 		TextTruncate = Enum.TextTruncate.None,
 	})
-	local you = text("You", "", fonts.Title, sizes.Label, colors.Text, {
-		LayoutOrder = 6,
-		Size = UDim2.new(1, 0, 0, 24),
+	local youPill = Clay.pill({ name = "You", text = "", icon = Theme.Images.Crown, order = 1 })
+	local youRow = create("Frame", {
+		Name = "You",
+		LayoutOrder = 5,
+		Size = UDim2.new(1, 0, 0, 34),
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+		youPill,
 	})
-	local closeRoot = Clay.button({
-		name = "Back",
-		text = "Back",
-		style = "secondary",
-		order = 7,
-		size = UDim2.new(1, 0, 0, 48 + Theme.Spacing.ButtonLip),
+
+	local closeButton = Clay.iconButton({ name = "Close", image = Theme.Images.Close })
+	closeButton.AnchorPoint = Vector2.new(1, 0)
+	closeButton.Position = UDim2.new(1, -10, 0, 10)
+	closeButton.Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE)
+	closeButton.ZIndex = 5
+
+	local card = create("Frame", {
+		Name = "Card",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0.94, 0, 1, -16),
+		BackgroundColor3 = colors.Panel,
+		BorderSizePixel = 0,
+	}, {
+		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
+		create("UIStroke", { Color = colors.Outline, Thickness = Theme.Stroke.Panel }),
+		create("UISizeConstraint", { MaxSize = Vector2.new(520, math.huge) }),
+		create("Frame", {
+			Name = "Body",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+		}, {
+			create("UIPadding", {
+				PaddingTop = UDim.new(0, 12),
+				PaddingBottom = UDim.new(0, 12),
+				PaddingLeft = UDim.new(0, 16),
+				PaddingRight = UDim.new(0, 16),
+			}),
+			create("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				Padding = UDim.new(0, 8),
+			}),
+			header,
+			tabArea,
+			list,
+			status,
+			youRow,
+		}),
+		closeButton, -- on top of the body, outside its layout
 	})
-	local closeButton = Clay.face(closeRoot)
 	local gui = create("ScreenGui", {
 		Name = "Leaderboard",
 		DisplayOrder = 13,
@@ -225,38 +322,18 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		SafeAreaCompatibility = Enum.SafeAreaCompatibility.None,
 		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 		Enabled = false,
-	}, {
-		create("Frame", {
-			Name = "Column",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(0.92, 0, 1, -16),
-			BackgroundTransparency = 1,
-		}, {
-			create("UISizeConstraint", { MaxSize = Vector2.new(520, math.huge) }),
-			create("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				Padding = UDim.new(0, 8),
-			}),
-			heading,
-			tabArea,
-			list,
-			status,
-			you,
-			closeRoot,
-		}),
-	})
+	}, { card })
 
 	local self = setmetatable({
 		backdrop = backdrop,
 		gui = gui,
-		heading = heading,
+		header = header,
+		tabArea = tabArea,
 		tabs = tabs,
 		rows = rows,
 		list = list,
 		status = status,
-		you = you,
+		youPill = youPill,
 		closeButton = closeButton,
 		period = "all" :: Period,
 		board = "Highscore" :: Board,
@@ -311,11 +388,13 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	return self
 end
 
--- Fits the screen: on short screens the heading goes and the four tabs share one row, so more of the
--- list shows.
+-- Fits the screen: on short screens the heading goes and the four tabs share one row beside the close button,
+-- so more of the list shows.
 function LeaderboardView.layout(self: LeaderboardView)
 	local compact = self.gui.AbsoluteSize.Y > 0 and self.gui.AbsoluteSize.Y < COMPACT_HEIGHT
-	self.heading.Visible = not compact
+	self.header.Visible = not compact
+	local padding = self.tabArea:FindFirstChildOfClass("UIPadding") :: UIPadding
+	padding.PaddingRight = UDim.new(0, if compact then CLOSE_SIZE + 10 else 0)
 	local size = if compact then UDim2.new(0.25, -6, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
 	for _, button in self.tabs do
 		button.Size = size
@@ -324,9 +403,9 @@ end
 
 local function formatValue(board: Board, period: Period, value: number): string
 	if board == "Level" then
-		return if period == "week" then `{value} EXP` else `Lv {value}`
+		return if period == "week" then `{Format.withCommas(value)} EXP` else `Lv {value}`
 	end
-	return tostring(value)
+	return Format.withCommas(value)
 end
 
 -- Draws the chosen board from the last snapshot (or "Loading…" before one arrives).
@@ -338,21 +417,33 @@ function LeaderboardView.render(self: LeaderboardView)
 
 	local snapshot = self.snapshot
 	local entries = if snapshot then snapshot.boards[`{self.board}_{self.period}`] else nil
+	local me = Players.LocalPlayer.UserId
 	for i, row in self.rows do
 		local entry = entries and entries[i]
 		row.frame.Visible = entry ~= nil
 		if entry then
-			row.rank.Text = `#{entry.rank}`
+			local medal = medalColor(entry.rank)
+			row.medal.BackgroundTransparency = if medal then 0 else 1
+			(row.medal:FindFirstChildOfClass("UIStroke") :: UIStroke).Enabled = medal ~= nil
+			if medal then
+				row.medal.BackgroundColor3 = medal
+			end
+			row.rank.Text = tostring(entry.rank)
 			row.name.Text = entry.name
 			row.title.Text = entry.title or ""
 			row.value.Text = formatValue(self.board, self.period, entry.value)
+			-- The player's own row stands out in gold; the others alternate pale stripes.
+			local isMe = entry.userId == me
+			row.frame.BackgroundColor3 = if isMe then Theme.Colors.Reward else Theme.Colors.CellEmpty
+			row.frame.BackgroundTransparency = if isMe then 0.35 elseif i % 2 == 0 then 1 else 0
 		end
 	end
 
+	local youLabel = Clay.pillLabel(self.youPill)
 	if not snapshot then
 		self.status.Text = "Loading…"
 		self.status.Visible = true
-		self.you.Text = ""
+		youLabel.Text = "—"
 		return
 	end
 	-- The status line only takes room when the list has nothing to show.
@@ -361,9 +452,13 @@ function LeaderboardView.render(self: LeaderboardView)
 	self.status.Visible = empty
 	local you = snapshot.you
 	if self.board == "Highscore" then
-		self.you.Text = if self.period == "week" then `Your best this week: {you.weekBest}` else `Your best: {you.best}`
+		youLabel.Text = if self.period == "week"
+			then `Your best this week: {Format.withCommas(you.weekBest)}`
+			else `Your best: {Format.withCommas(you.best)}`
 	else
-		self.you.Text = if self.period == "week" then `Your EXP this week: {you.weekExp}` else `Your level: {you.level}`
+		youLabel.Text = if self.period == "week"
+			then `Your EXP this week: {Format.withCommas(you.weekExp)}`
+			else `Your level: {you.level}`
 	end
 end
 
@@ -407,10 +502,11 @@ end
 
 -- For the Studio debug bridge: the visible rows as "rank name [title] value" lines.
 function LeaderboardView.describe(self: LeaderboardView): string
-	local lines = { `{self.board}_{self.period} status="{self.status.Text}" you="{self.you.Text}"` }
+	local label = Clay.pillLabel(self.youPill).Text
+	local lines = { `{self.board}_{self.period} status="{self.status.Text}" you="{label}"` }
 	for _, row in self.rows do
 		if row.frame.Visible then
-			table.insert(lines, `{row.rank.Text} {row.name.Text} [{row.title.Text}] {row.value.Text}`)
+			table.insert(lines, `#{row.rank.Text} {row.name.Text} [{row.title.Text}] {row.value.Text}`)
 		end
 	end
 	return table.concat(lines, "\n")
