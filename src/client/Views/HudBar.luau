@@ -3,6 +3,7 @@
 -- side column; in portrait it floats on the sky across the top. All sizes are shares of the HUD area, so it
 -- keeps its proportions on any screen.
 local Clay = require("./Clay")
+local Format = require("./Format")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -27,13 +28,6 @@ export type HudBar = typeof(setmetatable(
 	},
 	HudBar
 ))
-
--- 1280 -> "1,280"
-local function withCommas(number: number): string
-	local digits = tostring(math.floor(number))
-	local grouped = string.reverse((string.gsub(string.reverse(digits), "(%d%d%d)", "%1,")))
-	return (string.gsub(grouped, "^,", ""))
-end
 
 function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 	local colors, fonts = Theme.Colors, Theme.Fonts
@@ -153,7 +147,7 @@ function HudBar.setLayout(self: HudBar, mode: Mode)
 end
 
 function HudBar.setScore(self: HudBar, score: number, best: number)
-	local scoreText, bestText = withCommas(score), withCommas(best)
+	local scoreText, bestText = Format.withCommas(score), Format.withCommas(best)
 	if self.scoreLabel.Text ~= scoreText then
 		self.scoreLabel.Text = scoreText
 	end

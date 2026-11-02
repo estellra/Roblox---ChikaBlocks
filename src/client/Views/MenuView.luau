@@ -1,11 +1,17 @@
 --!strict
--- Main menu: title, level and player title, saved best, Play, Leaderboard and How to play. A gray-box
--- look comes from the Figma mockups; the layout is revisited screen by screen in M10c.
+-- Main menu, as in the mockups: the two-line logo and the mascot, a Best pill and a level pill, Play and
+-- Leaderboard, a "?" button for How to play, and blocks floating on the sky behind. Landscape puts the logo
+-- and mascot beside the buttons; portrait stacks them.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
+local Pieces = require(ReplicatedStorage.Shared.Pieces)
 local Clay = require("./Clay")
+local Format = require("./Format")
+local PieceView = require("./PieceView")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -15,6 +21,16 @@ local PLAY_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Space] = true,
 }
 
+local LANDSCAPE_MIN_RATIO = 1.1 -- width / height of the safe area
+local DECOR_CELL = 26 -- pixels per cell of the floating blocks
+-- Floating blocks: piece, position (share of the screen), tilt in degrees.
+local DECOR = {
+	{ id = "L3_2", x = 0.12, y = 0.24, tilt = -8 },
+	{ id = "I3_H", x = 0.42, y = 0.19, tilt = 6 },
+	{ id = "T4_2", x = 0.87, y = 0.34, tilt = -10 },
+	{ id = "O2", x = 0.09, y = 0.93, tilt = 8 },
+}
+
 local MenuView = {}
 MenuView.__index = MenuView
 
@@ -22,11 +38,20 @@ export type MenuView = typeof(setmetatable(
 	{} :: {
 		backdrop: ScreenGui,
 		gui: ScreenGui,
-		levelLabel: TextLabel,
-		bestLabel: TextLabel,
+		content: Frame,
+		main: Frame,
+		heroLayout: UIListLayout,
+		logoLayout: UIListLayout,
+		logoTop: TextLabel,
+		logoBottom: TextLabel,
+		mascot: ImageLabel,
+		actions: Frame,
+		bestPill: Frame,
+		levelPill: Frame,
 		playButton: TextButton,
 		leaderboardButton: TextButton,
-		howToButton: TextButton,
+		helpButton: TextButton,
+		floaters: { Tween },
 		ready: boolean, -- false until the saved profile has arrived
 		onPlay: () -> (),
 		keyConnection: RBXScriptConnection?,
@@ -35,52 +60,187 @@ export type MenuView = typeof(setmetatable(
 	MenuView
 ))
 
-local function button(name: string, text: string, order: number, primary: boolean): Frame
-	return Clay.button({ name = name, text = text, order = order, style = if primary then "primary" else "secondary" })
+local function text(name: string, order: number, value: string, font: Font, size: number, color: Color3): TextLabel
+	return create("TextLabel", {
+		Name = name,
+		LayoutOrder = order,
+		Size = UDim2.fromScale(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		FontFace = font,
+		TextSize = size,
+		TextColor3 = color,
+		Text = value,
+	})
+end
+
+-- Blocks drifting up and down behind the menu; returns the tweens so they can be paused while it is closed.
+local function addFloaters(parent: GuiObject): { Tween }
+	local tweens = {}
+	for index, decor in DECOR do
+		local piece = Pieces.BY_ID[decor.id]
+		local frame = PieceView.build(piece)
+		frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		frame.Size = UDim2.fromOffset(piece.width * DECOR_CELL, piece.height * DECOR_CELL)
+		frame.Position = UDim2.fromScale(decor.x, decor.y)
+		frame.Rotation = decor.tilt
+		frame.Parent = parent
+		local info = TweenInfo.new(2.2 + index * 0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		local drift = TweenService:Create(frame, info, { Position = UDim2.new(decor.x, 0, decor.y, -10) })
+		table.insert(tweens, drift)
+	end
+	return tweens
 end
 
 function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () -> (), onHowToPlay: () -> ()): MenuView
-	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
+	local colors, fonts = Theme.Colors, Theme.Fonts
+	local lip = Theme.Spacing.ButtonLip
 
-	-- Opaque full-screen background under the notch and top bar; the content sits in the safe area above it.
+	-- Opaque full-screen sky under the notch and top bar; the content sits in the safe area above it.
+	local sky = Clay.sky("Fill", true) -- swallows clicks meant for the game underneath
 	local backdrop = create("ScreenGui", {
 		Name = "MenuBackdrop",
 		DisplayOrder = 10,
 		ResetOnSpawn = false,
 		Enabled = false,
-	}, {
-		Clay.sky("Fill", true), -- swallows clicks meant for the game underneath
-	})
+	}, { sky })
 	backdrop.IgnoreGuiInset = true
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
+	local floaters = addFloaters(sky)
 
-	local levelLabel = create("TextLabel", {
-		Name = "Level",
+	-- Logo: two lines of chunky text, the second pink with an outline, slightly overlapping the first.
+	local logoTop = text("Chika", 1, Theme.Text.LogoLines[1], fonts.Title, 72, colors.Text)
+	local logoBottom = text("Blocks", 2, Theme.Text.LogoLines[2], fonts.Title, 72, colors.Button)
+	create("UIStroke", {
+		Color = colors.Outline,
+		Thickness = 5,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = logoBottom,
+	})
+	local logoLayout = create("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+	})
+	local logo = create("Frame", {
+		Name = "Logo",
+		LayoutOrder = 1,
+		Size = UDim2.fromScale(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+	}, { logoLayout, logoTop, logoBottom })
+	local mascot = create("ImageLabel", {
+		Name = "Mascot",
 		LayoutOrder = 2,
+		Size = UDim2.fromOffset(160, 160),
+		BackgroundTransparency = 1,
+		Image = Theme.Images.MascotHappy,
+	})
+	local heroLayout = create("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 12),
+	})
+	local hero = create("Frame", {
+		Name = "Hero",
+		LayoutOrder = 1,
+		Size = UDim2.fromScale(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+	}, { heroLayout, logo, mascot })
+
+	-- Buttons side: the Best and level pills, Play, Leaderboard and the tagline.
+	local bestPill = Clay.pill({ name = "Best", text = "Best —", icon = Theme.Images.Crown, order = 1 })
+	local levelPill = Clay.pill({ name = "Level", text = "Lv 1", order = 2 })
+	Clay.pillLabel(levelPill).TextColor3 = colors.Title
+	local pills = create("Frame", {
+		Name = "Pills",
+		LayoutOrder = 1,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
-		FontFace = fonts.Title,
-		TextSize = sizes.Label + 2,
-		TextColor3 = colors.Title,
-		Text = "",
+	}, {
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Wraps = true,
+			Padding = UDim.new(0, 8),
+		}),
+		bestPill,
+		levelPill,
 	})
-	local bestLabel = create("TextLabel", {
-		Name = "Best",
-		LayoutOrder = 3,
+	local playRoot = Clay.button({
+		name = "Play",
+		text = "Loading…",
+		style = "primary",
+		order = 2,
+		size = UDim2.new(1, 0, 0, 72 + lip),
+		textSize = 30,
+	})
+	local leaderboardRoot = Clay.button({
+		name = "Leaderboard",
+		text = "Leaderboard",
+		style = "secondary",
+		order = 3,
+		size = UDim2.new(1, 0, 0, 60 + lip),
+	})
+	local tagline = create("TextLabel", {
+		Name = "Tagline",
+		LayoutOrder = 4,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		FontFace = fonts.Body,
-		TextSize = sizes.Label + 2,
+		TextSize = 14,
+		TextWrapped = true,
 		TextColor3 = colors.TextMuted,
-		Text = "Best —",
+		Text = "Drag blocks. Clear lines. Stay cozy.",
 	})
-	local playRoot = button("Play", "Loading…", 4, true)
-	local leaderboardRoot = button("Leaderboard", "Leaderboard", 5, false)
-	local howToRoot = button("HowToPlay", "How to play", 6, false)
-	local playButton, leaderboardButton, howToButton =
-		Clay.face(playRoot), Clay.face(leaderboardRoot), Clay.face(howToRoot)
+	local actions = create("Frame", {
+		Name = "Actions",
+		LayoutOrder = 2,
+		Size = UDim2.fromOffset(320, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 14),
+		}),
+		pills,
+		playRoot,
+		leaderboardRoot,
+		tagline,
+	})
+
+	local main = create("Frame", {
+		Name = "Main",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 24),
+		}),
+		hero,
+		actions,
+	})
+
+	local helpButton = Clay.iconButton({ name = "HowToPlay", text = "?" })
+	helpButton.AnchorPoint = Vector2.new(1, 0)
+	helpButton.Position = UDim2.new(1, -12, 0, 12)
+	local content = create("Frame", {
+		Name = "Content",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+	}, { main, helpButton })
 	local gui = create("ScreenGui", {
 		Name = "Menu",
 		DisplayOrder = 11,
@@ -89,49 +249,26 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 		SafeAreaCompatibility = Enum.SafeAreaCompatibility.None,
 		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 		Enabled = false,
-	}, {
-		create("Frame", {
-			Name = "Column",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(0.8, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1,
-		}, {
-			create("UISizeConstraint", { MaxSize = Vector2.new(420, math.huge) }),
-			create("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				Padding = UDim.new(0, 16),
-			}),
-			create("TextLabel", {
-				Name = "Title",
-				LayoutOrder = 1,
-				Size = UDim2.fromScale(1, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundTransparency = 1,
-				FontFace = fonts.Title,
-				TextSize = sizes.MenuTitle,
-				TextWrapped = true,
-				TextColor3 = colors.Text,
-				Text = Theme.Text.GameTitle,
-			}),
-			levelLabel,
-			bestLabel,
-			playRoot,
-			leaderboardRoot,
-			howToRoot,
-		}),
-	})
+	}, { content })
 
+	local playButton, leaderboardButton = Clay.face(playRoot), Clay.face(leaderboardRoot)
 	local self = setmetatable({
 		backdrop = backdrop,
 		gui = gui,
-		levelLabel = levelLabel,
-		bestLabel = bestLabel,
+		content = content,
+		main = main,
+		heroLayout = heroLayout,
+		logoLayout = logoLayout,
+		logoTop = logoTop,
+		logoBottom = logoBottom,
+		mascot = mascot,
+		actions = actions,
+		bestPill = bestPill,
+		levelPill = levelPill,
 		playButton = playButton,
 		leaderboardButton = leaderboardButton,
-		howToButton = howToButton,
+		helpButton = helpButton,
+		floaters = floaters,
 		ready = false,
 		onPlay = onPlay,
 		keyConnection = nil,
@@ -155,29 +292,68 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 	)
 	table.insert(
 		self.connections,
-		howToButton.Activated:Connect(function()
+		helpButton.Activated:Connect(function()
 			if self.ready then
 				onHowToPlay()
 			end
 		end)
 	)
+	table.insert(
+		self.connections,
+		content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			self:layout()
+		end)
+	)
 
 	backdrop.Parent = playerGui
 	gui.Parent = playerGui
+	self:layout()
 	return self
+end
+
+-- Sizes the logo, mascot and button column for the screen: beside each other in landscape, stacked in portrait.
+function MenuView.layout(self: MenuView)
+	local size = self.content.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then
+		return
+	end
+	local landscape = size.X / size.Y >= LANDSCAPE_MIN_RATIO
+	local logoSize, mascotSize, actionsWidth, gap
+	if landscape then
+		logoSize = math.clamp(size.Y * 0.17, 34, 96)
+		mascotSize = math.clamp(size.Y * 0.28, 72, 200)
+		actionsWidth = math.clamp(size.X * 0.34, 240, 380)
+		gap = size.X * 0.06
+	else
+		logoSize = math.clamp(size.X * 0.16, 34, 80)
+		mascotSize = math.clamp(math.min(size.X * 0.4, size.Y * 0.2), 72, 170)
+		actionsWidth = math.clamp(size.X * 0.9, 240, 380)
+		gap = size.Y * 0.04
+	end
+	self.logoTop.TextSize = logoSize
+	self.logoBottom.TextSize = logoSize
+	self.logoLayout.Padding = UDim.new(0, -math.floor(logoSize * 0.14)) -- the second line tucks under the first
+	self.mascot.Size = UDim2.fromOffset(mascotSize, mascotSize)
+	self.actions.Size = UDim2.fromOffset(actionsWidth, 0)
+	local layout = self.main:FindFirstChildOfClass("UIListLayout") :: UIListLayout
+	layout.FillDirection = if landscape then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical
+	layout.Padding = UDim.new(0, math.floor(gap))
 end
 
 -- Called once the saved profile is known; until then Play shows "Loading…" and does nothing.
 function MenuView.setReady(self: MenuView, best: number, level: number, title: string?)
 	self.ready = true
 	self.playButton.Text = "Play"
-	self.levelLabel.Text = if title then `Level {level}  ·  {title}` else `Level {level}`
-	self.bestLabel.Text = `Best {best}`
+	Clay.pillLabel(self.bestPill).Text = `Best {Format.withCommas(best)}`
+	Clay.pillLabel(self.levelPill).Text = if title then `Lv {level} · {title}` else `Lv {level}`
 end
 
 function MenuView.show(self: MenuView)
 	self.backdrop.Enabled = true
 	self.gui.Enabled = true
+	for _, tween in self.floaters do
+		tween:Play()
+	end
 	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
 		GuiService.SelectedObject = self.playButton
 	end
@@ -193,8 +369,11 @@ end
 function MenuView.hide(self: MenuView)
 	self.backdrop.Enabled = false
 	self.gui.Enabled = false
+	for _, tween in self.floaters do
+		tween:Pause()
+	end
 	local selected = GuiService.SelectedObject
-	if selected == self.playButton or selected == self.leaderboardButton or selected == self.howToButton then
+	if selected == self.playButton or selected == self.leaderboardButton or selected == self.helpButton then
 		GuiService.SelectedObject = nil
 	end
 	if self.keyConnection then
@@ -211,6 +390,9 @@ function MenuView.destroy(self: MenuView)
 	self:hide()
 	for _, connection in self.connections do
 		connection:Disconnect()
+	end
+	for _, tween in self.floaters do
+		tween:Destroy()
 	end
 	self.backdrop:Destroy()
 	self.gui:Destroy()

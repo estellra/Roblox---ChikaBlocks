@@ -42,6 +42,7 @@ export type ButtonProps = {
 	style: ButtonStyle,
 	order: number?,
 	size: UDim2?, -- the whole button; its height includes the lip (default: full width, 56 + lip)
+	textSize: number?,
 }
 
 -- A button made of a root Frame (what layouts see) holding the lip and the "Face" TextButton (what people
@@ -67,7 +68,7 @@ function Clay.button(props: ButtonProps): Frame
 		BorderSizePixel = 0,
 		AutoButtonColor = false, -- the press animation below is the feedback
 		FontFace = Theme.Fonts.Title,
-		TextSize = Theme.TextSize.Button,
+		TextSize = props.textSize or Theme.TextSize.Button,
 		TextColor3 = style.text,
 		Text = props.text,
 		ZIndex = 2,
@@ -189,7 +190,30 @@ function Clay.setPillHeight(pill: Frame, height: number)
 	end
 end
 
-export type IconButtonProps = { name: string, image: string, order: number? }
+export type IconButtonProps = { name: string, image: string?, text: string?, order: number? }
+
+-- The icon of an icon button: an image, or a short text such as "?".
+local function iconOf(props: IconButtonProps): GuiObject
+	if props.text then
+		return create("TextLabel", {
+			Name = "Icon",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			FontFace = Theme.Fonts.Title,
+			TextSize = 28,
+			TextColor3 = Theme.Colors.Text,
+			Text = props.text,
+		})
+	end
+	return create("ImageLabel", {
+		Name = "Icon",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1,
+		Image = props.image or "",
+	})
+end
 
 -- A round button with an icon (pause, settings...): a cream disc with an outline that shrinks slightly when
 -- pressed. Square, 52 px by default; size it from outside (the aspect ratio keeps it round).
@@ -208,14 +232,7 @@ function Clay.iconButton(props: IconButtonProps): TextButton
 		outline(Theme.Stroke.Button),
 		create("UIAspectRatioConstraint", { AspectRatio = 1 }),
 		pressScale,
-		create("ImageLabel", {
-			Name = "Icon",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Image = props.image,
-		}),
+		iconOf(props),
 	})
 	local info = TweenInfo.new(Theme.Motion.ButtonPress, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local function press(down: boolean)

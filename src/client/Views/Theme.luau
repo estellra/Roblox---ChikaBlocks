@@ -6,6 +6,7 @@
 export type Theme = {
 	Text: {
 		GameTitle: string,
+		LogoLines: { string }, -- the two lines of the logo, top to bottom
 	},
 	Colors: {
 		Background: Color3, -- the sky behind everything, top (see SkyBottom)
@@ -110,6 +111,7 @@ local NUNITO = "rbxasset://fonts/families/Nunito.json"
 local Theme: Theme = {
 	Text = {
 		GameTitle = "ChikaBlocks",
+		LogoLines = { "Chika", "Blocks" },
 	},
 	Colors = {
 		Background = Color3.fromHex("#cfebff"),

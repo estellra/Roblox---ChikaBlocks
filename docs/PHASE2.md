@@ -10,7 +10,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a, M10b xong; còn M10c–e |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a–c xong; còn M10d–e |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -257,7 +257,7 @@ Mockup **chưa có**: màn Leaderboard, màn Pause, màn Cài đặt, thanh EXP 
 |---|---|---|
 | M10a ✅ | Theme token, font, bộ component, nền trời và mây | Không (đã có ảnh) |
 | M10b ✅ | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang), panel Pause | Icon pause, crown |
-| M10c | Menu, Game Over (có EXP, Revive ẩn), Pause | Logo, mascot, icon |
+| M10c ✅ | Menu, Game Over (có EXP, Revive ẩn) | Mascot |
 | M10d | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
 | M10e | Leaderboard và Cài đặt theo cùng phong cách, âm thanh (nếu chốt AH) | Icon trophy, close, sound |
 
@@ -288,3 +288,19 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 - **Kiểm tra trong Studio:** PC (1365×768), iPhone 17 Pro dọc (401×777) và ngang (749×381). Đã thử bấm Pause, Resume, phím P, Backspace, kéo khối (khay mờ, bóng xem trước), Game Over. Output không có lỗi. 123 test pass.
 - **Bài học:** `UIAspectRatioConstraint` mặc định (`FitWithinMaxSize`) làm kích thước bằng 0 nếu một chiều của `Size` bằng 0; phải đặt kích thước tối đa thật cho cả hai chiều (đã gặp ở đám mây và nút pause).
 - **Chưa làm:** đường kéo nét đứt và vòng viền hồng của ô sẽ đặt (mockup dùng nét đứt, Roblox không có viền đứt; hiện dùng bóng xem trước trong suốt), popup mascot khi combo (M10d), nút icon cho Menu (M10c).
+
+### Kết quả M10c
+
+- **Menu** (`MenuView.luau` viết lại):
+  - Logo hai dòng dựng bằng chữ: "Chika" nâu, "Blocks" hồng có viền nâu, dòng dưới chồng nhẹ lên dòng trên. Hai dòng nằm trong `Theme.Text.LogoLines`, chỉ có một chỗ để đổi.
+  - Mascot vui (ảnh), pill **Best** có vương miện, pill **level và danh hiệu** (chữ tím), nút Play lớn (72 px), nút Leaderboard, dòng khẩu hiệu "Drag blocks. Clear lines. Stay cozy.".
+  - Nút tròn **"?"** ở góc trên phải mở tutorial (How to play).
+  - 4 khối pastel trang trí nổi nhẹ lên xuống trên nền trời, tạm dừng khi menu đóng.
+  - Màn ngang: logo và mascot bên trái, cột nút bên phải; màn dọc: xếp chồng. Kích thước logo, mascot và cột nút tính theo kích thước màn hình.
+- **Game Over:** mascot buồn (mascot vui khi phá kỷ lục), tiêu đề "No more moves!" (đổi thành "New best!" khi có kỷ lục mới), "SCORE" và điểm lớn có dấu phẩy, pill Best, thanh EXP, "Level up!" và danh hiệu mới như M13. Cột nút: **Revive**, Play again, Menu.
+  - **Màn ngang thấp** (< 480 px, điện thoại ngang): bảng chia hai cột, thông tin bên trái và nút bên phải, nút giữ cao 56 px (đạt mức cảm ứng 44 px). Bản gộp một cột trước đó phải thu nhỏ còn khoảng 50% nên không dùng được.
+  - **Nút Revive dựng sẵn nhưng ẩn.** M8 chỉ cần gọi `Hud.setRevive({ text = "Revive · R$ 25", hint = "Clears the center 4×4 · 1 of 2 left" })` và truyền `onRevive` trong callbacks; gọi `Hud.setRevive(nil)` để ẩn.
+- **Component mới:** `Format.withCommas` (số có dấu phẩy, dùng ở HUD, menu và Game Over); `Clay.button` nhận `textSize`; `Clay.iconButton` nhận chữ thay cho ảnh.
+- **Nút Âm thanh:** như đã chốt, không dựng cho tới khi có âm thanh.
+- **Kiểm tra trong Studio:** menu ở PC (1280×720), iPhone 17 Pro dọc và ngang; Game Over ở iPhone dọc và ngang (có xem trước slot Revive); bấm thật nút "?" mở tutorial. Output không có lỗi. 123 test pass.
+- **Khác mockup:** pill level và nút "?" là bổ sung của mình (mockup không có, theo quyết định AD và AE); nút Âm thanh và Cài đặt trên menu chưa có.

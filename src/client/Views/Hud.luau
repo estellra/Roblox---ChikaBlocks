@@ -10,11 +10,13 @@ local UserInputService = game:GetService("UserInputService")
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Clay = require("./Clay")
+local Format = require("./Format")
 local HudBar = require("./HudBar")
 local Theme = require("./Theme")
 local create = require("./Create")
 
 local PANEL_MARGIN = 8 -- pixels kept free above and below a panel when it has to shrink
+local COMPACT_HEIGHT = 480 -- below this (phones held sideways) the game over panel goes two columns
 
 local RESTART_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Return] = true,
@@ -47,6 +49,7 @@ export type Callbacks = {
 	onMenu: () -> (),
 	onPause: () -> (),
 	onResume: () -> (),
+	onRevive: (() -> ())?, -- the Revive button (M8); nothing shows until setRevive() is given an offer
 }
 
 export type Hud = typeof(setmetatable(
@@ -57,9 +60,14 @@ export type Hud = typeof(setmetatable(
 		backdrop: ScreenGui, -- full-screen dimmer under the panels
 		gameOverPanel: Frame,
 		pausePanel: Frame,
+		mascot: ImageLabel,
+		titleLabel: TextLabel,
 		finalScoreLabel: TextLabel,
-		newBestLabel: TextLabel,
-		finalBestLabel: TextLabel,
+		finalBestPill: Frame,
+		reviveRoot: Frame,
+		reviveButton: TextButton,
+		reviveHint: TextLabel,
+		layoutPanels: () -> (), -- one column or two, depending on the screen's height
 		rewards: Frame, -- hidden until the run's rewards arrive
 		expLabel: TextLabel,
 		expFill: Frame,
@@ -172,10 +180,17 @@ function Hud.new(
 	})
 
 	-- Game over
-	local finalScoreLabel = label("FinalScore", "Score 0", fonts.Title, sizes.Label + 6, colors.Text, 2)
-	local newBestLabel = label("NewBest", "New best!", fonts.Title, sizes.Label + 2, colors.Combo, 3)
-	newBestLabel.Visible = false
-	local finalBestLabel = label("FinalBest", "Best 0", fonts.Body, sizes.Label, colors.TextMuted, 4)
+	local mascot = create("ImageLabel", {
+		Name = "Mascot",
+		LayoutOrder = 1,
+		Size = UDim2.fromOffset(96, 96),
+		BackgroundTransparency = 1,
+		Image = Theme.Images.MascotSad,
+	})
+	local titleLabel = label("Title", "No more moves!", fonts.Title, sizes.Title, colors.Text, 2)
+	local scoreCaption = label("Caption", "SCORE", fonts.Label, 15, colors.TextMuted, 3)
+	local finalScoreLabel = label("FinalScore", "0", fonts.Title, 52, colors.Text, 4)
+	local finalBestPill = Clay.pill({ name = "Best", text = "Best 0", icon = Theme.Images.Crown, order = 5 })
 	local expLabel = label("Exp", "", fonts.Body, sizes.Label, colors.TextMuted, 1)
 	local expFill = create("Frame", {
 		Name = "Fill",
@@ -188,7 +203,7 @@ function Hud.new(
 	titlesLabel.TextWrapped = true
 	local rewards = create("Frame", {
 		Name = "Rewards",
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
@@ -211,19 +226,59 @@ function Hud.new(
 		levelUpLabel,
 		titlesLabel,
 	})
-	local buttonSize = UDim2.new(0.8, 0, 0, 52 + Theme.Spacing.ButtonLip)
+	local lip = Theme.Spacing.ButtonLip
+	local buttonSize = UDim2.new(0.8, 0, 0, 52 + lip) -- the pause panel's buttons
+	local wideButton = UDim2.new(1, 0, 0, 56 + lip)
+	local reviveRoot = Clay.button({ name = "Revive", text = "Revive", style = "reward", order = 1, size = wideButton })
+	reviveRoot.Visible = false -- until M8 offers a revive (see setRevive)
+	local reviveHint = label("ReviveHint", "", fonts.Body, 13, colors.TextMuted, 2)
+	reviveHint.Visible = false
 	local restartRoot =
-		Clay.button({ name = "PlayAgain", text = "Play again", style = "primary", order = 6, size = buttonSize })
-	local menuRoot = Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 7, size = buttonSize })
-	local gameOverPanel, fitGameOver = newPanel("GameOverPanel", overlay, {
-		label("Title", "Game Over", fonts.Title, sizes.Title, colors.Text, 1),
-		finalScoreLabel,
-		newBestLabel,
-		finalBestLabel,
-		rewards,
-		restartRoot,
-		menuRoot,
-	})
+		Clay.button({ name = "PlayAgain", text = "Play again", style = "primary", order = 3, size = wideButton })
+	local menuRoot = Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 4, size = wideButton })
+	local function column(name: string, order: number): Frame
+		return create("Frame", {
+			Name = name,
+			LayoutOrder = order,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+		}, {
+			create("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 8),
+			}),
+		}) :: Frame
+	end
+	local info = column("Info", 1)
+	local choices = column("Choices", 2)
+	for _, child in { mascot, titleLabel, scoreCaption, finalScoreLabel, finalBestPill, rewards } do
+		child.Parent = info
+	end
+	for _, child in { reviveRoot, reviveHint, restartRoot, menuRoot } do
+		child.Parent = choices
+	end
+	local gameOverPanel, fitGameOver = newPanel("GameOverPanel", overlay, { info, choices })
+
+	-- What happened beside what to do next on short screens (phones held sideways); stacked otherwise.
+	local panelLayout = gameOverPanel:FindFirstChildOfClass("UIListLayout") :: UIListLayout
+	local panelLimit = gameOverPanel:FindFirstChildOfClass("UISizeConstraint") :: UISizeConstraint
+	local function layoutGameOver()
+		local size = overlay.AbsoluteSize
+		local compact = size.Y > 0 and size.X > size.Y and size.Y < COMPACT_HEIGHT
+		panelLayout.FillDirection = if compact then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical
+		panelLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		panelLayout.Padding = UDim.new(0, if compact then 20 else 12)
+		panelLimit.MaxSize = Vector2.new(if compact then 720 else 420, math.huge)
+		gameOverPanel.Size = UDim2.fromScale(if compact then 0.92 else 0.8, 0)
+		local share = if compact then UDim2.new(0.5, -10, 0, 0) else UDim2.fromScale(1, 0)
+		info.Size, choices.Size = share, share
+		local mascotSize = if compact then 56 else 96
+		mascot.Size = UDim2.fromOffset(mascotSize, mascotSize)
+	end
+	layoutGameOver()
 
 	-- Pause
 	local resumeRoot =
@@ -250,9 +305,14 @@ function Hud.new(
 		backdrop = backdrop,
 		gameOverPanel = gameOverPanel,
 		pausePanel = pausePanel,
+		mascot = mascot,
+		titleLabel = titleLabel,
 		finalScoreLabel = finalScoreLabel,
-		newBestLabel = newBestLabel,
-		finalBestLabel = finalBestLabel,
+		finalBestPill = finalBestPill,
+		reviveRoot = reviveRoot,
+		reviveButton = Clay.face(reviveRoot),
+		reviveHint = reviveHint,
+		layoutPanels = layoutGameOver,
 		rewards = rewards,
 		expLabel = expLabel,
 		expFill = expFill,
@@ -270,12 +330,19 @@ function Hud.new(
 		connections = {
 			restartButton.Activated:Connect(callbacks.onRestart),
 			menuButton.Activated:Connect(callbacks.onMenu),
+			Clay.face(reviveRoot).Activated:Connect(function()
+				local onRevive = callbacks.onRevive
+				if onRevive then
+					onRevive()
+				end
+			end),
 			resumeButton.Activated:Connect(callbacks.onResume),
 			pauseRestartButton.Activated:Connect(callbacks.onRestart),
 			pauseMenuButton.Activated:Connect(callbacks.onMenu),
 			gameOverPanel:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGameOver),
 			pausePanel:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPause),
 			overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				layoutGameOver()
 				fitGameOver()
 				fitPause()
 			end),
@@ -346,9 +413,11 @@ end
 -- Opens the game over panel. "Play again" works by click/tap, Enter or Space, and the gamepad A button
 -- (the button is selected when a gamepad is in use); "Menu" goes back to the main menu.
 function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boolean)
-	self.finalScoreLabel.Text = `Score {score}`
-	self.finalBestLabel.Text = `Best {best}`
-	self.newBestLabel.Visible = isNewBest
+	self.finalScoreLabel.Text = Format.withCommas(score)
+	Clay.pillLabel(self.finalBestPill).Text = `Best {Format.withCommas(best)}`
+	self.titleLabel.Text = if isNewBest then "New best!" else "No more moves!"
+	self.mascot.Image = if isNewBest then Theme.Images.MascotCheer else Theme.Images.MascotSad
+	self.layoutPanels()
 	openOverlay(self, self.gameOverPanel)
 	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
 		GuiService.SelectedObject = self.restartButton
@@ -417,6 +486,17 @@ function Hud.isPauseOpen(self: Hud): boolean
 	return self.overlay.Enabled and self.pausePanel.Visible
 end
 
+-- Offers a revive on the game over panel, e.g. { text = "Revive · R$ 25", hint = "Clears the center 4×4 · 1 of 2 left" }, or
+-- takes the offer away (nil).
+function Hud.setRevive(self: Hud, offer: { text: string, hint: string }?)
+	self.reviveRoot.Visible = offer ~= nil
+	self.reviveHint.Visible = offer ~= nil
+	if offer then
+		self.reviveButton.Text = offer.text
+		self.reviveHint.Text = offer.hint
+	end
+end
+
 -- Closes whichever panel is open.
 function Hud.hideGameOver(self: Hud)
 	self.rewardsToken += 1
@@ -432,6 +512,7 @@ function Hud.hideGameOver(self: Hud)
 		or selected == self.resumeButton
 		or selected == self.pauseRestartButton
 		or selected == self.pauseMenuButton
+		or selected == self.reviveButton
 	then
 		GuiService.SelectedObject = nil
 	end
