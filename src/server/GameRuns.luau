@@ -15,7 +15,7 @@ export type Deps = {
 	Tutorial: any?, -- needed only for tutorial runs
 	clock: () -> number,
 	newSeed: () -> number,
-	limits: { place: Limit, start: Limit, state: Limit }?,
+	limits: { place: Limit, start: Limit, state: Limit, rotate: Limit? }?,
 }
 
 -- "tutorial" runs open with Tutorial's fixed board and tray, then continue like normal runs.
@@ -45,6 +45,11 @@ export type PlaceOutcome =
 	| { kind: "resync", state: RunState }
 	| { kind: "ignored", reason: string }
 
+export type RotateOutcome =
+	{ kind: "accepted", runId: number, charged: ("free" | "paid")? }
+	| { kind: "resync", state: RunState }
+	| { kind: "ignored", reason: string }
+
 -- A run in a few numbers, for analytics.
 export type RunSummary = {
 	runId: number,
@@ -64,6 +69,7 @@ local DEFAULT_LIMITS = {
 	place = { capacity = 8, windowSeconds = 1 }, -- no human places more than 8 pieces a second
 	start = { capacity = 1, windowSeconds = 0.5 },
 	state = { capacity = 2, windowSeconds = 1 },
+	rotate = { capacity = 12, windowSeconds = 1 }, -- tapping to look at each turn of a piece
 }
 local MAX_RUN_ID = 2 ^ 31
 local MAX_MOVE_INDEX = 1e6
@@ -80,11 +86,12 @@ export type GameRuns = typeof(setmetatable(
 		placeLimiter: RateLimiter.RateLimiter,
 		startLimiter: RateLimiter.RateLimiter,
 		stateLimiter: RateLimiter.RateLimiter,
+		rotateLimiter: RateLimiter.RateLimiter,
 	},
 	GameRuns
 ))
 
-local function ignored(reason: string): PlaceOutcome
+local function ignored(reason: string): any
 	return { kind = "ignored", reason = reason }
 end
 
@@ -101,6 +108,7 @@ function GameRuns.new(deps: Deps): GameRuns
 		placeLimiter = limiter(limits.place),
 		startLimiter = limiter(limits.start),
 		stateLimiter = limiter(limits.state),
+		rotateLimiter = limiter(limits.rotate or DEFAULT_LIMITS.rotate),
 	}, GameRuns)
 end
 
@@ -211,6 +219,48 @@ function GameRuns.place(
 	}
 end
 
+-- Turns a piece in the tray. `moveIndex` works as in place(): rotations happen between two moves. A
+-- rotation that costs one of the player's bought rotations says so ("paid"); spending it is up to the caller.
+-- `paidAvailable` is how many the player has bought and not used.
+function GameRuns.rotate(
+	self: GameRuns,
+	key: any,
+	runId: unknown,
+	moveIndex: unknown,
+	slot: unknown,
+	paidAvailable: number
+): RotateOutcome
+	if not self.rotateLimiter:allow(key) then
+		return ignored("rate limited")
+	end
+	local run = self.runs[key]
+	if not run then
+		return ignored("no run")
+	end
+	if run.mode ~= "normal" then
+		return ignored("rotating is for normal runs")
+	end
+	if Validate.integer(runId, 1, MAX_RUN_ID) ~= run.id then
+		return ignored("stale or malformed run id")
+	end
+	local index = Validate.integer(moveIndex, 0, MAX_MOVE_INDEX)
+	if index == nil then
+		return ignored("malformed move index")
+	end
+	local session = run.session
+	if index < session.moveCount then
+		return ignored("stale rotation")
+	elseif index > session.moveCount then
+		return { kind = "resync", state = stateOf(self, key, run) }
+	end
+
+	local result = session:rotate(slot, paidAvailable)
+	if not result then
+		return { kind = "resync", state = stateOf(self, key, run) }
+	end
+	return { kind = "accepted", runId = run.id, charged = result.charged }
+end
+
 -- The full state, for a client that noticed it disagrees with the server. Nil when asked too often.
 function GameRuns.state(self: GameRuns, key: any): RunState?
 	local run = self.runs[key]
@@ -275,6 +325,7 @@ function GameRuns.remove(self: GameRuns, key: any)
 	self.placeLimiter:forget(key)
 	self.startLimiter:forget(key)
 	self.stateLimiter:forget(key)
+	self.rotateLimiter:forget(key)
 end
 
 return GameRuns

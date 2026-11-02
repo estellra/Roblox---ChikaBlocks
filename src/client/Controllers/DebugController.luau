@@ -163,6 +163,10 @@ local function handle(rng: Random, command: string, ...: any): string
 		local slot, x, y = ...
 		local result = GameController.tryPlace(slot, x, y)
 		return if result then `placed +{result.points}\n{describeState()}` else "invalid move"
+	elseif command == "rotate" then
+		local slot = ...
+		local turned = GameController.tryRotate(slot)
+		return `{if turned then "rotated" else "not rotated"} | {GameController.getRotationText()}\n{describeState()}`
 	elseif command == "autoplay" then
 		local moves = tonumber((...)) or 10
 		local played = 0

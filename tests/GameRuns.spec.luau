@@ -48,6 +48,16 @@ local SQUARES = {
 	end,
 }
 
+-- A generator that always deals pieces that can be turned.
+local TURNABLE = {
+	newSource = function(_rng: any)
+		return function(): { Pieces.Piece }?
+			local P = Pieces.BY_ID
+			return { P.T4_1, P.I3_H, P.L3_1 }
+		end
+	end,
+}
+
 -- The first valid move for the server's current state.
 local function anyMove(state: GameRuns.RunState): (number, number, number)
 	local session = GameSession.fromSnapshot(state.session, noSet)
@@ -236,6 +246,71 @@ return function(t: TestKit.TestKit)
 			local summary = runs:summary(PLAYER) :: GameRuns.RunSummary
 			t.expect(summary.revives).toBe(1)
 			t.expect(summary.runId).toBe(state.runId)
+		end)
+
+		t.it("turns a piece for a free or a bought rotation and says which", function()
+			local runs = newRuns(TURNABLE)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			local free = runs:rotate(PLAYER, state.runId, 0, 1, 0)
+			t.expect(free).toEqual({ kind = "accepted", runId = state.runId, charged = "free" })
+			t.expect((runs:peek(PLAYER) :: GameRuns.RunState).session.tray[1]).toBe("T4_4")
+
+			local again = runs:rotate(PLAYER, state.runId, 0, 1, 0) -- already unlocked
+			t.expect(again).toEqual({ kind = "accepted", runId = state.runId, charged = nil })
+			t.expect((runs:peek(PLAYER) :: GameRuns.RunState).session.tray[1]).toBe("T4_2")
+
+			local broke = runs:rotate(PLAYER, state.runId, 0, 2, 0) -- nothing free, nothing bought
+			t.expect(broke.kind).toBe("resync")
+			t.expect((runs:peek(PLAYER) :: GameRuns.RunState).session.tray[2]).toBe("I3_H")
+
+			local paid = runs:rotate(PLAYER, state.runId, 0, 2, 3)
+			t.expect(paid).toEqual({ kind = "accepted", runId = state.runId, charged = "paid" })
+			t.expect((runs:peek(PLAYER) :: GameRuns.RunState).session.moveCount).toBe(0)
+		end)
+
+		t.it("drops rotations for another run, an old move and a tutorial, and resyncs one ahead", function()
+			local runs, advance = newRuns(TURNABLE)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			t.expect(runs:rotate(PLAYER, state.runId + 1, 0, 1, 0).kind).toBe("ignored")
+			t.expect(runs:rotate(PLAYER, "1", 0, 1, 0).kind).toBe("ignored")
+			t.expect(runs:rotate(PLAYER, state.runId, "0", 1, 0).kind).toBe("ignored")
+			t.expect(runs:rotate(PLAYER, state.runId, -1, 1, 0).kind).toBe("ignored")
+			t.expect(runs:rotate(PLAYER, state.runId, 5, 1, 0).kind).toBe("resync") -- ahead of the server
+			t.expect(runs:rotate("nobody", state.runId, 0, 1, 0).kind).toBe("ignored")
+
+			local slot, x, y = anyMove(state)
+			runs:place(PLAYER, state.runId, 0, slot, x, y)
+			t.expect(runs:rotate(PLAYER, state.runId, 0, 1, 0).kind).toBe("ignored") -- from before that move
+			t.expect(runs:rotate(PLAYER, state.runId, 1, if slot == 1 then 2 else 1, 0).kind).toBe("accepted")
+
+			advance(1)
+			local tutorial = runs:start(PLAYER, "tutorial") :: GameRuns.RunState
+			t.expect(runs:rotate(PLAYER, tutorial.runId, 0, 1, 5).kind).toBe("ignored")
+		end)
+
+		t.it("resyncs a rotation that isn't possible instead of guessing", function()
+			local runs = newRuns(TURNABLE)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			for _, slot in { 0, 4, 1.5, "1", 0 / 0 } do
+				t.expect(runs:rotate(PLAYER, state.runId, 0, slot, 5).kind).toBe("resync")
+			end
+			t.expect((runs:peek(PLAYER) :: GameRuns.RunState).session.tray).toEqual({ "T4_1", "I3_H", "L3_1" })
+		end)
+
+		t.it("rate limits rotations and recovers after a second", function()
+			local runs, advance = newRuns(TURNABLE)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			runs:rotate(PLAYER, state.runId, 0, 1, 0) -- unlock one piece, so the rest can be turned freely
+			local accepted = 0
+			for _ = 1, 40 do
+				if runs:rotate(PLAYER, state.runId, 0, 1, 0).kind == "accepted" then
+					accepted += 1
+				end
+			end
+			t.expect(accepted < 40).toBe(true)
+			t.expect(runs:rotate(PLAYER, state.runId, 0, 1, 0).kind).toBe("ignored")
+			advance(1.1)
+			t.expect(runs:rotate(PLAYER, state.runId, 0, 1, 0).kind).toBe("accepted")
 		end)
 
 		t.it("never revives a tutorial run", function()

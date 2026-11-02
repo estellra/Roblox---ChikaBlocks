@@ -135,5 +135,19 @@ return function(t: TestKit.TestKit)
 				{ kind = "funnel", name = "Offered", step = 1, session = "3.1", fields = { "ReviveOffer" } },
 			})
 		end)
+
+		t.it("logs the rotation funnel per run and how each rotation was paid", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:rotationStep(PLAYER, "4", 1)
+			telemetry:rotationStep(PLAYER, "4", 2)
+			telemetry:rotationUsed(PLAYER, "free")
+			telemetry:rotationUsed(PLAYER, "paid")
+			t.expect(logged).toEqual({
+				{ kind = "funnel", name = "Requested", step = 1, session = "4", fields = { "RotationOffer" } },
+				{ kind = "funnel", name = "Paid", step = 2, session = "4", fields = { "RotationOffer" } },
+				{ kind = "custom", name = "RotationUsed", value = 1, fields = { "free" } },
+				{ kind = "custom", name = "RotationUsed", value = 1, fields = { "paid" } },
+			})
+		end)
 	end)
 end

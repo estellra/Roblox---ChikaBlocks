@@ -9,7 +9,8 @@
 -- resetdata wipes the player's PlayerData_Dev profile (Studio's store) to replay the first-time flow.
 -- addexp and setbest change progress the way a run would, claiming milestones and sending the profile.
 -- fakepurchase [userId] [productId] [purchaseId] hands the real receipt handler a made-up receipt (default: the first
--- revive product); the same purchaseId twice shows that a purchase is granted once.
+-- revive product; pass Config.ROTATION_PRODUCT for the rotation pack); the same purchaseId twice shows
+-- that a purchase is granted once.
 -- boards writes the player's values, reads every leaderboard now (instead of within a minute) and lists them.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -94,7 +95,9 @@ function DebugService.start(_self: any)
 				data.level
 			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} reviveTokens={tokenSummary(
 				data
-			)} purchases={#data.purchaseIds} title={Progression.title(data.milestonesClaimed)}`
+			)} rotations={data.rotations} purchases={#data.purchaseIds} title={Progression.title(
+				data.milestonesClaimed
+			)}`
 		elseif command == "resetdata" then
 			local data = DataService.get(player)
 			if not data then
@@ -105,6 +108,7 @@ function DebugService.start(_self: any)
 			table.clear(data.milestonesClaimed)
 			table.clear(data.badgesAwarded)
 			data.reviveTokens = { 0, 0, 0 }
+			data.rotations = 0
 			table.clear(data.purchaseIds)
 			data.weekly.week, data.weekly.bestScore, data.weekly.exp = "", 0, 0
 			GameService.getRuns():setBest(player, 0)
@@ -119,7 +123,9 @@ function DebugService.start(_self: any)
 				PurchaseId = extra or `debug-{debugReceipts}`,
 			})
 			local data = DataService.get(player)
-			return `{decision} reviveTokens={if data then tokenSummary(data) else "?"}`
+			return `{decision} reviveTokens={if data then tokenSummary(data) else "?"} rotations={if data
+				then data.rotations
+				else "?"}`
 		elseif command == "boards" then
 			local data = DataService.get(player)
 			if data then

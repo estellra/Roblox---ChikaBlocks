@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
@@ -34,6 +35,7 @@ export type Profile = {
 	tutorialDone: boolean,
 	level: number,
 	exp: number,
+	rotations: number, -- bought rotations left
 	title: string?,
 }
 export type RunRewards = Hud.RunRewards
@@ -45,6 +47,7 @@ type Prediction = { score: number, isOver: boolean }
 local IS_STUDIO = RunService:IsStudio()
 local REVIVE_WAIT_SECONDS = 20 -- how long Revive shows "Please wait…" without an answer
 local START_RETRY_SECONDS = 3 -- ask again if the server hasn't answered StartGame by then
+local ROTATIONS_ASK_GAP_SECONDS = 2 -- the purchase prompt for rotations opens at most this often
 local CONFIRM_TIMEOUT_SECONDS = 2 -- ask for the full state if a move is still unconfirmed by then
 
 local GameController = {}
@@ -56,6 +59,7 @@ local views: Views? = nil
 local profile: Profile? = nil
 local runRewards: RunRewards? = nil -- what the current run earned, once it is over and the server said
 local reviveWaitToken = 0 -- identifies the latest Revive press, for its timeout
+local rotationsAskedAt = -math.huge -- when the player last asked to buy rotations
 local reviveOffer: { runId: number, tokens: number, price: number? }? = nil -- what the server offered after game over
 local best = 0
 local bestBeforeRun = 0 -- best when the current run started, to tell a new best apart
@@ -79,12 +83,27 @@ local function noSet(_board: any, _score: number, _reason: any): { Pieces.Piece 
 	return nil
 end
 
+-- Tells the tray which pieces can be turned: in a normal run that isn't over, those that look different turned.
+local function refreshRotatable()
+	if not views then
+		return
+	end
+	local playing = runId > 0 and runMode == "normal" and not session.isOver
+	local rotatable: { boolean } = {}
+	for slot = 1, Config.PIECES_PER_SET do
+		local piece = session.tray[slot]
+		rotatable[slot] = playing and piece and Pieces.canRotate(piece) or false
+	end
+	views.tray:setRotatable(rotatable)
+end
+
 local function render()
 	if not views then
 		return
 	end
 	views.board:render(session.board)
 	views.tray:render(session.tray)
+	refreshRotatable()
 	views.hud:setScore(session.score, best)
 	views.hud:setCombo(session.combo.combo)
 end
@@ -264,7 +283,9 @@ function GameController.start(_self: any)
 	views = {
 		gui = gui,
 		board = BoardView.new(gui.boardArea),
-		tray = TrayView.new(gui.trayArea),
+		tray = TrayView.new(gui.trayArea, function(slot: number)
+			GameController.tryRotate(slot)
+		end),
 		hud = Hud.new(gui.hudArea, gui.boardArea, gui.overlay, gui.overlayBackdrop, {
 			onRestart = GameController.restart,
 			onMenu = GameController.requestMenu,
@@ -323,6 +344,75 @@ function GameController.requestRevive()
 			applyReviveOffer()
 		end
 	end)
+end
+
+-- Asks the server to open the purchase prompt for a pack of rotations. The server decides everything; the new
+-- count arrives with the next Profile.
+function GameController.requestRotations()
+	local now = os.clock()
+	if Config.ROTATION_PRODUCT == 0 or runMode ~= "normal" or now - rotationsAskedAt < ROTATIONS_ASK_GAP_SECONDS then
+		return
+	end
+	rotationsAskedAt = now
+	Net.RequestRotations:FireServer()
+end
+
+-- Turns the piece in `slot` a quarter clockwise, on the board right away and on the server by request. The
+-- first turn of a piece costs a rotation: the run's free one, else one bought earlier; with none left it
+-- opens the purchase prompt instead. Returns whether the piece turned.
+function GameController.tryRotate(slot: unknown): boolean
+	local ui = views
+	if not ui or runId == 0 or runMode ~= "normal" or ui.tray:isHeld() then
+		return false
+	end
+	local bought = if profile then profile.rotations else 0
+	local moveIndex = session.moveCount
+	local result = session:rotate(slot, bought)
+	if not result then
+		local piece = if typeof(slot) == "number" then session.tray[slot :: number] else nil
+		if
+			piece
+			and Pieces.canRotate(piece)
+			and not session.isOver
+			and not session.unlocked[slot :: number]
+			and session.freeRotations == 0
+			and bought == 0
+		then
+			GameController.requestRotations()
+		end
+		return false
+	end
+	if result.charged == "paid" and profile then
+		local updated = table.clone(profile)
+		updated.rotations -= 1
+		profile = updated
+	end
+	Net.RotatePiece:FireServer(runId, moveIndex, slot)
+	render()
+	return true
+end
+
+-- A line for under the tray: how many rotations the player has, or what a pack costs when none are left.
+-- Empty when rotating isn't part of what is on screen (menu, tutorial, game over).
+function GameController.getRotationText(): string
+	if runId == 0 or runMode ~= "normal" or session.isOver then
+		return ""
+	end
+	local free = session.freeRotations
+	local bought = if profile then profile.rotations else 0
+	if free > 0 and bought > 0 then
+		return `Rotate: {free} free · {bought} owned`
+	elseif free > 0 then
+		return `Rotate: {free} free`
+	elseif bought > 0 then
+		return `Rotate: {bought} owned`
+	elseif Config.ROTATION_PRODUCT ~= 0 then
+		local price = ReplicatedStorage:GetAttribute("RotationPrice")
+		return if typeof(price) == "number"
+			then `Rotate: {Config.ROTATION_PACK} for R$ {price}`
+			else `Rotate: get {Config.ROTATION_PACK}`
+	end
+	return "Rotate: none left"
 end
 
 -- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.

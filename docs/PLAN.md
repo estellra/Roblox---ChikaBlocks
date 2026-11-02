@@ -59,7 +59,7 @@ ChikaBlock/
 
 ### Khối
 - Bộ hình gồm: 1x1, thanh 2–5 ô (ngang và dọc), vuông 2x2 và 3x3, chữ L nhỏ (3 ô) và L lớn (5 ô) theo 4 hướng, chữ L 4 ô và bản lật, T, S/Z.
-- Không xoay được. Mỗi hướng xoay được tính là một khối riêng trong bộ hình.
+- Mỗi hướng xoay là một khối riêng trong bộ hình. Từ M15 người chơi xoay được khối trong khay (mỗi ván 1 lượt miễn phí, mua thêm bằng Robux); khối đối xứng không xoay được.
 
 ### Thuật toán sinh khối
 - Chọn ngẫu nhiên theo trọng số, dùng seed (`Random.new(seed)`).
@@ -85,7 +85,7 @@ ChikaBlock/
 |---|---|
 | PC | Giữ chuột lên khối để nhặt, kéo, thả để đặt. Có ghost preview và highlight các hàng sắp xóa. |
 | Mobile | Kéo thả bằng ngón tay. Khối hiện lệch lên trên ngón tay để không bị che. |
-| Gamepad | LB/RB chọn khối, D-pad hoặc cần trái di chuyển theo từng ô, A đặt, B hủy, Y xoay (khi có lượt xoay). |
+| Gamepad | LB/RB chọn khối, D-pad hoặc cần trái di chuyển theo từng ô, A đặt, B hủy, Y xoay (khi có lượt xoay). Bàn phím: R xoay ô đang chọn. Chuột và cảm ứng: nút xoay ở góc ô khay. |
 
 ### Hướng dẫn (yêu cầu: hiểu cách chơi trong 15 giây)
 - Lần chơi đầu dùng một seed cố định: nước đầu tiên chắc chắn xóa được một hàng.
@@ -121,7 +121,7 @@ Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 - [x] Level/EXP sau mỗi ván và quà theo mốc highscore và mốc level (danh hiệu, badge; cosmetic từ GĐ4). (M13; badge chờ ID)
 - [ ] Leaderboard: Highscore, Level, Robux đã donate. (M14 xong Highscore và Level, toàn thời gian và theo tuần; bảng donate làm riêng ở M16.)
 - [ ] Donate bằng nhiều Developer Product với các mức khác nhau.
-- [ ] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux.
+- [x] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux. (M15: gói 5 lượt, 25 R$, lượt mua được giữ cho các ván sau.)
 - [ ] Rewarded video ad: xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lần xoay.
 - [ ] AnalyticsService: theo dõi funnel tutorial, lần xóa hàng đầu tiên, game over, mua hồi sinh. (M12 xong phần funnel và số liệu ván; phần mua hồi sinh làm cùng M8.)
 

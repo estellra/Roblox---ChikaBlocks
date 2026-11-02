@@ -8,13 +8,15 @@
 --   SkipTutorial()                               the player skipped the tutorial (counts as done)
 --   RequestRevive(runId)                         Revive pressed on the game over panel
 --   RequestLeaderboard()                         send the cached leaderboards
+--   RequestRotations()                           out of rotations: open the purchase prompt for a pack
+--   RotatePiece(runId, moveIndex, slot)          turn the piece in a tray slot (predicted by the client)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
 --                                                a move was accepted; set = new piece ids when the tray refilled
---   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, title? }
+--   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, rotations, title? }
 --   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
 --                                                titles unlocked during the run (see GameService)
 --   ReviveOffer(runId, offer)                    after a game over: { tokens, price? }, the revives already paid for and
@@ -60,6 +62,8 @@ return {
 	SkipTutorial = remoteEvent("SkipTutorial"),
 	RequestRevive = remoteEvent("RequestRevive"),
 	RequestLeaderboard = remoteEvent("RequestLeaderboard"),
+	RequestRotations = remoteEvent("RequestRotations"),
+	RotatePiece = remoteEvent("RotatePiece"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),

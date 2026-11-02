@@ -35,6 +35,7 @@ export type Profile = {
 	tutorialDone: boolean,
 	level: number,
 	exp: number,
+	rotations: number, -- bought rotations left
 	title: string?,
 }
 
@@ -111,6 +112,7 @@ local function profileOf(player: Player, data: PlayerData.PlayerData): Profile
 		tutorialDone = data.tutorialDone,
 		level = data.level,
 		exp = data.exp,
+		rotations = data.rotations,
 		title = Progression.title(data.milestonesClaimed),
 	}
 end
@@ -270,6 +272,27 @@ function GameService.start(_self: any)
 		end
 	)
 
+	Net.RotatePiece.OnServerEvent:Connect(function(player: Player, runId: unknown, moveIndex: unknown, slot: unknown)
+		local data = DataService.get(player)
+		local outcome = runs:rotate(player, runId, moveIndex, slot, if data then data.rotations else 0)
+		if outcome.kind == "accepted" then
+			if outcome.charged then
+				telemetry:rotationUsed(player, outcome.charged)
+			end
+			if outcome.charged == "paid" and data and PlayerData.useRotation(data) then
+				Net.Profile:FireClient(player, profileOf(player, data))
+			end
+		elseif outcome.kind == "resync" then
+			if IS_STUDIO then
+				warn(`[ChikaBlock] rejected a rotation from {player.Name}; sending the full state`)
+			end
+			Net.GameState:FireClient(player, outcome.state, "resync")
+			if data then
+				Net.Profile:FireClient(player, profileOf(player, data)) -- the client may be wrong about its rotations
+			end
+		end
+	end)
+
 	Net.RequestState.OnServerEvent:Connect(function(player: Player)
 		local state = runs:state(player)
 		if state then
@@ -303,6 +326,14 @@ function GameService.logRevive(player: Player, step: number)
 	local summary = runs:summary(player)
 	if summary then
 		telemetry:reviveStep(player, `{summary.runId}.{summary.revives}`, step)
+	end
+end
+
+-- One step of the rotation funnel for the player's current run.
+function GameService.logRotation(player: Player, step: number)
+	local summary = runs:summary(player)
+	if summary then
+		telemetry:rotationStep(player, tostring(summary.runId), step)
 	end
 end
 

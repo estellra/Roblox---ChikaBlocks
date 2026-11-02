@@ -23,6 +23,13 @@ local Config = {
 	-- then on): 10, 15 and 25 Robux.
 	REVIVE_PRODUCTS = table.freeze({ 3727116317, 3727116434, 3727116486 }),
 
+	-- Rotating a piece in the tray: each run starts with this many free rotations, then rotations bought earlier
+	-- are used. One rotation unlocks one piece (it turns freely until it is placed). The developer product sells
+	-- ROTATION_PACK rotations; 0 means it isn't on sale yet.
+	FREE_ROTATIONS_PER_RUN = 1,
+	ROTATION_PRODUCT = 3727205638,
+	ROTATION_PACK = 5,
+
 	-- Progression (see Progression): a run earns floor(score / EXP_SCORE_DIVISOR) EXP; going from level n
 	-- to n + 1 takes LEVEL_EXP_BASE + LEVEL_EXP_STEP * (n - 1) EXP.
 	EXP_SCORE_DIVISOR = 10,

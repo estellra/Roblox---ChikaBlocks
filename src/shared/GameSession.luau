@@ -1,5 +1,5 @@
 --!strict
--- One run of the game: board, tray, score, combo, game over and revive.
+-- One run of the game: board, tray, score, combo, rotation, game over and revive.
 -- Where piece sets come from is injected (SetSource), so tests, the server and the client can each supply
 -- their own. The server's source deals right away; the client's returns nil, leaving the tray empty
 -- ("awaiting a set") until receiveSet() delivers what the server dealt. Moves arrive as untrusted values and
@@ -34,10 +34,18 @@ export type PlaceResult = {
 	isOver: boolean,
 }
 
+export type RotateResult = {
+	slot: number,
+	piece: Piece, -- the piece now in the slot
+	charged: ("free" | "paid")?, -- what the rotation cost; nil when the piece was already unlocked
+}
+
 -- Plain-data copy of a session, safe to send through a remote.
 export type Snapshot = {
 	cells: { number },
 	tray: { string | false }, -- piece ids
+	unlocked: { boolean }, -- slots whose piece has been paid to rotate (it turns freely until placed)
+	freeRotations: number, -- free rotations left in this run
 	score: number,
 	combo: number,
 	movesSinceClear: number,
@@ -54,6 +62,8 @@ export type GameSession = typeof(setmetatable(
 	{} :: {
 		board: Board,
 		tray: { Piece | false }, -- false marks a slot already played this set
+		unlocked: { boolean },
+		freeRotations: number,
 		score: number,
 		combo: Scoring.ComboState,
 		isOver: boolean,
@@ -69,11 +79,28 @@ local function emptyTray(): { Piece | false }
 	return table.create(SET_SIZE, false) :: any
 end
 
+local function lockedSlots(): { boolean }
+	return table.create(SET_SIZE, false)
+end
+
+-- Whether the piece fits somewhere in the orientation it has now, or (once its rotation is paid for) in any.
+local function canFit(board: Board.Board, piece: Piece, unlocked: boolean): boolean
+	local current = piece
+	for _ = 1, if unlocked then 4 else 1 do
+		if Board.hasAnyPlacement(board, current) then
+			return true
+		end
+		current = Pieces.rotateCW(current)
+	end
+	return false
+end
+
 local function deal(session: GameSession, reason: DealReason)
 	local set = session.setSource(session.board, session.score, reason)
 	local tray = emptyTray()
 	if set == nil then
 		session.tray = tray
+		session.unlocked = lockedSlots()
 		session.awaitingSet = true
 		return
 	end
@@ -84,6 +111,7 @@ local function deal(session: GameSession, reason: DealReason)
 		tray[i] = piece
 	end
 	session.tray = tray
+	session.unlocked = lockedSlots()
 	session.awaitingSet = false
 end
 
@@ -92,8 +120,8 @@ local function refreshGameOver(session: GameSession)
 		session.isOver = false
 		return
 	end
-	for _, piece in session.tray do
-		if piece and Board.hasAnyPlacement(session.board, piece) then
+	for slot, piece in session.tray do
+		if piece and canFit(session.board, piece, session.unlocked[slot]) then
 			session.isOver = false
 			return
 		end
@@ -118,6 +146,8 @@ function GameSession.new(setSource: SetSource, initialBoard: Board?): GameSessio
 	local self = setmetatable({
 		board = if initialBoard then Board.clone(initialBoard) else Board.new(),
 		tray = emptyTray(),
+		unlocked = lockedSlots(),
+		freeRotations = Config.FREE_ROTATIONS_PER_RUN,
 		score = 0,
 		combo = Scoring.newCombo(),
 		isOver = false,
@@ -143,9 +173,15 @@ function GameSession.fromSnapshot(snapshot: Snapshot, setSource: SetSource): Gam
 			tray[i] = Pieces.BY_ID[id] or error(`snapshot has unknown piece {id}`)
 		end
 	end
+	local unlocked = lockedSlots()
+	for i = 1, SET_SIZE do
+		unlocked[i] = snapshot.unlocked[i] == true
+	end
 	return setmetatable({
 		board = { cells = table.clone(snapshot.cells) },
 		tray = tray,
+		unlocked = unlocked,
+		freeRotations = snapshot.freeRotations,
 		score = snapshot.score,
 		combo = { combo = snapshot.combo, movesSinceClear = snapshot.movesSinceClear },
 		isOver = snapshot.isOver,
@@ -164,6 +200,8 @@ function GameSession.snapshot(self: GameSession): Snapshot
 	return {
 		cells = table.clone(self.board.cells),
 		tray = tray,
+		unlocked = table.clone(self.unlocked),
+		freeRotations = self.freeRotations,
 		score = self.score,
 		combo = self.combo.combo,
 		movesSinceClear = self.combo.movesSinceClear,
@@ -184,6 +222,7 @@ function GameSession.receiveSet(self: GameSession, pieces: { Piece }): boolean
 		tray[i] = piece
 	end
 	self.tray = tray
+	self.unlocked = lockedSlots()
 	self.awaitingSet = false
 	refreshGameOver(self)
 	return true
@@ -215,6 +254,7 @@ function GameSession.place(self: GameSession, slot: unknown, x: unknown, y: unkn
 	self.combo = move.nextCombo
 	self.moveCount += 1
 	self.tray[slotIndex] = false
+	self.unlocked[slotIndex] = false
 
 	local refilled = false
 	if isTrayEmpty(self) then
@@ -238,6 +278,38 @@ function GameSession.place(self: GameSession, slot: unknown, x: unknown, y: unkn
 		awaitingSet = self.awaitingSet,
 		isOver = self.isOver,
 	}
+end
+
+-- Turns the piece in `slot` a quarter clockwise. The first turn of a piece costs a rotation: a free one if
+-- the run has any left, else one of the `paidAvailable` the player bought earlier (the caller spends it when the
+-- result says "paid"). After that the piece turns freely until it is placed. Nil, and nothing changes, when the
+-- piece looks the same turned, the run is over, or the player can't pay.
+function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unknown): RotateResult?
+	if self.isOver or self.awaitingSet or not isSlot(slot) then
+		return nil
+	end
+	local slotIndex = slot :: number
+	local piece = self.tray[slotIndex]
+	if not piece or not Pieces.canRotate(piece) then
+		return nil
+	end
+
+	local charged: ("free" | "paid")? = nil
+	if not self.unlocked[slotIndex] then
+		if self.freeRotations > 0 then
+			charged = "free"
+			self.freeRotations -= 1
+		elseif typeof(paidAvailable) == "number" and paidAvailable > 0 then
+			charged = "paid"
+		else
+			return nil
+		end
+		self.unlocked[slotIndex] = true
+	end
+
+	local turned = Pieces.rotateCW(piece)
+	self.tray[slotIndex] = turned
+	return { slot = slotIndex, piece = turned, charged = charged }
 end
 
 -- Clears the middle of the board, resets the combo and deals a set that can all be placed.

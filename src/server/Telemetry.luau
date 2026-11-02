@@ -34,11 +34,15 @@ local STEPS = table.freeze({
 -- revive already paid for), the run revived.
 local REVIVE_STEPS = table.freeze({ "Offered", "Requested", "Paid", "Revived" })
 
+-- Funnel "RotationOffer": the player ran out of rotations and pressed rotate, the purchase was granted.
+local ROTATION_STEPS = table.freeze({ "Requested", "Paid" })
+
 local Telemetry = {}
 Telemetry.__index = Telemetry
 
 Telemetry.STEPS = STEPS
 Telemetry.REVIVE_STEPS = REVIVE_STEPS
+Telemetry.ROTATION_STEPS = ROTATION_STEPS
 
 export type Telemetry = typeof(setmetatable({} :: { sink: Sink }, Telemetry))
 
@@ -66,6 +70,16 @@ end
 -- One step of the revive funnel; `attempt` identifies the offer (the run and how many revives it had used).
 function Telemetry.reviveStep(self: Telemetry, player: any, attempt: string, step: number)
 	self.sink.funnel(player, "ReviveOffer", attempt, step, REVIVE_STEPS[step])
+end
+
+-- One step of the rotation funnel; `attempt` identifies the run it happened in.
+function Telemetry.rotationStep(self: Telemetry, player: any, attempt: string, step: number)
+	self.sink.funnel(player, "RotationOffer", attempt, step, ROTATION_STEPS[step])
+end
+
+-- A piece was unlocked for turning; `how` is what it cost: "free" or "paid" (a bought rotation).
+function Telemetry.rotationUsed(self: Telemetry, player: any, how: string)
+	self.sink.custom(player, "RotationUsed", 1, { how })
 end
 
 function Telemetry.runStarted(self: Telemetry, player: any, data: Progress)

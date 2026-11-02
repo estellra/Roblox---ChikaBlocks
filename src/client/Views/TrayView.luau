@@ -1,10 +1,12 @@
 --!strict
 -- Draws the tray slots. Each piece is drawn on a 5x5 grid centered in its slot, so every piece uses the same
 -- cell size and the longest (5-cell) piece just fits. Slot sizes come from the Gui layout.
--- Each slot has a transparent Hitbox button on top that drag and drop listens to.
+-- Each slot has a transparent Hitbox button on top that drag and drop listens to. A piece that can be turned
+-- also gets a small Rotate button in the corner of its slot.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Clay = require("./Clay")
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
 local PieceView = require("./PieceView")
 local Theme = require("./Theme")
@@ -27,14 +29,17 @@ export type TrayView = typeof(setmetatable(
 		hint: number?, -- the slot the tutorial points at; the others fade
 		hintStrokes: { UIStroke },
 		held: { boolean }, -- slots whose piece is in hand
+		rotateButtons: { TextButton },
+		rotatable: { boolean }, -- slots whose piece can be turned, as far as the game says
 		shown: { Piece | false },
 	},
 	TrayView
 ))
 
-function TrayView.new(parent: GuiObject): TrayView
+function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayView
 	local padding = Theme.Spacing.TraySlotPadding
 	local slots, contents, hitboxes, selections, hintStrokes = {}, {}, {}, {}, {}
+	local rotateButtons: { TextButton } = {}
 	for i = 1, Config.PIECES_PER_SET do
 		local content = create("Frame", {
 			Name = "Content",
@@ -56,6 +61,24 @@ function TrayView.new(parent: GuiObject): TrayView
 			AutoButtonColor = false,
 			Text = "",
 		})
+		-- The game fonts have no turn arrow; this glyph comes from the emoji fallback.
+		local rotate = Clay.iconButton({ name = "Rotate", text = "🔄" })
+		-- Centered near the corner, so it sits mostly outside the 5x5 grid the piece is drawn on and covers no cell.
+		rotate.AnchorPoint = Vector2.new(0.5, 0.5)
+		rotate.Position = UDim2.fromScale(0.95, 0.95)
+		rotate.Size = UDim2.fromScale(0.34, 0.34)
+		rotate.ZIndex = 3 -- above the Hitbox, so a press on it doesn't start a drag
+		rotate.Visible = false
+		local glyph = rotate:FindFirstChild("Icon")
+		if glyph and glyph:IsA("TextLabel") then
+			glyph.TextScaled = true
+			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyph.Position = UDim2.fromScale(0.5, 0.5)
+			glyph.Size = UDim2.fromScale(0.6, 0.6) -- the emoji's square must stay inside the disc
+		end
+		rotate.Activated:Connect(function()
+			onRotate(i)
+		end)
 		local hintStroke = create("UIStroke", {
 			Name = "Hint",
 			Color = Theme.Colors.Selection,
@@ -87,11 +110,13 @@ function TrayView.new(parent: GuiObject): TrayView
 			hintStroke,
 			content,
 			hitbox,
+			rotate,
 		})
 		contents[i] = content
 		hitboxes[i] = hitbox
 		selections[i] = selection
 		hintStrokes[i] = hintStroke
+		rotateButtons[i] = rotate
 	end
 	return setmetatable({
 		slots = slots,
@@ -103,6 +128,8 @@ function TrayView.new(parent: GuiObject): TrayView
 		hintStrokes = hintStrokes,
 		held = table.create(Config.PIECES_PER_SET, false),
 		shown = table.create(Config.PIECES_PER_SET, false),
+		rotateButtons = rotateButtons,
+		rotatable = table.create(Config.PIECES_PER_SET, false),
 	}, TrayView)
 end
 
@@ -112,6 +139,11 @@ local function refreshSlot(self: TrayView, index: number)
 	self.slots[index].BackgroundTransparency = if faded
 		then Theme.Transparency.TraySlotEmpty
 		else Theme.Transparency.TraySlot
+end
+
+-- The Rotate button shows for a piece that can be turned, unless the piece is in hand.
+local function refreshRotate(self: TrayView, index: number)
+	self.rotateButtons[index].Visible = self.rotatable[index] and not self.held[index] and self.shown[index] ~= false
 end
 
 function TrayView.render(self: TrayView, tray: { Piece | false })
@@ -133,6 +165,7 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 		end
 		self.shown[index] = piece
 		refreshSlot(self, index)
+		refreshRotate(self, index)
 	end
 end
 
@@ -164,6 +197,20 @@ function TrayView.setHidden(self: TrayView, slot: number, hidden: boolean)
 	end
 	self.held[slot] = hidden
 	refreshSlot(self, slot)
+	refreshRotate(self, slot)
+end
+
+-- Says which slots hold a piece that can be turned (and the run allows turning).
+function TrayView.setRotatable(self: TrayView, rotatable: { boolean })
+	for index = 1, Config.PIECES_PER_SET do
+		self.rotatable[index] = rotatable[index] == true
+		refreshRotate(self, index)
+	end
+end
+
+-- Whether any piece is in hand.
+function TrayView.isHeld(self: TrayView): boolean
+	return table.find(self.held, true) ~= nil
 end
 
 -- Pixel size of one preview cell in this slot (0 when the slot is empty).

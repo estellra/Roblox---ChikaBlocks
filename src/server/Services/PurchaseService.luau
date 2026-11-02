@@ -4,7 +4,8 @@
 -- purchase arrives in ProcessReceipt, which grants one revive, waits until it is saved (see Purchases) and
 -- then uses it on the run that was waiting. A revive that cannot be used right away (the player left the run,
 -- the connection dropped) stays in their data for the next game over. Everything about money is decided
--- here: the client only asks, and never picks a product.
+-- here: the client only asks, and never picks a product. The same goes for the pack of rotations the player
+-- can buy when they have none left.
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,11 +32,20 @@ local PurchaseService = {}
 local pending: { [Player]: Pending } = {}
 local prices: { [number]: number } = {} -- Robux price of each product, read from Roblox
 local requestLimiter = RateLimiter.new(1, 1, os.clock)
+local rotationLimiter = RateLimiter.new(1, 2, os.clock)
+local rotationPending: { [Player]: number } = {} -- the open prompt for a pack of rotations, by token
 local pendingCounter = 0
 
--- The price tier of a revive product (1 is the cheapest), nil for any other product.
-local function tierOf(productId: number): number?
-	return table.find(Config.REVIVE_PRODUCTS, productId)
+-- What a product gives, nil for a product the game doesn't sell.
+local function productOf(productId: number): Purchases.Product?
+	local tier = table.find(Config.REVIVE_PRODUCTS, productId)
+	if tier then
+		return { kind = "revive", tier = tier }
+	end
+	if Config.ROTATION_PRODUCT ~= 0 and productId == Config.ROTATION_PRODUCT then
+		return { kind = "rotation", count = Config.ROTATION_PACK }
+	end
+	return nil
 end
 
 -- The price tier of the run's next revive.
@@ -43,9 +53,14 @@ local function nextTier(summary: GameRuns.RunSummary): number
 	return Purchases.reviveTier(summary.revives, #Config.REVIVE_PRODUCTS)
 end
 
--- Reads the three prices once (cached for the server's lifetime); a failed read just means no price is shown.
+-- Reads the prices once (cached for the server's lifetime); a failed read just means no price is shown. The
+-- rotation pack's price is published as an attribute of ReplicatedStorage for the clients' button.
 local function fetchPrices()
-	for _, productId in Config.REVIVE_PRODUCTS do
+	local productIds = table.clone(Config.REVIVE_PRODUCTS)
+	if Config.ROTATION_PRODUCT ~= 0 then
+		table.insert(productIds, Config.ROTATION_PRODUCT)
+	end
+	for _, productId in productIds do
 		local ok, info = pcall(function()
 			return MarketplaceService:GetProductInfoAsync(productId, Enum.InfoType.Product)
 		end)
@@ -54,6 +69,10 @@ local function fetchPrices()
 		elseif IS_STUDIO then
 			warn(`[ChikaBlock] couldn't read the price of product {productId}: {info}`)
 		end
+	end
+	local rotationPrice = prices[Config.ROTATION_PRODUCT]
+	if rotationPrice then
+		ReplicatedStorage:SetAttribute("RotationPrice", rotationPrice)
 	end
 end
 
@@ -136,10 +155,45 @@ local function onRequestRevive(player: Player, runId: unknown)
 	end)
 end
 
+-- The player is out of rotations and pressed rotate during a run: open the prompt for the pack. The granted
+-- purchase comes back through ProcessReceipt, which adds the rotations and sends the profile.
+local function onRequestRotations(player: Player)
+	if not rotationLimiter:allow(player) or Config.ROTATION_PRODUCT == 0 or rotationPending[player] then
+		return
+	end
+	local summary = GameService.getRuns():summary(player)
+	if not summary or summary.isOver or summary.mode ~= "normal" then
+		return
+	end
+	GameService.logRotation(player, 1)
+	pendingCounter += 1
+	local token = pendingCounter
+	rotationPending[player] = token
+	local ok, err = pcall(function()
+		MarketplaceService:PromptProductPurchase(player, Config.ROTATION_PRODUCT)
+	end)
+	if not ok then
+		warn(`[ChikaBlock] couldn't open the purchase prompt for {player.Name}: {err}`)
+		rotationPending[player] = nil
+		return
+	end
+	task.delay(PROMPT_TIMEOUT_SECONDS, function()
+		if rotationPending[player] == token then
+			rotationPending[player] = nil
+		end
+	end)
+end
+
 -- After a purchase is granted and saved: use it on the run that was waiting, if that run still can be revived.
-local function afterGrant(playerId: number, data: PlayerData.PlayerData)
+local function afterGrant(playerId: number, data: PlayerData.PlayerData, product: Purchases.Product)
 	local player = Players:GetPlayerByUserId(playerId)
 	if not player then
+		return
+	end
+	if product.kind == "rotation" then
+		rotationPending[player] = nil
+		GameService.logRotation(player, 2)
+		GameService.sendProfile(player) -- the new count
 		return
 	end
 	GameService.logRevive(player, 3)
@@ -156,7 +210,7 @@ local function afterGrant(playerId: number, data: PlayerData.PlayerData)
 end
 
 local receiptDeps: Purchases.Deps = {
-	tierOf = tierOf,
+	productOf = productOf,
 	getData = function(playerId: number): PlayerData.PlayerData?
 		local player = Players:GetPlayerByUserId(playerId)
 		return if player then DataService.waitForData(player, DATA_WAIT_SECONDS) else nil
@@ -188,10 +242,18 @@ function PurchaseService.start(_self: any)
 		PurchaseService.sendOffer(player, runId)
 	end)
 	Net.RequestRevive.OnServerEvent:Connect(onRequestRevive)
+	Net.RequestRotations.OnServerEvent:Connect(onRequestRotations)
 
 	-- Closing the prompt without buying frees the Revive button again.
 	MarketplaceService.PromptProductPurchaseFinished:Connect(
 		function(userId: number, productId: number, bought: boolean)
+			if productId == Config.ROTATION_PRODUCT then
+				local rotationPlayer = Players:GetPlayerByUserId(userId)
+				if rotationPlayer then
+					rotationPending[rotationPlayer] = nil
+				end
+				return
+			end
 			if bought then
 				return -- ProcessReceipt takes it from here
 			end
@@ -217,7 +279,9 @@ function PurchaseService.start(_self: any)
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		pending[player] = nil
+		rotationPending[player] = nil
 		requestLimiter:forget(player)
+		rotationLimiter:forget(player)
 	end)
 end
 

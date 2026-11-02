@@ -1,5 +1,5 @@
 --!strict
--- Every piece the generator can deal. Pieces can't be rotated, so each orientation is its own entry.
+-- Every piece the generator can deal. Each orientation is its own entry; rotateCW() maps one to the next.
 
 export type Cell = { x: number, y: number }
 export type SizeGroup = "Small" | "Medium" | "Large" | "Huge"
@@ -111,7 +111,54 @@ for _, shape in SHAPES do
 	byId[piece.id] = piece
 end
 
-return table.freeze({
+-- The cells of a piece in reading order as text, to tell whether two entries have the same shape.
+local function shapeKey(cells: { Cell }): string
+	local sorted = table.clone(cells)
+	table.sort(sorted, function(a: Cell, b: Cell): boolean
+		return if a.y ~= b.y then a.y < b.y else a.x < b.x
+	end)
+	local parts = table.create(#sorted)
+	for i, cell in sorted do
+		parts[i] = `{cell.x},{cell.y}`
+	end
+	return table.concat(parts, ";")
+end
+
+local byShape: { [string]: Piece } = {}
+for _, piece in all do
+	byShape[shapeKey(piece.cells)] = piece
+end
+
+-- The piece one quarter turn clockwise from each piece that looks different when turned; the dot and the
+-- squares are left out (they look the same in every orientation).
+local rotated: { [string]: Piece } = {}
+for _, piece in all do
+	local turned: { Cell } = {}
+	for i, cell in piece.cells do
+		turned[i] = { x = piece.height - 1 - cell.y, y = cell.x }
+	end
+	local match = byShape[shapeKey(turned)]
+	if not match then
+		error(`no piece looks like {piece.id} turned a quarter`)
+	end
+	if match ~= piece then
+		rotated[piece.id] = match
+	end
+end
+
+local Pieces = {
 	ALL = table.freeze(all),
 	BY_ID = table.freeze(byId),
-})
+}
+
+-- Whether turning the piece changes how it looks.
+function Pieces.canRotate(piece: Piece): boolean
+	return rotated[piece.id] ~= nil
+end
+
+-- The piece a quarter turn clockwise from `piece`; the piece itself when turning changes nothing.
+function Pieces.rotateCW(piece: Piece): Piece
+	return rotated[piece.id] or piece
+end
+
+return table.freeze(Pieces)

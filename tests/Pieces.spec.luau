@@ -77,6 +77,45 @@ return function(t: TestKit.TestKit)
 			t.expect(P.T4_1.color ~= P.L4_1.color).toBe(true)
 		end)
 
+		t.it("turns each piece a quarter clockwise into another piece of the same family", function()
+			local P = Pieces.BY_ID
+			t.expect(Pieces.rotateCW(P.I3_H)).toBe(P.I3_V)
+			t.expect(Pieces.rotateCW(P.L3_1)).toBe(P.L3_2)
+			t.expect(Pieces.rotateCW(P.T4_1)).toBe(P.T4_4)
+			t.expect(Pieces.rotateCW(P.R3x2)).toBe(P.R2x3)
+			for _, piece in Pieces.ALL do
+				local turned = Pieces.rotateCW(piece)
+				t.expect(Pieces.BY_ID[turned.id]).toBe(turned)
+				t.expect(#turned.cells).toBe(#piece.cells)
+				t.expect(turned.color).toBe(piece.color)
+			end
+		end)
+
+		t.it("returns to the start after at most four turns, and fewer for pieces that repeat", function()
+			local P = Pieces.BY_ID
+			for _, piece in Pieces.ALL do
+				local turned = piece
+				for _ = 1, 4 do
+					turned = Pieces.rotateCW(turned)
+				end
+				t.expect(turned).toBe(piece)
+			end
+			t.expect(Pieces.rotateCW(Pieces.rotateCW(P.S_H))).toBe(P.S_H)
+			t.expect(Pieces.rotateCW(Pieces.rotateCW(P.I5_V))).toBe(P.I5_V)
+		end)
+
+		t.it("cannot turn only the pieces that look the same turned", function()
+			local still = {}
+			for _, piece in Pieces.ALL do
+				if not Pieces.canRotate(piece) then
+					table.insert(still, piece.id)
+					t.expect(Pieces.rotateCW(piece)).toBe(piece)
+				end
+			end
+			table.sort(still)
+			t.expect(still).toEqual({ "Dot", "O2", "O3" })
+		end)
+
 		t.it("is read-only", function()
 			t.expect(table.isfrozen(Pieces.ALL)).toBe(true)
 			t.expect(table.isfrozen(Pieces.BY_ID.O3)).toBe(true)

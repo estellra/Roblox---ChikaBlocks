@@ -7,6 +7,7 @@
 --   Select previous / next slot   Q / E         LB / RB
 --   Move (cell by cell)           WASD, arrows  D-pad, left stick
 --   Pick up / place               Space, Enter  A
+--   Turn the piece (a rotation)   R             Y
 --   Put back                      Backspace     B
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,8 +28,8 @@ local REPEAT_INTERVAL = 0.08 -- ...then this often
 local STICK_THRESHOLD = 0.5
 local HINTS: { [InputMode]: string } = {
 	pointer = "",
-	keyboard = "Q/E select · Space pick/place · Backspace put back",
-	gamepad = "LB/RB select · A pick/place · B put back",
+	keyboard = "Q/E select · Space place · R rotate · Bksp back",
+	gamepad = "LB/RB select · A place · Y rotate · B back",
 }
 
 local GamepadController = {}
@@ -169,7 +170,11 @@ local function update()
 	end
 	local showKeys = playing and inputMode ~= "pointer"
 	views.tray:setSelected(if showKeys then selectedSlot else nil)
-	local hint = if playing then HINTS[inputMode] else ""
+	local hint = if playing then GameController.getRotationText() else ""
+	local keys = if playing then HINTS[inputMode] else ""
+	if keys ~= "" then
+		hint = if hint ~= "" then `{hint}  |  {keys}` else keys
+	end
 	if views.gui.hint.Text ~= hint then
 		views.gui.hint.Text = hint
 	end
@@ -229,6 +234,7 @@ function GamepadController.start(_self: any)
 		{ KeyCode = K.ButtonA },
 	})
 	local putBackAction = addAction("PutBack", Bool, { { KeyCode = K.Backspace }, { KeyCode = K.ButtonB } })
+	local rotateAction = addAction("Rotate", Bool, { { KeyCode = K.R }, { KeyCode = K.ButtonY } })
 	local pauseAction = addAction("Pause", Bool, { { KeyCode = K.P } })
 	context.Parent = Players.LocalPlayer:WaitForChild("PlayerScripts")
 
@@ -244,6 +250,11 @@ function GamepadController.start(_self: any)
 	end)
 	confirmAction.Pressed:Connect(confirm)
 	putBackAction.Pressed:Connect(putBack)
+	rotateAction.Pressed:Connect(function()
+		if canAct() and not DragController.isDragging() then
+			GameController.tryRotate(selectedSlot)
+		end
+	end)
 	pauseAction.Pressed:Connect(function()
 		if canAct() then
 			GameController.pause()

@@ -4,6 +4,8 @@ local Purchases = require("../src/server/Purchases")
 local TestKit = require("./TestKit")
 
 local PRODUCTS = { 111, 222, 333 }
+local ROTATION_PRODUCT = 444
+local ROTATION_PACK = 5
 local PLAYER_ID = 7
 
 local function newData(): PlayerData.PlayerData
@@ -13,15 +15,29 @@ local function newData(): PlayerData.PlayerData
 	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
 	data.purchaseIds = {}
 	data.reviveTokens = { 0, 0, 0 }
+	data.rotations = 0
 	return data
 end
 
 -- A world for one receipt: the player's data (or none), whether saving works, and what afterGrant saw.
 local function world(data: PlayerData.PlayerData?, saves: boolean)
-	local state = { data = data, saves = saves, afterGrants = 0, warnings = {} :: { string } }
+	local state = {
+		data = data,
+		saves = saves,
+		afterGrants = 0,
+		lastKind = nil :: string?,
+		warnings = {} :: { string },
+	}
 	local deps: Purchases.Deps = {
-		tierOf = function(productId: number): number?
-			return table.find(PRODUCTS, productId)
+		productOf = function(productId: number): Purchases.Product?
+			local tier = table.find(PRODUCTS, productId)
+			if tier then
+				return { kind = "revive", tier = tier }
+			end
+			if productId == ROTATION_PRODUCT then
+				return { kind = "rotation", count = ROTATION_PACK }
+			end
+			return nil
 		end,
 		getData = function(_playerId: number): PlayerData.PlayerData?
 			return state.data
@@ -29,8 +45,9 @@ local function world(data: PlayerData.PlayerData?, saves: boolean)
 		confirmSaved = function(_playerId: number, _purchaseId: string): boolean
 			return state.saves
 		end,
-		afterGrant = function(_playerId: number, _data: PlayerData.PlayerData)
+		afterGrant = function(_playerId: number, _data: PlayerData.PlayerData, product: Purchases.Product)
 			state.afterGrants += 1
+			state.lastKind = product.kind
 		end,
 		warn = function(message: string)
 			table.insert(state.warnings, message)
@@ -70,6 +87,34 @@ return function(t: TestKit.TestKit)
 			Purchases.process(receipt(111, "a"), deps)
 			Purchases.process(receipt(333, "b"), deps)
 			t.expect(data.reviveTokens).toEqual({ 1, 0, 1 })
+		end)
+
+		t.it("adds a pack of rotations for the rotation product, once per purchase", function()
+			local data = newData()
+			local state, deps = world(data, true)
+			t.expect(Purchases.process(receipt(ROTATION_PRODUCT, "r1"), deps)).toBe("granted")
+			t.expect(data.rotations).toBe(ROTATION_PACK)
+			t.expect(total(data)).toBe(0) -- no revive came with it
+			t.expect(state.lastKind).toBe("rotation")
+			t.expect(state.afterGrants).toBe(1)
+
+			t.expect(Purchases.process(receipt(ROTATION_PRODUCT, "r1"), deps)).toBe("granted") -- asked again
+			t.expect(data.rotations).toBe(ROTATION_PACK)
+			t.expect(state.afterGrants).toBe(1)
+
+			t.expect(Purchases.process(receipt(ROTATION_PRODUCT, "r2"), deps)).toBe("granted")
+			t.expect(data.rotations).toBe(2 * ROTATION_PACK)
+		end)
+
+		t.it("grants a rotation pack only once the purchase is saved", function()
+			local data = newData()
+			local state, deps = world(data, false)
+			t.expect(Purchases.process(receipt(ROTATION_PRODUCT, "r1"), deps)).toBe("notProcessedYet")
+			t.expect(data.rotations).toBe(ROTATION_PACK)
+			t.expect(state.afterGrants).toBe(0)
+			state.saves = true
+			t.expect(Purchases.process(receipt(ROTATION_PRODUCT, "r1"), deps)).toBe("granted")
+			t.expect(data.rotations).toBe(ROTATION_PACK) -- not paid out twice
 		end)
 
 		t.it("grants a revive once the purchase is saved and uses it", function()

@@ -10,6 +10,7 @@ local function fresh(): PlayerData.PlayerData
 	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
 	data.purchaseIds = {}
 	data.reviveTokens = { 0, 0, 0 }
+	data.rotations = 0
 	return data
 end
 
@@ -28,6 +29,7 @@ return function(t: TestKit.TestKit)
 				badgesAwarded = {},
 				weekly = { week = "", bestScore = 0, exp = 0 },
 				reviveTokens = { 0, 0, 0 },
+				rotations = 0,
 				purchaseIds = {},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
@@ -115,6 +117,18 @@ return function(t: TestKit.TestKit)
 			t.expect(data.reviveTokens).toEqual({ 0, 0, 1 })
 			t.expect(PlayerData.useReviveToken(data, 2)).toBe(true)
 			t.expect(data.reviveTokens).toEqual({ 0, 0, 0 })
+		end)
+
+		t.it("keeps bought rotations until they are used", function()
+			local data = fresh()
+			t.expect(PlayerData.useRotation(data)).toBe(false)
+			PlayerData.addRotations(data, 5)
+			t.expect(data.rotations).toBe(5)
+			for _ = 1, 5 do
+				t.expect(PlayerData.useRotation(data)).toBe(true)
+			end
+			t.expect(PlayerData.useRotation(data)).toBe(false)
+			t.expect(data.rotations).toBe(0)
 		end)
 
 		t.it("moves the old single revive count to the highest tier", function()

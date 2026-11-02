@@ -1,6 +1,7 @@
 --!strict
--- The client predicts every move on its own session and only receives new sets from the server. If both
--- sides apply the same moves they must stay identical; this plays whole games to prove it.
+-- The client predicts every move (and every turn of a piece) on its own session and only receives new sets
+-- from the server. If both sides apply the same actions they must stay identical; this plays whole games to
+-- prove it.
 local Board = require("../src/shared/Board")
 local Config = require("../src/shared/Config")
 local GameSession = require("../src/shared/GameSession")
@@ -12,6 +13,7 @@ local TestKit = require("./TestKit")
 local GAMES = 200
 local MAX_MOVES = 2000
 local SIZE = Config.GRID_SIZE
+local SET_SIZE = Config.PIECES_PER_SET
 
 local function noSet(_board: Board.Board, _score: number, _reason: Generator.DealReason): { Pieces.Piece }?
 	return nil
@@ -49,15 +51,51 @@ end
 return function(t: TestKit.TestKit)
 	t.describe("Lockstep", function()
 		t.it(`keeps client and server identical over {GAMES} games`, function()
-			local totalMoves, refills = 0, 0
+			local totalMoves, refills, turns = 0, 0, 0
 			for seed = 1, GAMES do
 				local server = GameSession.new(Generator.newSource(Rng.new(seed)))
 				local client = GameSession.fromSnapshot(server:snapshot(), noSet)
 				local rng = Rng.new(seed + 50000)
 				local greedy = seed % 4 == 0
+				local bought = 3 -- rotations the player has bought, spent as the server says
+
+				-- Both sides turn the piece in `slot`; they must agree on whether it worked and what it cost.
+				local function turn(slot: number)
+					local predicted = client:rotate(slot, bought)
+					local actual = server:rotate(slot, bought)
+					t.expect(predicted == nil).toBe(actual == nil)
+					if predicted and actual then
+						turns += 1
+						t.expect(predicted.charged).toBe(actual.charged)
+						t.expect(predicted.piece).toBe(actual.piece)
+						if actual.charged == "paid" then
+							bought -= 1
+						end
+					end
+					t.expect(client:snapshot()).toEqual(server:snapshot())
+				end
 
 				while not server.isOver and server.moveCount < MAX_MOVES do
+					if rng:nextFloat() < 0.3 then
+						turn(rng:nextInt(1, SET_SIZE))
+					end
 					local move = chooseMove(client, rng, greedy)
+					if not move then
+						-- Not over, so a piece that was paid for fits in another turn.
+						for slot = 1, SET_SIZE do
+							for _ = 1, 3 do
+								local piece = client.tray[slot]
+								if
+									piece
+									and client.unlocked[slot]
+									and not Board.hasAnyPlacement(client.board, piece)
+								then
+									turn(slot)
+								end
+							end
+						end
+						move = chooseMove(client, rng, greedy)
+					end
 					t.expect(move).toBeTruthy()
 					assert(move)
 					local predicted = client:place(move[1], move[2], move[3])
@@ -77,7 +115,15 @@ return function(t: TestKit.TestKit)
 				end
 				totalMoves += server.moveCount
 			end
-			print(string.format("    lockstep: %d moves, %d sets delivered, no divergence", totalMoves, refills))
+			t.expect(turns > 0).toBe(true)
+			print(
+				string.format(
+					"    lockstep: %d moves, %d sets delivered, %d turns, no divergence",
+					totalMoves,
+					refills,
+					turns
+				)
+			)
 		end)
 	end)
 end

@@ -231,6 +231,134 @@ return function(t: TestKit.TestKit)
 			end).toThrow()
 		end)
 
+		t.it("charges the first turn of a piece (free, then bought) and lets it turn freely after that", function()
+			local session = GameSession.new((Helpers.queueSource({ { "T4_1", "I3_H", "Dot" } })))
+			t.expect(session.freeRotations).toBe(1)
+
+			local first = session:rotate(1, 0)
+			assert(first)
+			t.expect(first.charged).toBe("free")
+			t.expect(first.piece.id).toBe("T4_4")
+			t.expect(Helpers.ids(session.tray)).toEqual({ "T4_4", "I3_H", "Dot" })
+			t.expect(session.freeRotations).toBe(0)
+
+			local again = session:rotate(1, 0) -- the piece is unlocked now
+			assert(again)
+			t.expect(again.charged).toBe(nil)
+			t.expect(again.piece.id).toBe("T4_2")
+
+			t.expect(session:rotate(2, 0)).toBe(nil) -- nothing free left and nothing bought
+			t.expect(session.tray[2]).toBe(Pieces.BY_ID.I3_H)
+
+			local bought = session:rotate(2, 3)
+			assert(bought)
+			t.expect(bought.charged).toBe("paid")
+			t.expect(bought.piece.id).toBe("I3_V")
+			t.expect(session.freeRotations).toBe(0)
+			t.expect(session.moveCount).toBe(0)
+			t.expect(session.score).toBe(0)
+		end)
+
+		t.it("refuses to turn a piece that looks the same, a missing piece, a bad slot or a finished run", function()
+			local session = GameSession.new((Helpers.queueSource({ { "Dot", "O2", "I3_H" } })))
+			session:place(3, 0, 0)
+			local before = session:snapshot()
+			local cases: { { any } } = {
+				{ 1, 5 }, -- dot
+				{ 2, 5 }, -- square
+				{ 3, 5 }, -- already placed
+				{ 0, 5 },
+				{ 4, 5 },
+				{ 1.5, 5 },
+				{ "1", 5 },
+				{ 0 / 0, 5 },
+				{ {}, 5 },
+			}
+			for _, case in cases do
+				t.expect(session:rotate(case[1], case[2])).toBe(nil)
+			end
+			t.expect(session:snapshot()).toEqual(before)
+
+			local over = GameSession.new(
+				(Helpers.queueSource({ { "I2_H", "I2_H", "I2_H" } })),
+				Helpers.boardFromRows(CHECKERBOARD)
+			)
+			t.expect(over.isOver).toBe(true)
+			t.expect(over:rotate(1, 5)).toBe(nil)
+		end)
+
+		t.it("doesn't take a bought rotation from anything but a positive number", function()
+			local session = GameSession.new((Helpers.queueSource({ { "I2_H", "I3_H", "L3_1" } })))
+			session:rotate(1, 0) -- spends the free one
+			for _, paid in { -1, 0, "5", true, {}, 0 / 0 } do
+				t.expect(session:rotate(2, paid)).toBe(nil)
+			end
+			t.expect(session.unlocked[2]).toBe(false)
+		end)
+
+		t.it("locks the pieces again when they are placed, when a set is dealt and after a revive", function()
+			local session =
+				GameSession.new((Helpers.queueSource({ { "T4_1", "I3_H", "Dot" }, { "L3_1", "I2_H", "Dot" } })))
+			session:rotate(1, 0)
+			t.expect(session.unlocked).toEqual({ true, false, false })
+			session:place(1, 0, 0)
+			t.expect(session.unlocked).toEqual({ false, false, false })
+			session:rotate(2, 1) -- bought
+			t.expect(session.unlocked).toEqual({ false, true, false })
+			session:place(2, 0, 5)
+			session:place(3, 7, 7) -- the tray runs out: a new set
+			t.expect(Helpers.ids(session.tray)).toEqual({ "L3_1", "I2_H", "Dot" })
+			t.expect(session.unlocked).toEqual({ false, false, false })
+			t.expect(session.freeRotations).toBe(0) -- free turns are per run, not per set
+		end)
+
+		t.it("counts a paid-for piece as playable in any turn when deciding game over", function()
+			local board = {
+				"..#.#.#.",
+				".#.#.#.#",
+				"..#.#.#.",
+				".#.#.#.#",
+				"#.#.#.#.",
+				".#.#.#.#",
+				"#.#.#.#.",
+				".#.#.#.#",
+			}
+			local function newSession()
+				return GameSession.new(
+					(Helpers.queueSource({ { "I3_H", "Dot", "Dot" }, { "Dot", "Dot", "Dot" } })),
+					Helpers.boardFromRows(board)
+				)
+			end
+
+			local plain = newSession()
+			plain:place(2, 6, 7)
+			plain:place(3, 4, 7)
+			t.expect(plain.isOver).toBe(true) -- the bar doesn't fit and was never turned
+
+			local paid = newSession()
+			paid:rotate(1, 0) -- now vertical
+			paid:rotate(1, 0) -- and horizontal again, where it doesn't fit
+			paid:place(2, 6, 7)
+			paid:place(3, 4, 7)
+			t.expect(paid.isOver).toBe(false)
+			t.expect(paid:canPlace(1, 0, 0)).toBe(false)
+			paid:rotate(1, 0)
+			t.expect(paid.tray[1]).toBe(Pieces.BY_ID.I3_V)
+			t.expect(paid:place(1, 0, 0)).toBeTruthy()
+		end)
+
+		t.it("keeps the rotation state through a snapshot", function()
+			local sets = { { "T4_1", "I3_H", "Dot" }, { "L3_1", "I2_H", "Dot" } }
+			local session = GameSession.new((Helpers.queueSource(sets)))
+			session:rotate(1, 0)
+			local copy = GameSession.fromSnapshot(session:snapshot(), (Helpers.queueSource({ sets[2] })))
+			t.expect(copy:snapshot()).toEqual(session:snapshot())
+			t.expect(copy.freeRotations).toBe(0)
+			t.expect(copy.unlocked).toEqual({ true, false, false })
+			t.expect(copy:rotate(1, 0)).toBeTruthy() -- still turns freely
+			t.expect(copy:rotate(2, 0)).toBe(nil) -- and still has nothing free left
+		end)
+
 		t.it("throws when the set source deals the wrong number of pieces", function()
 			t.expect(function()
 				GameSession.new((Helpers.queueSource({ { "Dot", "Dot" } })))

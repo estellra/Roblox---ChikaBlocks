@@ -1,5 +1,6 @@
 --!strict
--- Developer product purchases, without Roblox: which product a revive costs and how a receipt is handled.
+-- Developer product purchases, without Roblox: which product a revive costs and how a receipt is handled
+-- (a revive bought at some price, or a pack of rotations).
 -- Pure Luau so Lune can test it; PurchaseService passes in the real services.
 --
 -- A receipt is handled so that a purchase is never granted twice and never reported as granted before it is
@@ -14,15 +15,18 @@ export type Receipt = { PlayerId: number, ProductId: number, PurchaseId: string 
 
 export type Decision = "granted" | "notProcessedYet"
 
+-- What a product gives: a revive at a price tier (1 is the cheapest), or a number of rotations.
+export type Product = { kind: "revive", tier: number } | { kind: "rotation", count: number }
+
 export type Deps = {
-	-- The price tier of a revive product (1 is the cheapest), nil for any other product.
-	tierOf: (productId: number) -> number?,
+	-- What a product gives, nil for a product the game doesn't sell.
+	productOf: (productId: number) -> Product?,
 	-- The player's loaded data; nil when they have left or it didn't load in time.
 	getData: (playerId: number) -> PlayerData.PlayerData?,
 	-- Yields until the data holding `purchaseId` is saved; false if that can't be confirmed (session ended).
 	confirmSaved: (playerId: number, purchaseId: string) -> boolean,
-	-- Runs once, after the first grant is saved: use the new revive on the run waiting for it.
-	afterGrant: (playerId: number, data: PlayerData.PlayerData) -> (),
+	-- Runs once, after the first grant is saved: e.g. use the new revive on the run waiting for it.
+	afterGrant: (playerId: number, data: PlayerData.PlayerData, product: Product) -> (),
 	warn: (message: string) -> (),
 }
 
@@ -39,8 +43,8 @@ function Purchases.reviveProduct(products: { number }, revivesUsed: number): num
 end
 
 function Purchases.process(receipt: Receipt, deps: Deps): Decision
-	local tier = deps.tierOf(receipt.ProductId)
-	if not tier then
+	local product = deps.productOf(receipt.ProductId)
+	if not product then
 		deps.warn(`no handler for product {receipt.ProductId} (purchase {receipt.PurchaseId})`)
 		return "notProcessedYet"
 	end
@@ -52,14 +56,18 @@ function Purchases.process(receipt: Receipt, deps: Deps): Decision
 	local purchaseId = receipt.PurchaseId
 	local isNew = not PlayerData.hasPurchase(data, purchaseId)
 	if isNew then
-		PlayerData.addReviveToken(data, tier)
+		if product.kind == "revive" then
+			PlayerData.addReviveToken(data, product.tier)
+		else
+			PlayerData.addRotations(data, product.count)
+		end
 		PlayerData.rememberPurchase(data, purchaseId)
 	end
 	if not deps.confirmSaved(receipt.PlayerId, purchaseId) then
 		return "notProcessedYet"
 	end
 	if isNew then
-		deps.afterGrant(receipt.PlayerId, data)
+		deps.afterGrant(receipt.PlayerId, data, product)
 	end
 	return "granted"
 end

@@ -15,6 +15,7 @@ export type PlayerData = {
 	-- This week's best score and EXP for the weekly leaderboards; reset when the week changes (see Leaderboards).
 	weekly: { week: string, bestScore: number, exp: number },
 	reviveTokens: { number }, -- paid revives not used yet, counted per price tier 1..3 (see Purchases)
+	rotations: number, -- bought rotations not used yet
 	purchaseIds: { string }, -- receipts already handled, the latest 100, newest last
 }
 
@@ -61,6 +62,7 @@ PlayerData.TEMPLATE = table.freeze({
 	badgesAwarded = table.freeze({}),
 	weekly = table.freeze({ week = "", bestScore = 0, exp = 0 }),
 	reviveTokens = table.freeze({ 0, 0, 0 }),
+	rotations = 0,
 	purchaseIds = table.freeze({}),
 })
 
@@ -137,6 +139,20 @@ function PlayerData.useReviveToken(data: PlayerData, required: number): boolean
 		end
 	end
 	return false
+end
+
+-- Adds bought rotations.
+function PlayerData.addRotations(data: PlayerData, count: number)
+	data.rotations += count
+end
+
+-- Spends one bought rotation. False when there is none.
+function PlayerData.useRotation(data: PlayerData): boolean
+	if data.rotations <= 0 then
+		return false
+	end
+	data.rotations -= 1
+	return true
 end
 
 return PlayerData

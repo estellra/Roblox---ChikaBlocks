@@ -1,6 +1,6 @@
 # Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 
-> Plan đã duyệt; M12, M13 và M14 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
+> Plan đã duyệt; M12, M13, M14 và M15 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
 
 ## Bối cảnh
 
@@ -20,7 +20,7 @@
 | **M13** Level và EXP | EXP sau mỗi ván, level, quà theo mốc highscore và mốc level | Quyết định W, X | ✅ Xong (badge chờ ID) |
 | **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ Xong |
 | **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ✅ Xong (dùng lại cho M15, M16) |
-| **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z | ⏳ |
+| **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z, AM, AN, AO | ✅ Xong (chờ thử giao dịch thật khi publish) |
 | **M16** Donate | Nhiều mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA | ⏳ |
 | **M17** Rewarded video ad | Xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lượt xoay | Game public, ≥ 2k người/tháng | ⏳ sau publish |
 
@@ -163,11 +163,79 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 
 ## M15: Xoay khối
 
-- Hiện mỗi hướng xoay là một khối riêng trong `Pieces`. Xoay = đổi khối trong khay sang khối của hướng kế tiếp. Cần thêm bảng `rotateCW` cho mọi khối; khối đối xứng (1x1, vuông) thì không xoay được.
-- **`GameSession:rotate(slot)`** và remote `RotatePiece(runId, moveIndex, slot)`. Server kiểm tra còn lượt (1 lượt miễn phí mỗi ván, sau đó trừ vào `rotations`). Client dự đoán như với `PlacePiece`.
-- **Điều khiển:** nút xoay nhỏ trên ô khay (chạm/chuột), phím R, nút Y trên tay cầm.
-- **Mua thêm lượt:** Developer Product qua `PurchaseService` của M8. Hết lượt mà bấm xoay thì hiện gợi ý mua.
-- Lockstep test hiện có (client = server) được mở rộng để có cả nước xoay.
+Các quyết định đã chốt: **AM** game over giữ nguyên (xoay không cứu ván), **AN** mỗi khối tốn một lượt (khối đó xoay tự do tới khi đặt xuống), **AO** một gói **5 lượt, 25 R$**, lượt mua được giữ cho các ván sau (quyết định Z).
+
+### Cách chơi
+
+- Mỗi ván có **1 lượt xoay miễn phí**, hết thì dùng lượt đã mua (`rotations` trong profile). Hết cả hai thì bấm xoay sẽ mời mua gói 5 lượt.
+- Xoay một khối trong khay lần đầu tốn 1 lượt. Sau đó khối ấy xoay thoải mái (mỗi lần 90° theo chiều kim đồng hồ) cho tới khi đặt xuống. Khối đối xứng (chấm, vuông 2×2 và 3×3) không xoay được nên không có nút xoay, không tốn lượt.
+- Xoay không đổi bộ khối kế tiếp và không đổi điểm; không làm đổi số nước (`moveCount`) nên không ảnh hưởng thống kê ván.
+- Game over giữ nguyên: hết chỗ đặt khối nào trong khay thì thua, dù xoay có thể đặt vừa. Nút Revive vì vậy vẫn có giá trị.
+- Không có trong tutorial và trong ván xem trước (chỉ ván thường).
+
+### Thiết kế
+
+- **`Pieces.rotateCW(piece)`:** tìm khối cùng hình sau khi xoay trong bảng `Pieces` (đủ cả 4 hướng cho mọi khối, kiểm bằng test). Khối đối xứng trả về chính nó, kèm `Pieces.canRotate`.
+- **`GameSession:rotate(slot, paidAvailable)`:** kiểm tra hợp lệ như `place` (chưa thua, đúng ô còn khối). Ô đã mở khoá thì xoay miễn phí; chưa thì cần lượt miễn phí còn lại hoặc `paidAvailable > 0`, trả `{ slot, piece, charged = "free" | "paid" | nil }`. Snapshot thêm `freeRotations` và các ô đã mở khoá; mở khoá được xoá khi khối được đặt, khi chia bộ mới và khi hồi sinh.
+- **`GameRuns.rotate` và `Net.RotatePiece(runId, moveIndex, slot)`:** server kiểm `runId`, `moveIndex == moveCount` (xoay xảy ra giữa hai nước), giới hạn tần suất; trừ `rotations` khi `charged == "paid"`. Sai thì gửi lại toàn bộ state (resync) như nước đi sai. Client dự đoán ngay, như với `PlacePiece`.
+- **`Net.RequestRotations`:** client bấm xoay khi hết lượt thì server mở hộp mua của Roblox với product xoay (qua `PurchaseService`). Mua xong cộng 5 lượt, chờ lưu xong rồi gửi lại `Profile` (có `rotations`). Cấp theo `PurchaseId` như hồi sinh: không cấp trùng.
+- **`Purchases.process`** được tổng quát hoá: mỗi product có một hàm cấp riêng (hồi sinh theo mức giá, xoay cộng 5 lượt) thay vì chỉ hồi sinh.
+- **Dữ liệu:** thêm `rotations` (mặc định 0). `Reconcile` tự điền nên version vẫn là 3.
+- **`Config`:** `ROTATION_PRODUCT`, `ROTATION_PACK = 5`, `FREE_ROTATIONS_PER_RUN = 1`. Giá lấy từ `GetProductInfoAsync`, không ghi cứng.
+- **Analytics:** funnel `RotationOffer` (1 hết lượt và được mời, 2 bấm mua, 3 mua xong) và sự kiện `RotationUsed` (free / paid).
+
+### Giao diện (gray-box theo style hiện tại; mockup chưa có nút xoay)
+
+- Nút xoay tròn nhỏ ở góc mỗi ô khay (chạm và chuột), chỉ hiện với khối xoay được. Một nhãn "×N" cho số lượt đã mua, và "Free" khi còn lượt miễn phí.
+- Phím **R** xoay ô đang chọn, nút **Y** trên tay cầm. Xoay khi đang kéo thì chưa hỗ trợ (bản này).
+- Hết lượt mà bấm xoay: nút chuyển thành "Get 5 · R$ 25".
+- Mình sẽ thử xem font có biểu tượng xoay không; nếu không, dùng nhãn chữ "R" thay vì chờ asset.
+
+### Test
+
+- Lune: mọi khối xoay đúng hình và quay lại sau tối đa 4 lần; `GameSession:rotate` (miễn phí, đã mua, đã mở khoá, hết lượt, khối đối xứng, sau khi thua, giá trị không hợp lệ, mở khoá bị xoá đúng lúc); `GameRuns.rotate`; `Purchases` với product xoay (cấp một lần, không cấp trùng); lockstep client = server mở rộng thêm nước xoay.
+- Studio (PC, iPhone dọc và ngang): xoay bằng chuột, phím R, chạm; hết lượt thì mời mua; mua giả bằng `fakepurchase` rồi kiểm số lượt và lưu; không có cảnh báo resync.
+
+### Bạn cần làm
+
+Tạo Developer Product **"5 Rotations" giá 25 R$** trong đúng experience đã có ba product hồi sinh, rồi gửi ID. Mình làm được trước khi có ID (để `ROTATION_PRODUCT = 0`, nút mua ẩn); khi có ID thì điền vào `Config` là mua được.
+
+### Giới hạn đã biết
+
+- Lượt xoay đã mua bị trừ trong bộ nhớ, lưu theo chu kỳ của ProfileStore. Nếu server sập đúng lúc đó, người chơi có thể được lại vài lượt (giống lượt hồi sinh đã mua); chấp nhận được.
+- Xoay chưa dùng được trong lúc kéo khối.
+
+### Kết quả M15
+
+- **Quyết định:** AM (game over giữ nguyên), AN (mỗi khối một lượt) và AO (một gói 5 lượt, 25 R$) theo đúng lựa chọn của bạn. Product `3727205638` (bạn gọi là "pass ID", dùng như Developer Product vì cần mua lặp lại).
+- **`Pieces.rotateCW` và `Pieces.canRotate`:** tìm khối cùng hình sau một phần tư vòng quay trong bảng `Pieces`, nên không phải khai bảng xoay tay. Chấm, vuông 2×2 và 3×3 không xoay được.
+- **`GameSession:rotate(slot, paidAvailable)`:** khối chưa mở khoá cần một lượt (miễn phí trước, rồi lượt đã mua), khối đã mở khoá xoay tự do tới khi đặt xuống. Snapshot thêm `freeRotations` và các ô đã mở khoá. Mở khoá được xoá khi đặt khối, chia bộ mới và hồi sinh.
+- **Game over (điều chỉnh nhỏ so với plan):** khối đã mở khoá được tính là đặt được nếu **một hướng nào đó** còn vừa. Nếu không, người chơi đã trả lượt cho khối đó vẫn có thể thua dù khối còn xoay vừa. Khối chưa mở khoá vẫn chỉ xét hướng hiện tại, nên xoay không cứu được ván và nút Revive giữ nguyên giá trị.
+- **Server:** `GameRuns.rotate` (cùng kiểu kiểm tra `runId`/`moveIndex` như `place`, giới hạn 12 lần mỗi giây, chỉ ván thường), remote `RotatePiece` và `RequestRotations`. Lượt đã mua trừ ở server (`PlayerData.useRotation`) rồi gửi lại `Profile` (thêm `rotations`). Sai thì gửi lại state và profile như nước đi sai.
+- **Mua gói:** `Purchases.process` tổng quát hoá (`productOf` thay cho `tierOf`; mỗi product có `kind`: hồi sinh theo mức giá hoặc gói xoay). `PurchaseService` mở hộp mua khi client hết lượt và bấm xoay, cộng 5 lượt một lần cho mỗi `PurchaseId`, chờ lưu xong rồi gửi `Profile`. Giá đọc từ Roblox và công bố qua attribute `RotationPrice` của `ReplicatedStorage`. `Config.ROTATION_PRODUCT = 0` thì nút mua ẩn.
+- **Dữ liệu:** thêm `rotations` (mặc định 0); `Reconcile` tự điền nên version vẫn là 3.
+- **Analytics:** funnel `RotationOffer` (1 Requested, 2 Paid) và sự kiện `RotationUsed` (free / paid).
+- **Client:** nút xoay ở góc dưới phải mỗi ô khay (chỉ với khối xoay được, ẩn khi khối đang cầm, khi game over và trong tutorial), phím **R** xoay ô đang chọn, nút **Y** trên tay cầm. Dòng dưới khay ghi số lượt ("Rotate: 1 free", "Rotate: 5 owned", hoặc "Rotate: 5 for R$ 25" khi hết). Font của game không có mũi tên xoay nên dùng "🔄" (emoji dự phòng của Roblox), đặt ở góc ô để không che ô nào của khối.
+- **158 test pass** (thêm 17: xoay của `Pieces` 3, `GameSession` 6, `GameRuns` 4, gói xoay trong `Purchases` 2, `PlayerData` 1, `Telemetry` 1; lockstep client = server mở rộng thêm 587 lượt xoay qua 200 ván).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Bấm nút xoay bằng chuột thật (ô 3) | I3_H thành I3_V, server khớp khay, dùng lượt miễn phí, dòng dưới khay chuyển thành "Rotate: 5 for R$ 25" |
+| Bấm lại cùng nút | Xoay tiếp miễn phí (khối đã mở khoá) |
+| Bấm xoay khối khác khi hết lượt | Không xoay, server ghi funnel `RotationOffer 1 Requested` (hộp mua của Roblox mở) |
+| `fakepurchase` product xoay, cùng `PurchaseId` hai lần | `rotations=5` cả hai lần (không cấp trùng), funnel có `2 Paid`, dòng "Rotate: 5 owned" |
+| Xoay khối khác bằng lượt đã mua | Server `rotations=4`, client và server cùng khay, sự kiện `RotationUsed [paid]` |
+| Phím R | Xoay ô đang chọn |
+| 6 ván, mỗi ván 14 lần xoay ngẫu nhiên xen kẽ nước đi | Không có cảnh báo resync hay lỗi; client và server cùng trạng thái; nút ẩn khi game over |
+| iPhone 17 Pro dọc (401×777) và ngang (749×381) | Nút nhìn rõ, không che ô nào của khối L5, không tràn màn hình |
+| Output | Không có lỗi từ game |
+
+- **Chưa kiểm tra được:**
+  - Hộp mua thật của Roblox và giao dịch Robux thật (cần publish). Trong Studio mới thử bằng `fakepurchase`.
+  - Nút Y trên tay cầm thật (bấm phím R qua MCP, cùng một action).
+  - Xoay khi đang kéo khối: chưa hỗ trợ (nút và phím bị bỏ qua khi có khối đang cầm).
+  - Nút trên điện thoại ngang nhỏ khoảng 23 px (ô khay ở đó chỉ 67 px); to hơn sẽ đè lên khối.
+- **Giới hạn:** lượt đã mua bị trừ trong bộ nhớ và lưu theo chu kỳ ProfileStore; nếu server sập đúng lúc đó, người chơi có thể được lại vài lượt (giống lượt hồi sinh đã mua).
 
 ## M16: Donate
 
@@ -198,3 +266,6 @@ M12 đã nâng profile lên `version = 2` (thêm `onboardingStep`). Các mốc s
 | **Z.** Lượt xoay đã mua | Chỉ dùng trong ván đang chơi, hay giữ lại cho ván sau? | **Giữ lại** (lưu trong profile). Người chơi thấy mua không phí, và dễ bán gói nhiều lượt. |
 | **AA.** Donate | Bao nhiêu mức, giá bao nhiêu? Có hiện tên người donate công khai không? | 4 mức (vd. 10 / 50 / 100 / 500 Robux) và **có** bảng Supporters công khai. |
 | Từ M8 | Giá hồi sinh lần 1 và lần 2, giá lượt xoay; publish dưới **Group** hay tài khoản cá nhân | Group nếu hai người chia doanh thu. Giá chốt khi làm M8. |
+| **AM.** Xoay và game over | Hết chỗ đặt khối nhưng xoay một khối sẽ vừa thì có thua không? | ✅ **Chốt:** vẫn game over. Xoay chỉ để lên kế hoạch, không cứu ván. |
+| **AN.** Cách tính lượt xoay | Mỗi lần chạm hay mỗi khối? | ✅ **Chốt:** mỗi khối một lượt, khối đó xoay tự do tới khi đặt xuống. |
+| **AO.** Gói lượt xoay | Bán bao nhiêu lượt, giá bao nhiêu? | ✅ **Chốt:** một gói 5 lượt giá 25 R$ (bạn tạo product và gửi ID). |
