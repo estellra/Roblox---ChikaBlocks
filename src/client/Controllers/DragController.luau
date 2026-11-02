@@ -11,6 +11,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
+local Block = require("../Views/Block")
 local PieceView = require("../Views/PieceView")
 local Theme = require("../Views/Theme")
 
@@ -86,7 +87,7 @@ local function setBlocked(current: Drag, blocked: boolean)
 	current.blocked = blocked
 	for _, block in current.frame:GetDescendants() do
 		if block.Name == "Block" and block:IsA("Frame") then
-			block.BackgroundTransparency = if blocked then Theme.Transparency.Blocked else 0
+			Block.setTransparency(block, if blocked then Theme.Transparency.Blocked else 0)
 		end
 	end
 end

@@ -58,7 +58,10 @@ local function addAction(name: string, actionType: Enum.InputActionType, binding
 end
 
 local function isPlaying(): boolean
-	return GameController.getRunId() > 0 and not GameController.getSession().isOver and not MenuController.isOpen()
+	return GameController.getRunId() > 0
+		and not GameController.getSession().isOver
+		and not MenuController.isOpen()
+		and not GameController.isPaused()
 end
 
 local function canAct(): boolean
@@ -226,6 +229,7 @@ function GamepadController.start(_self: any)
 		{ KeyCode = K.ButtonA },
 	})
 	local putBackAction = addAction("PutBack", Bool, { { KeyCode = K.Backspace }, { KeyCode = K.ButtonB } })
+	local pauseAction = addAction("Pause", Bool, { { KeyCode = K.P } })
 	context.Parent = Players.LocalPlayer:WaitForChild("PlayerScripts")
 
 	selectPrevious.Pressed:Connect(function()
@@ -240,6 +244,11 @@ function GamepadController.start(_self: any)
 	end)
 	confirmAction.Pressed:Connect(confirm)
 	putBackAction.Pressed:Connect(putBack)
+	pauseAction.Pressed:Connect(function()
+		if canAct() then
+			GameController.pause()
+		end
+	end)
 
 	UserInputService.LastInputTypeChanged:Connect(function(inputType: Enum.UserInputType)
 		inputMode = modeFor(inputType) or inputMode

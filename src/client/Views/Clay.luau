@@ -116,6 +116,123 @@ function Clay.setStyle(button: Frame, style: ButtonStyle)
 	lip.BackgroundColor3 = colors.lip
 end
 
+export type PillProps = {
+	name: string,
+	text: string,
+	icon: string?, -- image shown before the text
+	style: ("panel" | "reward")?,
+	order: number?,
+}
+
+-- A small rounded label with an outline (the Best and Combo pills): grows with its text.
+function Clay.pill(props: PillProps): Frame
+	local colors = Theme.Colors
+	local children: { Instance } = {
+		create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		outline(Theme.Stroke.Pill),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }),
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6),
+		}),
+	}
+	if props.icon then
+		table.insert(
+			children,
+			create("ImageLabel", {
+				Name = "Icon",
+				LayoutOrder = 1,
+				Size = UDim2.fromOffset(18, 18),
+				BackgroundTransparency = 1,
+				Image = props.icon,
+			})
+		)
+	end
+	table.insert(
+		children,
+		create("TextLabel", {
+			Name = "Text",
+			LayoutOrder = 2,
+			Size = UDim2.fromScale(0, 1),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundTransparency = 1,
+			FontFace = Theme.Fonts.Label,
+			TextSize = 15,
+			TextColor3 = colors.Text,
+			Text = props.text,
+		})
+	)
+	return create("Frame", {
+		Name = props.name,
+		LayoutOrder = props.order or 0,
+		Size = UDim2.fromOffset(0, 32),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = if props.style == "reward" then colors.Reward else colors.Panel,
+		BorderSizePixel = 0,
+	}, children)
+end
+
+function Clay.pillLabel(pill: Frame): TextLabel
+	return pill:FindFirstChild("Text") :: TextLabel
+end
+
+-- Resizes a pill (32 px high by default); its text and icon follow.
+function Clay.setPillHeight(pill: Frame, height: number)
+	pill.Size = UDim2.fromOffset(0, height)
+	Clay.pillLabel(pill).TextSize = math.floor(height * 0.47)
+	local icon = pill:FindFirstChild("Icon") :: ImageLabel?
+	if icon then
+		icon.Size = UDim2.fromOffset(math.floor(height * 0.56), math.floor(height * 0.56))
+	end
+end
+
+export type IconButtonProps = { name: string, image: string, order: number? }
+
+-- A round button with an icon (pause, settings...): a cream disc with an outline that shrinks slightly when
+-- pressed. Square, 52 px by default; size it from outside (the aspect ratio keeps it round).
+function Clay.iconButton(props: IconButtonProps): TextButton
+	local pressScale = create("UIScale", { Scale = 1 })
+	local button = create("TextButton", {
+		Name = props.name,
+		LayoutOrder = props.order or 0,
+		Size = UDim2.fromOffset(52, 52),
+		BackgroundColor3 = Theme.Colors.Panel,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+	}, {
+		create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		outline(Theme.Stroke.Button),
+		create("UIAspectRatioConstraint", { AspectRatio = 1 }),
+		pressScale,
+		create("ImageLabel", {
+			Name = "Icon",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.5, 0.5),
+			BackgroundTransparency = 1,
+			Image = props.image,
+		}),
+	})
+	local info = TweenInfo.new(Theme.Motion.ButtonPress, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local function press(down: boolean)
+		TweenService:Create(pressScale, info, { Scale = if down then 0.92 else 1 }):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		press(true)
+	end)
+	button.MouseButton1Up:Connect(function()
+		press(false)
+	end)
+	button.MouseLeave:Connect(function()
+		press(false)
+	end)
+	return button
+end
+
 -- A cloud: a flat base with two bumps, all one solid color (a faded one would show where the bumps overlap).
 local function cloud(width: number, x: number, y: number): Frame
 	local function blob(position: UDim2, size: UDim2): Frame

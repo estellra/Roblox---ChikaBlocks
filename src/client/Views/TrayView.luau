@@ -109,6 +109,9 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 			preview.Parent = content
 		end
 		self.shown[index] = piece
+		self.slots[index].BackgroundTransparency = if piece
+			then Theme.Transparency.TraySlot
+			else Theme.Transparency.TraySlotEmpty
 	end
 end
 
@@ -129,6 +132,10 @@ function TrayView.setHidden(self: TrayView, slot: number, hidden: boolean)
 	if preview and preview:IsA("GuiObject") then
 		preview.Visible = not hidden
 	end
+	-- the slot fades while its piece is in hand
+	self.slots[slot].BackgroundTransparency = if hidden or not self.shown[slot]
+		then Theme.Transparency.TraySlotEmpty
+		else Theme.Transparency.TraySlot
 end
 
 -- Pixel size of one preview cell in this slot (0 when the slot is empty).

@@ -37,8 +37,8 @@ local PORTRAIT = {
 local LANDSCAPE = {
 	board = UDim2.fromScale(0.6, 1),
 	side = UDim2.fromScale(0.36, 1),
-	hud = UDim2.fromScale(1, 0.17),
-	tray = UDim2.fromScale(1, 0.73),
+	hud = UDim2.fromScale(1, 0.2),
+	tray = UDim2.fromScale(1, 0.7),
 	hint = UDim2.fromScale(1, 0.06),
 	slot = UDim2.fromScale(1, 0.31),
 }

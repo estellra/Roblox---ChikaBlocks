@@ -41,6 +41,7 @@ export type Theme = {
 	Transparency: {
 		Overlay: number,
 		TraySlot: number,
+		TraySlotEmpty: number, -- a slot whose piece is in hand or placed
 		Ghost: number, -- where the dragged piece would land
 		Blocked: number, -- a piece held with keys over cells it can't land on
 		NoMoves: number, -- board dimmer at game over
@@ -108,7 +109,7 @@ local NUNITO = "rbxasset://fonts/families/Nunito.json"
 
 local Theme: Theme = {
 	Text = {
-		GameTitle = "ChiikaBlocks",
+		GameTitle = "ChikaBlocks",
 	},
 	Colors = {
 		Background = Color3.fromHex("#cfebff"),
@@ -162,6 +163,7 @@ local Theme: Theme = {
 	Transparency = {
 		Overlay = 0.4,
 		TraySlot = 0,
+		TraySlotEmpty = 0.6,
 		Ghost = 0.5,
 		Blocked = 0.6,
 		NoMoves = 0.45,

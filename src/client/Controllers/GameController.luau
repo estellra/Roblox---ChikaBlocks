@@ -83,6 +83,7 @@ local function render()
 	views.board:render(session.board)
 	views.tray:render(session.tray)
 	views.hud:setScore(session.score, best)
+	views.hud:setCombo(session.combo.combo)
 end
 
 -- Dims the board with "No moves left" right away, then opens the panel after `delaySeconds`, so the last
@@ -216,12 +217,18 @@ function GameController.start(_self: any)
 		gui = gui,
 		board = BoardView.new(gui.boardArea),
 		tray = TrayView.new(gui.trayArea),
-		hud = Hud.new(gui.hudArea, gui.boardArea, gui.overlay, gui.overlayBackdrop, function()
-			GameController.restart()
-		end, function()
-			GameController.requestMenu()
-		end),
+		hud = Hud.new(gui.hudArea, gui.boardArea, gui.overlay, gui.overlayBackdrop, {
+			onRestart = GameController.restart,
+			onMenu = GameController.requestMenu,
+			onPause = GameController.pause,
+			onResume = GameController.resume,
+		}),
 	}
+	local hud = views.hud
+	hud:setLayout(gui.getMode())
+	gui.onLayoutChanged(function(mode)
+		hud:setLayout(mode)
+	end)
 	Net.GameState.OnClientEvent:Connect(onGameState)
 	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
 	Net.Profile.OnClientEvent:Connect(onProfile)
@@ -245,6 +252,23 @@ end
 function GameController.requestMenu()
 	hideGameOver()
 	notify(menuRequestedListeners)
+end
+
+-- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.
+function GameController.pause()
+	if views and runId > 0 and not session.isOver then
+		views.hud:showPause()
+	end
+end
+
+function GameController.resume()
+	if views then
+		views.hud:hidePause()
+	end
+end
+
+function GameController.isPaused(): boolean
+	return views ~= nil and views.hud:isPauseOpen()
 end
 
 -- Plays a move from the tray right away and sends it to the server. Returns nil (and changes nothing)

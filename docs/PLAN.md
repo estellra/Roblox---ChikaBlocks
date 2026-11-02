@@ -1,12 +1,12 @@
 # Kế hoạch build game: ChikaBlock
 
-> Dựa trên tài liệu thiết kế "Chikawa Blast". Tên game: **ChiikaBlocks** (chốt khi lên plan M9).
+> Dựa trên tài liệu thiết kế "Chikawa Blast". Tên game: **ChikaBlocks** (đổi từ ChiikaBlocks theo mockup Figma ở M10).
 
 ## 1. Các quyết định đã chốt
 
 | Chủ đề | Quyết định |
 |---|---|
-| Bản quyền | **Không** dùng nhân vật Chiikawa. Tự thiết kế linh vật riêng theo phong cách cute, pastel, tròn trịa. Tên game là **ChiikaBlocks** (quyết định khi lên plan M9, thay cho ý ban đầu là tên không chứa "Chikawa"). Lưu ý: tên này gần "Chiikawa", nên vẫn có rủi ro bản quyền/thương hiệu khi publish và kiếm tiền. |
+| Bản quyền | **Không** dùng nhân vật Chiikawa. Tự thiết kế linh vật riêng theo phong cách cute, pastel, tròn trịa. Tên game là **ChikaBlocks** (theo mockup Figma, sau khi M9 dùng tạm ChiikaBlocks; tên trên logo mockup ghi là "working title"). Lưu ý: tên này vẫn gần "Chiikawa", nên còn rủi ro bản quyền/thương hiệu khi publish và kiếm tiền; xem lại trước khi publish. |
 | Workflow code | **Rojo + git**. Code nằm trong repo này, sync sang Studio. |
 | Lobby | **Chỉ có menu UI**. Vào game là thấy menu, bấm Play là chơi ngay. Không có sảnh 3D. |
 | Sinh block | **Công bằng, độ khó tăng dần**. Bộ khối mới luôn có ít nhất 1 khối đặt được. Không ngầm gài để người chơi thua. |
@@ -154,7 +154,7 @@ Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 
 Các câu hỏi này không chặn Giai đoạn 0–1, nhưng cần trả lời trước khi tới giai đoạn tương ứng:
 
-1. **Linh vật** (trước M10): linh vật trông thế nào, ai vẽ asset 2D? Tên game đã chốt là ChiikaBlocks.
+1. **Linh vật** (trước M10): linh vật trông thế nào, ai vẽ asset 2D? Tên game đã chốt là ChikaBlocks.
 2. **Ngôn ngữ UI:** đã chốt tiếng Anh (M9). Có thể thêm tiếng Việt qua LocalizationTable sau.
 3. **Giá Robux** (trước GĐ2–3): hồi sinh lần 1 và lần 2, xoay khối, các mức donate.
 4. **Publish dưới tài khoản cá nhân hay Group?** (trước GĐ2): nếu 2 người chia doanh thu thì nên dùng Group.

@@ -10,6 +10,7 @@ local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
+local Block = require("./Block")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -38,10 +39,6 @@ export type BoardView = typeof(setmetatable(
 	BoardView
 ))
 
-local function colorFor(value: number): Color3
-	return if value == 0 then Theme.Colors.CellEmpty else Theme.Colors.Pieces[value]
-end
-
 -- A transparent frame covering one grid cell, holding a block with the board's inset and corners.
 local function cellWithBlock(name: string, x: number, y: number, blockProps: { [string]: any }): (Frame, Frame)
 	local inset = Theme.Spacing.CellInset
@@ -56,6 +53,7 @@ local function cellWithBlock(name: string, x: number, y: number, blockProps: { [
 		props[key] = value
 	end
 	local block = create("Frame", props, { create("UICorner", { CornerRadius = Theme.Radius.Cell }) })
+	Block.decorate(block)
 	local cell = create("Frame", {
 		Name = name,
 		Position = UDim2.fromScale(x / SIZE, y / SIZE),
@@ -93,7 +91,8 @@ function BoardView.new(parent: GuiObject): BoardView
 
 	local ghosts, ghostBlocks = table.create(MAX_PIECE_CELLS), table.create(MAX_PIECE_CELLS)
 	for i = 1, MAX_PIECE_CELLS do
-		local ghost, block = cellWithBlock(`Ghost{i}`, 0, 0, { BackgroundTransparency = Theme.Transparency.Ghost })
+		local ghost, block = cellWithBlock(`Ghost{i}`, 0, 0, {})
+		Block.setTransparency(block, Theme.Transparency.Ghost)
 		ghost.Visible = false
 		ghost.Parent = ghostLayer
 		ghosts[i], ghostBlocks[i] = ghost, block
@@ -129,6 +128,7 @@ function BoardView.new(parent: GuiObject): BoardView
 		BorderSizePixel = 0,
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Board }),
+		create("UIStroke", { Color = Theme.Colors.Outline, Thickness = Theme.Stroke.Panel }),
 		create("UIPadding", {
 			PaddingTop = padding,
 			PaddingBottom = padding,
@@ -160,7 +160,7 @@ end
 function BoardView.render(self: BoardView, board: Board.Board)
 	for index, value in board.cells do
 		if self.shown[index] ~= value then
-			self.blocks[index].BackgroundColor3 = colorFor(value)
+			Block.paint(self.blocks[index], value)
 			self.shown[index] = value
 		end
 	end
@@ -169,17 +169,16 @@ end
 -- Ghost of `piece` at cell (x, y) plus the rows and columns it would complete, painted in its color.
 function BoardView.showPreview(self: BoardView, board: Board.Board, piece: Piece, x: number, y: number)
 	self:clearPreview()
-	local color = Theme.Colors.Pieces[piece.color]
 	for i, cell in piece.cells do
 		local ghost = self.ghosts[i]
 		ghost.Position = UDim2.fromScale((x + cell.x) / SIZE, (y + cell.y) / SIZE)
-		self.ghostBlocks[i].BackgroundColor3 = color
+		Block.paint(self.ghostBlocks[i], piece.color)
 		ghost.Visible = true
 	end
 
 	local lines = Board.previewLines(board, piece, x, y)
 	local function paint(index: number)
-		self.blocks[index].BackgroundColor3 = color
+		Block.paint(self.blocks[index], piece.color)
 		table.insert(self.highlighted, index)
 	end
 	for _, row in lines.rows do
@@ -199,7 +198,7 @@ function BoardView.clearPreview(self: BoardView)
 		ghost.Visible = false
 	end
 	for _, index in self.highlighted do
-		self.blocks[index].BackgroundColor3 = colorFor(self.shown[index])
+		Block.paint(self.blocks[index], self.shown[index])
 	end
 	table.clear(self.highlighted)
 end
@@ -223,9 +222,9 @@ function BoardView.playMoveEffects(self: BoardView, result: GameSession.PlaceRes
 	for index in cleared do
 		-- Cells of the piece just placed aren't drawn yet, so they take the piece's color.
 		local value = self.shown[index]
-		local color = if value ~= 0 then colorFor(value) else Theme.Colors.Pieces[result.piece.color]
 		local x, y = (index - 1) % SIZE, (index - 1) // SIZE
-		local cell, block = cellWithBlock("Clearing", x, y, { BackgroundColor3 = color })
+		local cell, block = cellWithBlock("Clearing", x, y, {})
+		Block.paint(block, if value ~= 0 then value else result.piece.color)
 		local scale = create("UIScale", { Parent = block })
 		cell.Parent = self.effects
 		TweenService:Create(scale, clearInfo, { Scale = 0 }):Play()

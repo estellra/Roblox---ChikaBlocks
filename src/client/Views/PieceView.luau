@@ -4,6 +4,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
+local Block = require("./Block")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -16,22 +17,22 @@ function PieceView.build(piece: Pieces.Piece): Frame
 		BackgroundTransparency = 1,
 	})
 	for _, cell in piece.cells do
+		local block = create("Frame", {
+			Name = "Block",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1 - inset, 1 - inset),
+			BorderSizePixel = 0,
+		}, { create("UICorner", { CornerRadius = Theme.Radius.Cell }) })
+		Block.decorate(block)
+		Block.paint(block, piece.color)
 		create("Frame", {
 			Name = "Cell",
 			Position = UDim2.fromScale(cell.x / piece.width, cell.y / piece.height),
 			Size = UDim2.fromScale(1 / piece.width, 1 / piece.height),
 			BackgroundTransparency = 1,
 			Parent = frame,
-		}, {
-			create("Frame", {
-				Name = "Block",
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromScale(1 - inset, 1 - inset),
-				BackgroundColor3 = Theme.Colors.Pieces[piece.color],
-				BorderSizePixel = 0,
-			}, { create("UICorner", { CornerRadius = Theme.Radius.Cell }) }),
-		})
+		}, { block })
 	end
 	return frame
 end

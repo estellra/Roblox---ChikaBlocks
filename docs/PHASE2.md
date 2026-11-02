@@ -10,7 +10,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật, SFX/VFX | Chốt AB–AI | 🔶 M10a xong, còn M10b–e |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a, M10b xong; còn M10c–e |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -242,21 +242,21 @@ Mockup **chưa có**: màn Leaderboard, màn Pause, màn Cài đặt, thanh EXP 
 
 | Điểm | Vấn đề | Đề xuất |
 |---|---|---|
-| **AB.** Tên game trên logo | Mockup viết **ChikaBlocks** và ghi lớp logo là "working title"; tên đã chốt ở M9 là **ChiikaBlocks** (tên place trên Roblox là ChikaBlocks) | Theo mockup (ChikaBlocks): ngắn hơn và cách xa tên "Chiikawa" hơn, giảm rủi ro bản quyền. Chưa đổi gì cho tới khi bạn chốt; `Theme.Text.GameTitle` là một chỗ duy nhất để đổi |
-| **AC.** Mascot mặc định | Màn hình dùng mascot **hình vuông bo tròn có chóp hồng** (ghi là placeholder). Trang theme thì có 8 linh vật khác (Mochi là hải cẩu trắng nơ hồng...) | Dùng mascot hình vuông làm mặc định trong M10. 8 linh vật là cosmetic GĐ4. Nếu bạn muốn Mochi là mặc định thì gửi ảnh Mochi 3 trạng thái |
-| **AD.** Nút "How to play" | Mockup menu không có | Thêm nút "?" tròn cạnh nút âm thanh và cài đặt. Lần chơi đầu vẫn tự vào tutorial |
-| **AE.** Level và danh hiệu | Mockup không có chỗ hiện | Thêm một pill nhỏ dưới "Best" ở menu ("Lv 5 · Regular"), và hàng EXP trong panel Game Over |
-| **AF.** Nút pause | Mockup có nút pause nhưng không có màn pause | Panel nhỏ cùng phong cách với 3 nút Resume / Play again / Menu. Ván không dừng thời gian (game không có đồng hồ) nên pause chỉ để mở Menu an toàn |
-| **AG.** Nút Cài đặt và Âm thanh | Mockup có hai nút nhưng không có nội dung | Âm thanh: bật hoặc tắt tiếng, lưu theo người chơi. Cài đặt: panel nhỏ có bật tắt nhạc, hiệu ứng âm thanh và nút "How to play". Cần chốt có làm âm thanh trong M10 không (xem AH) |
-| **AH.** Âm thanh | Roadmap có SFX và VFX cơ bản, mockup không nói gì về âm thanh | Làm 5 hiệu ứng âm thanh (đặt khối, xóa hàng, combo, game over, bấm nút) và một bản nhạc nền, dùng âm thanh miễn phí trong thư viện Roblox, bạn nghe duyệt. Nếu chưa muốn thì để sang sau, M10 chỉ làm giao diện nút bật tắt |
-| **AI.** Nút Revive trên Game Over | Mockup có sẵn "Revive · R$ 25" nhưng M8 chưa làm | M10 dựng sẵn nút và dòng "Clears the center 4×4 · 1 of 2 left" nhưng **ẩn** cho tới khi M8 xong |
+| **AB.** Tên game trên logo | Mockup viết **ChikaBlocks** và ghi lớp logo là "working title"; tên đã chốt ở M9 là **ChiikaBlocks** (tên place trên Roblox là ChikaBlocks) | ✅ **Chốt: theo mockup (ChikaBlocks).** Đã đổi `Theme.Text.GameTitle` và các tài liệu |
+| **AC.** ✅ Mascot mặc định | Màn hình dùng mascot **hình vuông bo tròn có chóp hồng** (ghi là placeholder). Trang theme thì có 8 linh vật khác (Mochi là hải cẩu trắng nơ hồng...) | Dùng mascot hình vuông làm mặc định trong M10. 8 linh vật là cosmetic GĐ4. Nếu bạn muốn Mochi là mặc định thì gửi ảnh Mochi 3 trạng thái |
+| **AD.** ✅ Nút "How to play" | Mockup menu không có | Thêm nút "?" tròn cạnh nút âm thanh và cài đặt. Lần chơi đầu vẫn tự vào tutorial |
+| **AE.** ✅ Level và danh hiệu | Mockup không có chỗ hiện | Thêm một pill nhỏ dưới "Best" ở menu ("Lv 5 · Regular"), và hàng EXP trong panel Game Over |
+| **AF.** ✅ Nút pause | Mockup có nút pause nhưng không có màn pause | Panel nhỏ cùng phong cách với 3 nút Resume / Play again / Menu. Ván không dừng thời gian (game không có đồng hồ) nên pause chỉ để mở Menu an toàn |
+| **AG.** ✅ Nút Cài đặt và Âm thanh (chỉ phần không liên quan âm thanh) | Mockup có hai nút nhưng không có nội dung | Âm thanh: bật hoặc tắt tiếng, lưu theo người chơi. Cài đặt: panel nhỏ có bật tắt nhạc, hiệu ứng âm thanh và nút "How to play". Cần chốt có làm âm thanh trong M10 không (xem AH) |
+| **AH.** ⏭ Âm thanh (**để các giai đoạn sau**, theo bạn) | Roadmap có SFX và VFX cơ bản, mockup không nói gì về âm thanh | Làm 5 hiệu ứng âm thanh (đặt khối, xóa hàng, combo, game over, bấm nút) và một bản nhạc nền, dùng âm thanh miễn phí trong thư viện Roblox, bạn nghe duyệt. Nếu chưa muốn thì để sang sau, M10 chỉ làm giao diện nút bật tắt |
+| **AI.** ✅ Nút Revive trên Game Over | Mockup có sẵn "Revive · R$ 25" nhưng M8 chưa làm | M10 dựng sẵn nút và dòng "Clears the center 4×4 · 1 of 2 left" nhưng **ẩn** cho tới khi M8 xong |
 
 ### Thứ tự và khối lượng
 
 | Bước | Nội dung | Cần ảnh? |
 |---|---|---|
 | M10a ✅ | Theme token, font, bộ component, nền trời và mây | Không (đã có ảnh) |
-| M10b | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang) | Icon pause, crown |
+| M10b ✅ | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang), panel Pause | Icon pause, crown |
 | M10c | Menu, Game Over (có EXP, Revive ẩn), Pause | Logo, mascot, icon |
 | M10d | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
 | M10e | Leaderboard và Cài đặt theo cùng phong cách, âm thanh (nếu chốt AH) | Icon trophy, close, sound |
@@ -276,3 +276,15 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 - **Kiểm tra trong Studio** (PC 1365×768): menu, gameplay, Game Over và Leaderboard đều hiển thị đúng bảng màu mới; Output không có lỗi. 123 test pass.
 - **Bài học:** `CanvasGroup.GroupTransparency` không có tác dụng trong ảnh chụp của Studio (đổi từ 0 đến 0.9 vẫn giống nhau), nên mây dùng một màu đặc nhạt thay vì làm mờ.
 - **Chưa làm (thuộc các bước sau):** khối bóng có viền và vệt sáng, viền bảng, thẻ HUD, bố cục menu và Game Over theo mockup, mascot, icon, logo dạng chữ hai dòng, tutorial và combo popup.
+
+### Kết quả M10b
+
+- **Quyết định:** chốt AB–AG và AI theo đề xuất; **âm thanh (AH) để các giai đoạn sau**. Vì chưa có âm thanh, nút Âm thanh trên menu sẽ **không** dựng ở M10c (nút không làm gì là sai), và panel Cài đặt dời tới khi có âm thanh (lúc này chỉ có "How to play", đã có nút "?" riêng).
+- **Khối bóng** (`Block.luau`): màu pastel, viền màu đậm của chính nó (2 px) và vệt sáng trắng nhỏ ở góc trên trái, dùng chung cho bảng, khay, khối đang kéo, bóng xem trước và hiệu ứng xóa. Ô trống giữ dạng phẳng. Khối mờ đi (cả viền và vệt sáng) khi cầm bằng phím ở chỗ không đặt được.
+- **Bảng** có viền nâu 3 px. **Khay:** ô trắng, mờ đi khi khối bên trong đã đặt hoặc đang cầm.
+- **HUD** (`HudBar.luau`): nút pause tròn có icon, "SCORE" và điểm (có dấu phẩy ngăn cách), pill Best có vương miện, pill Combo vàng (hiện từ combo 2). Màn ngang: nằm trên một thẻ kem có viền; màn dọc: nổi trên nền trời. Pill tự co theo chiều cao thẻ để không tràn trên điện thoại ngang; thẻ HUD ở màn ngang cao 20% thay vì 17%.
+- **Panel Pause:** Resume, Play again, Menu; mở bằng nút pause hoặc phím **P**; Resume bằng nút, Enter, Space, Backspace hoặc B. Khi đang pause, phím chơi bị khóa. Ván không có đồng hồ nên pause không thay đổi gì khác (chủ yếu để mở Menu và Play again nhanh).
+- **Component mới trong `Clay`:** `pill`, `iconButton`, `setPillHeight`. `Hud.new` nhận một bảng callback (`onRestart`, `onMenu`, `onPause`, `onResume`).
+- **Kiểm tra trong Studio:** PC (1365×768), iPhone 17 Pro dọc (401×777) và ngang (749×381). Đã thử bấm Pause, Resume, phím P, Backspace, kéo khối (khay mờ, bóng xem trước), Game Over. Output không có lỗi. 123 test pass.
+- **Bài học:** `UIAspectRatioConstraint` mặc định (`FitWithinMaxSize`) làm kích thước bằng 0 nếu một chiều của `Size` bằng 0; phải đặt kích thước tối đa thật cho cả hai chiều (đã gặp ở đám mây và nút pause).
+- **Chưa làm:** đường kéo nét đứt và vòng viền hồng của ô sẽ đặt (mockup dùng nét đứt, Roblox không có viền đứt; hiện dùng bóng xem trước trong suốt), popup mascot khi combo (M10d), nút icon cho Menu (M10c).
