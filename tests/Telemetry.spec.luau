@@ -103,5 +103,11 @@ return function(t: TestKit.TestKit)
 			t.expect(steps(logged)).toEqual({})
 			t.expect(data.onboardingStep).toBe(4)
 		end)
+
+		t.it("logs a skipped tutorial as one custom event", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:tutorialSkipped(PLAYER)
+			t.expect(logged).toEqual({ { kind = "custom", name = "TutorialSkipped", value = 1, fields = {} } })
+		end)
 	end)
 end

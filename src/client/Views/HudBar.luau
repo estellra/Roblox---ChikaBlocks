@@ -137,6 +137,10 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 	return bar
 end
 
+function HudBar.setVisible(self: HudBar, visible: boolean)
+	self.card.Visible = visible
+end
+
 -- Landscape puts the bar on a card; portrait lets it float on the sky.
 function HudBar.setLayout(self: HudBar, mode: Mode)
 	local card = mode == "Landscape"

@@ -10,7 +10,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
-| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a–c xong; còn M10d–e |
+| **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | 🔶 M10a–d xong; còn M10e |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
 
 ## M6: Server giữ quyền quyết định
@@ -258,7 +258,7 @@ Mockup **chưa có**: màn Leaderboard, màn Pause, màn Cài đặt, thanh EXP 
 | M10a ✅ | Theme token, font, bộ component, nền trời và mây | Không (đã có ảnh) |
 | M10b ✅ | Gameplay: bảng, khối bóng, khay, HUD, kéo thả (dọc và ngang), panel Pause | Icon pause, crown |
 | M10c ✅ | Menu, Game Over (có EXP, Revive ẩn) | Mascot |
-| M10d | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
+| M10d ✅ | Tutorial, Combo popup với mascot, tia sáng | Mascot, bàn tay, sparkle |
 | M10e | Leaderboard và Cài đặt theo cùng phong cách, âm thanh (nếu chốt AH) | Icon trophy, close, sound |
 
 Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test hiện có phải còn nguyên), ảnh chụp đối chiếu Figma và một commit, giống các mốc trước.
@@ -304,3 +304,16 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 - **Nút Âm thanh:** như đã chốt, không dựng cho tới khi có âm thanh.
 - **Kiểm tra trong Studio:** menu ở PC (1280×720), iPhone 17 Pro dọc và ngang; Game Over ở iPhone dọc và ngang (có xem trước slot Revive); bấm thật nút "?" mở tutorial. Output không có lỗi. 123 test pass.
 - **Khác mockup:** pill level và nút "?" là bổ sung của mình (mockup không có, theo quyết định AD và AE); nút Âm thanh và Cài đặt trên menu chưa có.
+
+### Kết quả M10d
+
+- **Tutorial** (`TutorialView` và `TutorialController` viết lại):
+  - Thẻ hướng dẫn có mascot ("Drag the block" / "to fill the row!") đặt vào chỗ thanh điểm; thanh điểm ẩn trong lúc có gợi ý và hiện lại sau nước đầu. Chữ đổi theo thiết bị đang dùng (chuột/cảm ứng, bàn phím, tay cầm).
+  - Ba ô sẽ lấp hiện màu hồng nhạt có viền (mockup dùng nét đứt, Roblox không có); mũi tên chấm chấm cong nhẹ từ ô khay tới ô đích; bàn tay (ảnh) trượt dọc theo đó, đầu ngón tay đúng vào điểm đích.
+  - Ô khay được chỉ có viền vàng dày, hai ô còn lại mờ đi (`TrayView.setHint`).
+  - Nút **Skip** ở góc trên phải (68×44, đạt mức cảm ứng): bỏ tutorial, server tính là đã xong (remote mới `SkipTutorial`, giới hạn tần suất, ghi sự kiện `TutorialSkipped` một lần) và vào ván thường. Chỉ hiện trước nước đầu.
+  - Sau lần xóa hàng đầu tiên: thẻ "Nice!" (mascot vui) phủ lên thanh điểm trong 3 giây.
+- **Popup combo** (`ComboPopup.luau`): khi xóa hàng, chữ "+điểm" **vàng có viền nâu** nổi lên rồi mờ; combo từ 2 hoặc board clear thì mascot vui bật ra ở góc trên phải bảng cùng bong bóng "Combo x3!" / "Board clear!" (khoảng 1,3 giây); xóa từ 2 hàng trở lên, combo từ 2 hoặc board clear thì thêm 5 tia sáng xoay trên bảng.
+- **Lỗi phát hiện và đã sửa:** `UIStroke` đặt dưới `TextButton` mặc định viền cả chữ (`Contextual`), làm nút Skip trông không có viền và chữ bị béo; đã đặt `ApplyStrokeMode = Border`.
+- **Kiểm tra trong Studio:** PC (1280×720), iPhone 17 Pro dọc và ngang. Đã làm đủ luồng: tutorial hiện đúng, kéo chuột vào ô đích (xóa hàng, thẻ "Nice!", thanh điểm quay lại), bấm Skip thật (`tutorialDone=true`, sự kiện ghi đúng một lần), popup combo thật khi bot chơi. Output không có lỗi. 124 test pass (thêm 1 test cho `Telemetry`).
+- **Chưa làm:** Leaderboard theo phong cách mới và tinh chỉnh chung (M10e).

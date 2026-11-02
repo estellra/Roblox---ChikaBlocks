@@ -51,6 +51,11 @@ function Telemetry.menuShown(self: Telemetry, player: any, data: Progress)
 	advance(self, player, data, 1)
 end
 
+-- The player pressed Skip on the tutorial (only logged the first time).
+function Telemetry.tutorialSkipped(self: Telemetry, player: any)
+	self.sink.custom(player, "TutorialSkipped", 1, {})
+end
+
 function Telemetry.runStarted(self: Telemetry, player: any, data: Progress)
 	advance(self, player, data, 2)
 	advance(self, player, data, 6)

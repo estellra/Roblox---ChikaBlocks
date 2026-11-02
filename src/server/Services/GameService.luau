@@ -56,6 +56,7 @@ local runs: GameRuns.GameRuns
 local telemetry: Telemetry.Telemetry
 local profileLimiter = RateLimiter.new(2, 1, os.clock)
 local readyLimiter = RateLimiter.new(1, 5, os.clock)
+local skipLimiter = RateLimiter.new(1, 2, os.clock)
 local runProgress: { [Player]: RunProgress } = {}
 local recentEvents: { string } = {}
 
@@ -164,6 +165,17 @@ function GameService.start(_self: any)
 		end
 	end)
 
+	Net.SkipTutorial.OnServerEvent:Connect(function(player: Player)
+		if not skipLimiter:allow(player) then
+			return
+		end
+		local data = DataService.get(player)
+		if data and PlayerData.markTutorialDone(data) then
+			telemetry:tutorialSkipped(player)
+			Net.Profile:FireClient(player, profileOf(player, data))
+		end
+	end)
+
 	Net.ClientReady.OnServerEvent:Connect(function(player: Player)
 		if not readyLimiter:allow(player) then
 			return
@@ -256,6 +268,7 @@ function GameService.start(_self: any)
 		runProgress[player] = nil
 		profileLimiter:forget(player)
 		readyLimiter:forget(player)
+		skipLimiter:forget(player)
 	end)
 end
 

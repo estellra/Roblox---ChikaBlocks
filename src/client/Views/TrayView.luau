@@ -24,6 +24,9 @@ export type TrayView = typeof(setmetatable(
 		hitboxes: { TextButton },
 		selections: { UIStroke }, -- outline of the slot chosen with keyboard or gamepad
 		selected: number?,
+		hint: number?, -- the slot the tutorial points at; the others fade
+		hintStrokes: { UIStroke },
+		held: { boolean }, -- slots whose piece is in hand
 		shown: { Piece | false },
 	},
 	TrayView
@@ -31,7 +34,7 @@ export type TrayView = typeof(setmetatable(
 
 function TrayView.new(parent: GuiObject): TrayView
 	local padding = Theme.Spacing.TraySlotPadding
-	local slots, contents, hitboxes, selections = {}, {}, {}, {}
+	local slots, contents, hitboxes, selections, hintStrokes = {}, {}, {}, {}, {}
 	for i = 1, Config.PIECES_PER_SET do
 		local content = create("Frame", {
 			Name = "Content",
@@ -52,6 +55,13 @@ function TrayView.new(parent: GuiObject): TrayView
 			BackgroundTransparency = 1,
 			AutoButtonColor = false,
 			Text = "",
+		})
+		local hintStroke = create("UIStroke", {
+			Name = "Hint",
+			Color = Theme.Colors.Selection,
+			Thickness = 4,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Enabled = false,
 		})
 		local selection = create("UIStroke", {
 			Name = "Selection",
@@ -74,12 +84,14 @@ function TrayView.new(parent: GuiObject): TrayView
 				AspectType = Enum.AspectType.FitWithinMaxSize,
 			}),
 			selection,
+			hintStroke,
 			content,
 			hitbox,
 		})
 		contents[i] = content
 		hitboxes[i] = hitbox
 		selections[i] = selection
+		hintStrokes[i] = hintStroke
 	end
 	return setmetatable({
 		slots = slots,
@@ -87,8 +99,19 @@ function TrayView.new(parent: GuiObject): TrayView
 		hitboxes = hitboxes,
 		selections = selections,
 		selected = nil,
+		hint = nil,
+		hintStrokes = hintStrokes,
+		held = table.create(Config.PIECES_PER_SET, false),
 		shown = table.create(Config.PIECES_PER_SET, false),
 	}, TrayView)
+end
+
+-- A slot is faded when it is empty, its piece is in hand, or the tutorial points at another slot.
+local function refreshSlot(self: TrayView, index: number)
+	local faded = not self.shown[index] or self.held[index] or (self.hint ~= nil and self.hint ~= index)
+	self.slots[index].BackgroundTransparency = if faded
+		then Theme.Transparency.TraySlotEmpty
+		else Theme.Transparency.TraySlot
 end
 
 function TrayView.render(self: TrayView, tray: { Piece | false })
@@ -109,9 +132,7 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 			preview.Parent = content
 		end
 		self.shown[index] = piece
-		self.slots[index].BackgroundTransparency = if piece
-			then Theme.Transparency.TraySlot
-			else Theme.Transparency.TraySlotEmpty
+		refreshSlot(self, index)
 	end
 end
 
@@ -126,16 +147,23 @@ function TrayView.setSelected(self: TrayView, slot: number?)
 	self.selected = slot
 end
 
+-- Points the tutorial at `slot` (a gold outline, the other slots fade); nil goes back to normal.
+function TrayView.setHint(self: TrayView, slot: number?)
+	self.hint = slot
+	for index, stroke in self.hintStrokes do
+		stroke.Enabled = index == slot
+		refreshSlot(self, index)
+	end
+end
+
 -- Hides the preview while its piece is being dragged.
 function TrayView.setHidden(self: TrayView, slot: number, hidden: boolean)
 	local preview = self.contents[slot]:FindFirstChild("Piece")
 	if preview and preview:IsA("GuiObject") then
 		preview.Visible = not hidden
 	end
-	-- the slot fades while its piece is in hand
-	self.slots[slot].BackgroundTransparency = if hidden or not self.shown[slot]
-		then Theme.Transparency.TraySlotEmpty
-		else Theme.Transparency.TraySlot
+	self.held[slot] = hidden
+	refreshSlot(self, slot)
 end
 
 -- Pixel size of one preview cell in this slot (0 when the slot is empty).

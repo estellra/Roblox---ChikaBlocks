@@ -10,6 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local GameSession = require(ReplicatedStorage.Shared.GameSession)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Clay = require("./Clay")
+local ComboPopup = require("./ComboPopup")
 local Format = require("./Format")
 local HudBar = require("./HudBar")
 local Theme = require("./Theme")
@@ -55,6 +56,7 @@ export type Callbacks = {
 export type Hud = typeof(setmetatable(
 	{} :: {
 		bar: HudBar.HudBar,
+		combo: ComboPopup.ComboPopup,
 		popups: Frame, -- floating gain labels, over the board
 		overlay: ScreenGui, -- panels (safe area)
 		backdrop: ScreenGui, -- full-screen dimmer under the panels
@@ -160,6 +162,7 @@ function Hud.new(
 	local colors, fonts, sizes = Theme.Colors, Theme.Fonts, Theme.TextSize
 
 	local bar = HudBar.new(hudArea, callbacks.onPause)
+	local combo = ComboPopup.new(popupArea)
 	local popups = create("Frame", {
 		Name = "Popups",
 		Size = UDim2.fromScale(1, 1),
@@ -300,6 +303,7 @@ function Hud.new(
 
 	return setmetatable({
 		bar = bar,
+		combo = combo,
 		popups = popups,
 		overlay = overlay,
 		backdrop = backdrop,
@@ -354,6 +358,11 @@ function Hud.setScore(self: Hud, score: number, best: number)
 	self.bar:setScore(score, best)
 end
 
+-- Hides the score bar, e.g. while the tutorial's card takes its place.
+function Hud.setBarVisible(self: Hud, visible: boolean)
+	self.bar:setVisible(visible)
+end
+
 function Hud.setCombo(self: Hud, combo: number)
 	self.bar:setCombo(combo)
 end
@@ -362,18 +371,14 @@ function Hud.setLayout(self: Hud, mode: HudBar.Mode)
 	self.bar:setLayout(mode)
 end
 
--- Floats "+points" up over the board after a line clear, with the combo or a board clear noted.
+-- Floats "+points" up over the board in gold after a line clear. A combo or a board clear also brings the
+-- mascot with a speech bubble, and bigger moves add sparkles.
 function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
 	local linesCleared = #result.clearedRows + #result.clearedCols
 	if linesCleared == 0 then
 		return
 	end
-	local text = `+{result.points}`
-	if result.boardCleared then
-		text ..= "  Board clear!"
-	elseif result.combo >= 2 then
-		text ..= `  Combo x{result.combo}`
-	end
+	local stroke = create("UIStroke", { Color = Theme.Colors.Outline, Thickness = 3 })
 	local gain = create("TextLabel", {
 		Name = "Gain",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -382,24 +387,32 @@ function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
 		BackgroundTransparency = 1,
 		FontFace = Theme.Fonts.Title,
 		TextScaled = true,
-		TextColor3 = if result.combo >= 2 or result.boardCleared then Theme.Colors.Combo else Theme.Colors.Gain,
-		Text = text,
+		TextColor3 = Theme.Colors.Reward,
+		Text = `+{result.points}`,
 		Parent = self.popups,
 	}, {
+		stroke,
 		create("UITextSizeConstraint", {
 			MinTextSize = Theme.TextSize.GainMin,
 			MaxTextSize = Theme.TextSize.GainMax,
 		}),
 	})
-	local float = TweenService:Create(
-		gain,
-		TweenInfo.new(Theme.Motion.Gain, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Position = UDim2.fromScale(0.5, 0.36), TextTransparency = 1 }
-	)
+	local info = TweenInfo.new(Theme.Motion.Gain, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(stroke, info, { Transparency = 1 }):Play()
+	local float = TweenService:Create(gain, info, { Position = UDim2.fromScale(0.5, 0.36), TextTransparency = 1 })
 	float.Completed:Once(function()
 		gain:Destroy()
 	end)
 	float:Play()
+
+	if result.boardCleared then
+		self.combo:show("Board clear!")
+	elseif result.combo >= 2 then
+		self.combo:show(`Combo x{result.combo}!`)
+	end
+	if linesCleared >= 2 or result.combo >= 2 or result.boardCleared then
+		self.combo:sparkle()
+	end
 end
 
 -- Shows `panel` (and hides the other) over the dimmer.
