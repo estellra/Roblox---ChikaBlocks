@@ -504,9 +504,19 @@ end
 function Hud.setRevive(self: Hud, offer: { text: string, hint: string }?)
 	self.reviveRoot.Visible = offer ~= nil
 	self.reviveHint.Visible = offer ~= nil
+	self.reviveButton.Active = true
 	if offer then
 		self.reviveButton.Text = offer.text
 		self.reviveHint.Text = offer.hint
+	end
+end
+
+-- While the purchase prompt is open (or the revive is being worked out) the button waits; setRevive() brings it
+-- back.
+function Hud.setReviveBusy(self: Hud, busy: boolean)
+	self.reviveButton.Active = not busy
+	if busy then
+		self.reviveButton.Text = "Please wait…"
 	end
 end
 

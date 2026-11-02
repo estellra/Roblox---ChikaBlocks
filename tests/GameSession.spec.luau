@@ -121,11 +121,12 @@ return function(t: TestKit.TestKit)
 			t.expect(session.isOver).toBe(true)
 		end)
 
-		t.it("revives only after game over, at most twice", function()
+		t.it("revives only after game over, as often as asked", function()
 			local source, reasons = Helpers.queueSource({
 				{ "O2", "O2", "O2" },
 				{ "O2", "Dot", "Dot" },
 				{ "Dot", "Dot", "Dot" },
+				{ "Dot", "Dot", "O2" },
 			})
 			local session = GameSession.new(source, Helpers.boardFromRows(CHECKERBOARD))
 			t.expect(session.isOver).toBe(true)
@@ -149,8 +150,9 @@ return function(t: TestKit.TestKit)
 			t.expect(session:revive()).toBe(true)
 			t.expect(session.revivesUsed).toBe(2)
 			session.isOver = true
-			t.expect(session:revive()).toBe(false) -- limit reached
-			t.expect(#reasons).toBe(3)
+			t.expect(session:revive()).toBe(true) -- the number of revives is not limited
+			t.expect(session.revivesUsed).toBe(3)
+			t.expect(#reasons).toBe(4)
 		end)
 
 		t.it("waits for a set when the source has none, then plays on after receiveSet", function()

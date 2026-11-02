@@ -8,6 +8,8 @@
 -- events lists the latest analytics events (onboarding steps and run summaries).
 -- resetdata wipes the player's PlayerData_Dev profile (Studio's store) to replay the first-time flow.
 -- addexp and setbest change progress the way a run would, claiming milestones and sending the profile.
+-- fakepurchase [userId] [productId] [purchaseId] hands the real receipt handler a made-up receipt (default: the first
+-- revive product); the same purchaseId twice shows that a purchase is granted once.
 -- boards writes the player's values, reads every leaderboard now (instead of within a minute) and lists them.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,12 +20,15 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local DataService = require("./DataService")
 local GameService = require("./GameService")
 local LeaderboardService = require("./LeaderboardService")
+local PurchaseService = require("./PurchaseService")
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local RewardService = require("./RewardService")
 
 local SIZE = Config.GRID_SIZE
 
 local DebugService = {}
+
+local debugReceipts = 0
 
 local function keys(set: { [string]: boolean }): string
 	local list = {}
@@ -64,7 +69,7 @@ function DebugService.start(_self: any)
 	end
 	local bridge = Instance.new("BindableFunction")
 	bridge.Name = "ChikaServerDebug"
-	bridge.OnInvoke = function(command: string, userId: number?, value: number?): string
+	bridge.OnInvoke = function(command: string, userId: number?, value: number?, extra: string?): string
 		if command == "events" then -- needs no player: it also shows what was logged as one left
 			local events = GameService.getRecentEvents()
 			return if #events > 0 then table.concat(events, "\n") else "no analytics events yet"
@@ -82,7 +87,7 @@ function DebugService.start(_self: any)
 			end
 			return `{DataService.describeStore()} | version={data.version} best={data.bestScore} games={data.gamesPlayed} tutorialDone={data.tutorialDone} onboardingStep={data.onboardingStep} level={data.level} exp={data.exp}/{Progression.expToNext(
 				data.level
-			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} title={Progression.title(
+			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} reviveTokens={data.reviveTokens} purchases={#data.purchaseIds} title={Progression.title(
 				data.milestonesClaimed
 			)}`
 		elseif command == "resetdata" then
@@ -94,10 +99,22 @@ function DebugService.start(_self: any)
 			data.level, data.exp = 1, 0
 			table.clear(data.milestonesClaimed)
 			table.clear(data.badgesAwarded)
+			data.reviveTokens = 0
+			table.clear(data.purchaseIds)
 			data.weekly.week, data.weekly.bestScore, data.weekly.exp = "", 0, 0
 			GameService.getRuns():setBest(player, 0)
 			GameService.sendProfile(player)
 			return `reset {player.Name}: best=0 games=0 tutorialDone=false onboardingStep=0 level=1 exp=0 milestones=none`
+		elseif command == "fakepurchase" then
+			local productId = value or Config.REVIVE_PRODUCTS[1]
+			debugReceipts += 1
+			local decision = PurchaseService.process({
+				PlayerId = player.UserId,
+				ProductId = productId,
+				PurchaseId = extra or `debug-{debugReceipts}`,
+			})
+			local data = DataService.get(player)
+			return `{decision} reviveTokens={if data then data.reviveTokens else "?"}`
 		elseif command == "boards" then
 			local data = DataService.get(player)
 			if data then

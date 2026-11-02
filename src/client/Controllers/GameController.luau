@@ -54,6 +54,7 @@ local runMode: RunMode = "normal"
 local views: Views? = nil
 local profile: Profile? = nil
 local runRewards: RunRewards? = nil -- what the current run earned, once it is over and the server said
+local reviveOffer: { runId: number, tokens: number, price: number? }? = nil -- what the server offered after game over
 local best = 0
 local bestBeforeRun = 0 -- best when the current run started, to tell a new best apart
 local gameOverToken = 0 -- bumped whenever the session is replaced so a pending game over panel never opens
@@ -88,6 +89,28 @@ end
 
 -- Dims the board with "No moves left" right away, then opens the panel after `delaySeconds`, so the last
 -- move's effects stay visible and the player can see why the run ended.
+-- Shows the Revive button on the game over panel with what the server offered: a revive already paid for is free,
+-- else the price of the next one. No offer (yet) means no button.
+local function applyReviveOffer()
+	if not views then
+		return
+	end
+	local offer = reviveOffer
+	if not offer or offer.runId ~= runId or not session.isOver then
+		views.hud:setRevive(nil)
+		return
+	end
+	local text, hint
+	if offer.tokens > 0 then
+		text = "Revive · Free"
+		hint = `You have {offer.tokens} · Clears the center 4×4`
+	else
+		text = if offer.price then `Revive · R$ {offer.price}` else "Revive"
+		hint = "Clears the center 4×4"
+	end
+	views.hud:setRevive({ text = text, hint = hint })
+end
+
 local function presentGameOver(delaySeconds: number)
 	if not views then
 		return
@@ -101,6 +124,7 @@ local function presentGameOver(delaySeconds: number)
 		end
 		local isNewBest = bestBeforeRun > 0 and session.score > bestBeforeRun
 		views.hud:showGameOver(session.score, best, isNewBest)
+		applyReviveOffer()
 		if runRewards then
 			views.hud:showRewards(runRewards)
 		end
@@ -109,9 +133,11 @@ end
 
 local function hideGameOver()
 	gameOverToken += 1
+	reviveOffer = nil
 	if views then
 		views.board:setNoMoves(false)
 		views.hud:hideGameOver()
+		views.hud:setRevive(nil)
 	end
 end
 
@@ -142,6 +168,8 @@ local function onGameState(state: RunState, reason: string)
 		startToken += 1 -- answered; cancels the retry
 		bestBeforeRun = state.best
 		runRewards = nil
+	elseif reason == "revive" then
+		runRewards = nil -- the run goes on; the next game over brings its own rewards
 	elseif IS_STUDIO then
 		warn(`[ChikaBlock] resynced with the server at move {state.session.moveCount}`)
 	end
@@ -198,6 +226,24 @@ local function onRunRewards(rewardsRunId: number, rewards: RunRewards)
 	end
 end
 
+-- The server's offer after a game over: how many revives are already paid for, and the price of the next.
+local function onReviveOffer(offerRunId: number, offer: { tokens: number, price: number? })
+	if offerRunId ~= runId then
+		return
+	end
+	reviveOffer = { runId = offerRunId, tokens = offer.tokens, price = offer.price }
+	if views and views.hud:isGameOverOpen() then
+		applyReviveOffer()
+	end
+end
+
+-- The revive did not happen (the purchase was cancelled, or it was not possible): the button is free again.
+local function onReviveResult(resultRunId: number, ok: boolean)
+	if resultRunId == runId and not ok then
+		applyReviveOffer()
+	end
+end
+
 local function onProfile(newProfile: Profile)
 	profile = newProfile
 	best = math.max(best, newProfile.best)
@@ -222,6 +268,7 @@ function GameController.start(_self: any)
 			onMenu = GameController.requestMenu,
 			onPause = GameController.pause,
 			onResume = GameController.resume,
+			onRevive = GameController.requestRevive,
 		}),
 	}
 	local hud = views.hud
@@ -233,6 +280,8 @@ function GameController.start(_self: any)
 	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
 	Net.Profile.OnClientEvent:Connect(onProfile)
 	Net.RunRewards.OnClientEvent:Connect(onRunRewards)
+	Net.ReviveOffer.OnClientEvent:Connect(onReviveOffer)
+	Net.ReviveResult.OnClientEvent:Connect(onReviveResult)
 	render()
 	Net.RequestProfile:FireServer()
 end
@@ -252,6 +301,17 @@ end
 function GameController.requestMenu()
 	hideGameOver()
 	notify(menuRequestedListeners)
+end
+
+-- Asks the server to revive the finished run: free with a revive already paid for, else it opens Roblox's purchase
+-- prompt. The server decides the product; nothing happens on screen until it answers.
+function GameController.requestRevive()
+	local offer = reviveOffer
+	if not views or not offer or offer.runId ~= runId or not session.isOver then
+		return
+	end
+	views.hud:setReviveBusy(true)
+	Net.RequestRevive:FireServer(runId)
 end
 
 -- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.

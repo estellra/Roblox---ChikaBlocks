@@ -8,6 +8,7 @@ local function fresh(): PlayerData.PlayerData
 	data.milestonesClaimed = {}
 	data.badgesAwarded = {}
 	data.weekly = table.clone(PlayerData.TEMPLATE.weekly)
+	data.purchaseIds = {}
 	return data
 end
 
@@ -25,12 +26,15 @@ return function(t: TestKit.TestKit)
 				milestonesClaimed = {},
 				badgesAwarded = {},
 				weekly = { week = "", bestScore = 0, exp = 0 },
+				reviveTokens = 0,
+				purchaseIds = {},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
 			-- Nested defaults are frozen too, so no code can change the template through a shallow copy.
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.milestonesClaimed)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.badgesAwarded)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.weekly)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.purchaseIds)).toBe(true)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()
@@ -83,6 +87,31 @@ return function(t: TestKit.TestKit)
 			PlayerData.recordRunEnd(data, 100)
 			t.expect(data.gamesPlayed).toBe(2)
 			t.expect(data.bestScore).toBe(450)
+		end)
+
+		t.it("keeps paid revives until they are used", function()
+			local data = fresh()
+			t.expect(PlayerData.useReviveToken(data)).toBe(false)
+			PlayerData.addReviveToken(data)
+			PlayerData.addReviveToken(data)
+			t.expect(PlayerData.useReviveToken(data)).toBe(true)
+			t.expect(data.reviveTokens).toBe(1)
+			t.expect(PlayerData.useReviveToken(data)).toBe(true)
+			t.expect(PlayerData.useReviveToken(data)).toBe(false)
+			t.expect(data.reviveTokens).toBe(0)
+		end)
+
+		t.it("remembers handled purchases, the latest hundred", function()
+			local data = fresh()
+			t.expect(PlayerData.hasPurchase(data, "a")).toBe(false)
+			PlayerData.rememberPurchase(data, "a")
+			t.expect(PlayerData.hasPurchase(data, "a")).toBe(true)
+			for i = 1, 100 do
+				PlayerData.rememberPurchase(data, `p{i}`)
+			end
+			t.expect(#data.purchaseIds).toBe(100)
+			t.expect(PlayerData.hasPurchase(data, "a")).toBe(false) -- forgotten
+			t.expect(PlayerData.hasPurchase(data, "p100")).toBe(true)
 		end)
 	end)
 end

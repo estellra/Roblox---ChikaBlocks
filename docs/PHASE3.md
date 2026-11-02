@@ -19,7 +19,7 @@
 | **M12** Analytics | Funnel tutorial, các sự kiện ván chơi qua `AnalyticsService` | Không | ✅ Xong |
 | **M13** Level và EXP | EXP sau mỗi ván, level, quà theo mốc highscore và mốc level | Quyết định W, X | ✅ Xong (badge chờ ID) |
 | **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ Xong |
-| **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ⏳ chờ bạn |
+| **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ✅ Xong (dùng lại cho M15, M16) |
 | **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z | ⏳ |
 | **M16** Donate | Nhiều mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA | ⏳ |
 | **M17** Rewarded video ad | Xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lượt xoay | Game public, ≥ 2k người/tháng | ⏳ sau publish |

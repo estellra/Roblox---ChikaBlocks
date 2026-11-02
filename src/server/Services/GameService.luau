@@ -58,6 +58,7 @@ local profileLimiter = RateLimiter.new(2, 1, os.clock)
 local readyLimiter = RateLimiter.new(1, 5, os.clock)
 local skipLimiter = RateLimiter.new(1, 2, os.clock)
 local runProgress: { [Player]: RunProgress } = {}
+local gameOverListeners: { (player: Player, runId: number) -> () } = {}
 local recentEvents: { string } = {}
 
 local function remember(line: string)
@@ -82,6 +83,12 @@ local analyticsSink: Telemetry.Sink = {
 		remember(`onboarding {step} {name} ({player.Name})`)
 		logSafely(name, function()
 			AnalyticsService:LogOnboardingFunnelStepEvent(player, step, name)
+		end)
+	end,
+	funnel = function(player: Player, funnel: string, session: string, step: number, name: string)
+		remember(`{funnel} {step} {name} [{session}] ({player.Name})`)
+		logSafely(funnel, function()
+			AnalyticsService:LogFunnelStepEvent(player, funnel, session, step, name)
 		end)
 	end,
 	custom = function(player: Player, name: string, value: number, fields: { string })
@@ -136,6 +143,12 @@ local function rewardsOf(progress: RunProgress, data: PlayerData.PlayerData): Ru
 		exp = data.exp,
 		titles = progress.titles,
 	}
+end
+
+local function notifyGameOver(player: Player, runId: number)
+	for _, listener in gameOverListeners do
+		task.spawn(listener, player, runId)
+	end
 end
 
 function GameService.init(_self: any)
@@ -212,7 +225,8 @@ function GameService.start(_self: any)
 			if outcome.kind == "accepted" then
 				local data = DataService.get(player)
 				if data then
-					if outcome.isOver then
+					-- A run counts as played once, even if it is revived and ends again.
+					if outcome.endsRun then
 						PlayerData.recordRunEnd(data, outcome.score)
 					else
 						PlayerData.recordScore(data, outcome.score)
@@ -224,7 +238,7 @@ function GameService.start(_self: any)
 					creditProgress(player, data, outcome.score)
 					telemetry:moveAccepted(player, data, outcome.linesCleared)
 				end
-				local summary = if outcome.isOver then runs:summary(player) else nil
+				local summary = if outcome.endsRun then runs:summary(player) else nil
 				if summary then
 					telemetry:runEnded(player, data, summary, "gameover")
 				end
@@ -243,6 +257,9 @@ function GameService.start(_self: any)
 					Net.Profile:FireClient(player, profileOf(player, data))
 					LeaderboardService.flush(player, data)
 				end
+				if outcome.isOver then
+					notifyGameOver(player, outcome.runId)
+				end
 			elseif outcome.kind == "resync" then
 				if IS_STUDIO then
 					warn(`[ChikaBlock] rejected a move from {player.Name}; sending the full state`)
@@ -256,6 +273,9 @@ function GameService.start(_self: any)
 		local state = runs:state(player)
 		if state then
 			Net.GameState:FireClient(player, state, "resync")
+			if state.session.isOver then
+				notifyGameOver(player, state.runId) -- the client may have missed the revive offer
+			end
 		end
 	end)
 
@@ -270,6 +290,32 @@ function GameService.start(_self: any)
 		readyLimiter:forget(player)
 		skipLimiter:forget(player)
 	end)
+end
+
+-- Called with the player and the run's id every time a run ends in game over (again after each revive).
+function GameService.onGameOver(callback: (player: Player, runId: number) -> ())
+	table.insert(gameOverListeners, callback)
+end
+
+-- One step of the revive funnel for the player's current offer.
+function GameService.logRevive(player: Player, step: number)
+	local summary = runs:summary(player)
+	if summary then
+		telemetry:reviveStep(player, `{summary.runId}.{summary.revives}`, step)
+	end
+end
+
+-- Revives the player's finished run and sends them the new state. False when it can't be revived (the caller
+-- has not spent anything yet).
+function GameService.revive(player: Player, runId: number): boolean
+	local before = runs:summary(player)
+	local state = runs:revive(player, runId)
+	if not before or not state then
+		return false
+	end
+	telemetry:reviveStep(player, `{before.runId}.{before.revives}`, 4)
+	Net.GameState:FireClient(player, state, "revive")
+	return true
 end
 
 -- Sends the player's current profile, e.g. after the Studio debug bridge resets it.

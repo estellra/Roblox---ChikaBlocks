@@ -14,6 +14,8 @@ export type PlayerData = {
 	badgesAwarded: { [string]: boolean }, -- milestone id -> true once its badge is awarded
 	-- This week's best score and EXP for the weekly leaderboards; reset when the week changes (see Leaderboards).
 	weekly: { week: string, bestScore: number, exp: number },
+	reviveTokens: number, -- paid revives not used yet (see Purchases)
+	purchaseIds: { string }, -- receipts already handled, the latest 100, newest last
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
@@ -33,6 +35,8 @@ local MIGRATIONS: { (data: { [string]: any }) -> () } = {
 }
 local CURRENT_VERSION = #MIGRATIONS + 1
 
+local MAX_REMEMBERED_PURCHASES = 100
+
 local PlayerData = {}
 
 PlayerData.VERSION = CURRENT_VERSION
@@ -50,6 +54,8 @@ PlayerData.TEMPLATE = table.freeze({
 	milestonesClaimed = table.freeze({}),
 	badgesAwarded = table.freeze({}),
 	weekly = table.freeze({ week = "", bestScore = 0, exp = 0 }),
+	reviveTokens = 0,
+	purchaseIds = table.freeze({}),
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.
@@ -83,6 +89,32 @@ function PlayerData.markTutorialDone(data: PlayerData): boolean
 		return false
 	end
 	data.tutorialDone = true
+	return true
+end
+
+-- Whether this receipt has been handled already.
+function PlayerData.hasPurchase(data: PlayerData, purchaseId: string): boolean
+	return table.find(data.purchaseIds, purchaseId) ~= nil
+end
+
+-- Remembers a handled receipt, forgetting the oldest beyond the latest 100.
+function PlayerData.rememberPurchase(data: PlayerData, purchaseId: string)
+	table.insert(data.purchaseIds, purchaseId)
+	while #data.purchaseIds > MAX_REMEMBERED_PURCHASES do
+		table.remove(data.purchaseIds, 1)
+	end
+end
+
+function PlayerData.addReviveToken(data: PlayerData)
+	data.reviveTokens += 1
+end
+
+-- Spends one paid revive; false when there is none.
+function PlayerData.useReviveToken(data: PlayerData): boolean
+	if data.reviveTokens <= 0 then
+		return false
+	end
+	data.reviveTokens -= 1
 	return true
 end
 

@@ -6,16 +6,20 @@
 --   RequestProfile()                             send the saved profile (best, games played, tutorial done)
 --   ClientReady()                                the client finished loading and shows the menu (analytics)
 --   SkipTutorial()                               the player skipped the tutorial (counts as done)
+--   RequestRevive(runId)                         Revive pressed on the game over panel
 --   RequestLeaderboard()                         send the cached leaderboards
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
---   GameState(state, reason)                     full run state; reason is "start" or "resync"
+--   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
 --                                                a move was accepted; set = new piece ids when the tray refilled
 --   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, title? }
 --   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
 --                                                titles unlocked during the run (see GameService)
+--   ReviveOffer(runId, offer)                    after a game over: { tokens, price? }, the revives already paid for and
+--                                                the Robux price of the next one
+--   ReviveResult(runId, ok)                      the revive didn't happen (purchase cancelled or not possible)
 --   Leaderboard(snapshot)                        top entries of every board and the player's own values
 --                                                (see LeaderboardService.Snapshot)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -54,10 +58,13 @@ return {
 	RequestProfile = remoteEvent("RequestProfile"),
 	ClientReady = remoteEvent("ClientReady"),
 	SkipTutorial = remoteEvent("SkipTutorial"),
+	RequestRevive = remoteEvent("RequestRevive"),
 	RequestLeaderboard = remoteEvent("RequestLeaderboard"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),
 	RunRewards = remoteEvent("RunRewards"),
 	Leaderboard = remoteEvent("Leaderboard"),
+	ReviveOffer = remoteEvent("ReviveOffer"),
+	ReviveResult = remoteEvent("ReviveResult"),
 }

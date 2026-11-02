@@ -11,6 +11,8 @@
 export type Sink = {
 	onboardingStep: (player: any, step: number, name: string) -> (),
 	custom: (player: any, name: string, value: number, fields: { string }) -> (),
+	-- A step of a funnel that can happen again and again; `session` tells attempts apart.
+	funnel: (player: any, funnel: string, session: string, step: number, name: string) -> (),
 }
 
 export type RunEnd = "gameover" | "left" | "restart"
@@ -28,10 +30,15 @@ local STEPS = table.freeze({
 	"NextRunStarted", -- 6: started another run after that
 })
 
+-- Funnel "ReviveOffer": the offer shown on the game over panel, Revive pressed, the purchase granted (not for a
+-- revive already paid for), the run revived.
+local REVIVE_STEPS = table.freeze({ "Offered", "Requested", "Paid", "Revived" })
+
 local Telemetry = {}
 Telemetry.__index = Telemetry
 
 Telemetry.STEPS = STEPS
+Telemetry.REVIVE_STEPS = REVIVE_STEPS
 
 export type Telemetry = typeof(setmetatable({} :: { sink: Sink }, Telemetry))
 
@@ -54,6 +61,11 @@ end
 -- The player pressed Skip on the tutorial (only logged the first time).
 function Telemetry.tutorialSkipped(self: Telemetry, player: any)
 	self.sink.custom(player, "TutorialSkipped", 1, {})
+end
+
+-- One step of the revive funnel; `attempt` identifies the offer (the run and how many revives it had used).
+function Telemetry.reviveStep(self: Telemetry, player: any, attempt: string, step: number)
+	self.sink.funnel(player, "ReviveOffer", attempt, step, REVIVE_STEPS[step])
 end
 
 function Telemetry.runStarted(self: Telemetry, player: any, data: Progress)

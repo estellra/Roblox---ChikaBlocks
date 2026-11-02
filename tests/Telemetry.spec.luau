@@ -4,7 +4,14 @@ local Telemetry = require("../src/server/Telemetry")
 
 local PLAYER = "player-1"
 
-type Logged = { kind: string, step: number?, name: string, value: number?, fields: { string }? }
+type Logged = {
+	kind: string,
+	step: number?,
+	name: string,
+	value: number?,
+	fields: { string }?,
+	session: string?,
+}
 
 -- Telemetry with a sink that records what it was asked to log.
 local function newTelemetry(): (Telemetry.Telemetry, { Logged })
@@ -15,6 +22,9 @@ local function newTelemetry(): (Telemetry.Telemetry, { Logged })
 		end,
 		custom = function(_player: any, name: string, value: number, fields: { string })
 			table.insert(logged, { kind = "custom", name = name, value = value, fields = fields })
+		end,
+		funnel = function(_player: any, funnel: string, session: string, step: number, name: string)
+			table.insert(logged, { kind = "funnel", name = name, step = step, session = session, fields = { funnel } })
 		end,
 	})
 	return telemetry, logged
@@ -108,6 +118,22 @@ return function(t: TestKit.TestKit)
 			local telemetry, logged = newTelemetry()
 			telemetry:tutorialSkipped(PLAYER)
 			t.expect(logged).toEqual({ { kind = "custom", name = "TutorialSkipped", value = 1, fields = {} } })
+		end)
+
+		t.it("logs the revive funnel with one session id per offer", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:reviveStep(PLAYER, "3.0", 1)
+			telemetry:reviveStep(PLAYER, "3.0", 2)
+			telemetry:reviveStep(PLAYER, "3.0", 3)
+			telemetry:reviveStep(PLAYER, "3.0", 4)
+			telemetry:reviveStep(PLAYER, "3.1", 1)
+			t.expect(logged).toEqual({
+				{ kind = "funnel", name = "Offered", step = 1, session = "3.0", fields = { "ReviveOffer" } },
+				{ kind = "funnel", name = "Requested", step = 2, session = "3.0", fields = { "ReviveOffer" } },
+				{ kind = "funnel", name = "Paid", step = 3, session = "3.0", fields = { "ReviveOffer" } },
+				{ kind = "funnel", name = "Revived", step = 4, session = "3.0", fields = { "ReviveOffer" } },
+				{ kind = "funnel", name = "Offered", step = 1, session = "3.1", fields = { "ReviveOffer" } },
+			})
 		end)
 	end)
 end

@@ -209,6 +209,63 @@ return function(t: TestKit.TestKit)
 			t.expect(nextRun.session.score).toBe(0)
 		end)
 
+		t.it("revives a finished normal run: the middle is cleared and the run plays on", function()
+			local runs, advance = newRuns(SQUARES)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			t.expect(runs:revive(PLAYER, state.runId)).toBe(nil) -- not over yet
+			local positions = { { 0, 0 }, { 3, 0 }, { 0, 3 }, { 3, 3 } }
+			for move, position in positions do
+				runs:place(PLAYER, state.runId, move - 1, ((move - 1) % 3) + 1, position[1], position[2])
+				advance(0.2)
+			end
+			t.expect((runs:summary(PLAYER) :: GameRuns.RunSummary).isOver).toBe(true)
+			t.expect(runs:revive(PLAYER, state.runId + 1)).toBe(nil) -- some other run
+			t.expect(runs:revive(PLAYER, "1")).toBe(nil)
+
+			local revived = runs:revive(PLAYER, state.runId) :: GameRuns.RunState
+			t.expect(revived.session.isOver).toBe(false)
+			t.expect(revived.session.revivesUsed).toBe(1)
+			t.expect(revived.session.score).toBe(36) -- the score carries on
+			t.expect(revived.session.moveCount).toBe(4)
+			for y = 2, 5 do
+				for x = 2, 5 do
+					t.expect(revived.session.cells[y * SIZE + x + 1]).toBe(0)
+				end
+			end
+			t.expect(runs:revive(PLAYER, state.runId)).toBe(nil) -- not over any more
+			local summary = runs:summary(PLAYER) :: GameRuns.RunSummary
+			t.expect(summary.revives).toBe(1)
+			t.expect(summary.runId).toBe(state.runId)
+		end)
+
+		t.it("never revives a tutorial run", function()
+			local runs = newRuns()
+			local state = runs:start(PLAYER, "tutorial") :: GameRuns.RunState
+			(runs.runs[PLAYER].session :: any).isOver = true
+			t.expect(runs:revive(PLAYER, state.runId)).toBe(nil)
+		end)
+
+		t.it("counts the end of a run once, even when it is revived and ends again", function()
+			local runs, advance = newRuns(SQUARES)
+			local state = runs:start(PLAYER) :: GameRuns.RunState
+			-- Plays valid moves until the run is over; returns whether that game over counted as the run's end.
+			local function playUntilOver(): boolean
+				for _ = 1, 80 do
+					local current = runs:peek(PLAYER) :: GameRuns.RunState
+					local slot, x, y = anyMove(current)
+					local outcome = runs:place(PLAYER, current.runId, current.session.moveCount, slot, x, y)
+					advance(0.2)
+					if outcome.kind == "accepted" and outcome.isOver then
+						return outcome.endsRun
+					end
+				end
+				error("the run did not end")
+			end
+			t.expect(playUntilOver()).toBe(true)
+			t.expect(runs:revive(PLAYER, state.runId)).toBeTruthy()
+			t.expect(playUntilOver()).toBe(false)
+		end)
+
 		t.it("starts a tutorial run on the fixed opening and lets the hinted move clear a line", function()
 			local runs = newRuns()
 			local state = runs:start(PLAYER, "tutorial") :: GameRuns.RunState
@@ -225,7 +282,7 @@ return function(t: TestKit.TestKit)
 				t.expect(outcome.linesCleared).toBe(1)
 			end
 			t.expect(runs:summary(PLAYER))
-				.toEqual({ mode = "tutorial", score = 13, moves = 1, maxCombo = 1, isOver = false })
+				.toEqual({ runId = 1, mode = "tutorial", score = 13, moves = 1, maxCombo = 1, isOver = false, revives = 0 })
 		end)
 
 		t.it("sums up a run for analytics and has nothing for a player without one", function()
@@ -233,7 +290,7 @@ return function(t: TestKit.TestKit)
 			t.expect(runs:summary(PLAYER)).toBe(nil)
 			local state = runs:start(PLAYER) :: GameRuns.RunState
 			t.expect(runs:summary(PLAYER))
-				.toEqual({ mode = "normal", score = 0, moves = 0, maxCombo = 0, isOver = false })
+				.toEqual({ runId = 1, mode = "normal", score = 0, moves = 0, maxCombo = 0, isOver = false, revives = 0 })
 			local positions = { { 0, 0 }, { 3, 0 }, { 0, 3 }, { 3, 3 } }
 			for move, position in positions do
 				local outcome =
@@ -244,7 +301,7 @@ return function(t: TestKit.TestKit)
 				advance(0.2)
 			end
 			t.expect(runs:summary(PLAYER))
-				.toEqual({ mode = "normal", score = 36, moves = 4, maxCombo = 0, isOver = true })
+				.toEqual({ runId = 1, mode = "normal", score = 36, moves = 4, maxCombo = 0, isOver = true, revives = 0 })
 			runs:remove(PLAYER)
 			t.expect(runs:summary(PLAYER)).toBe(nil)
 		end)

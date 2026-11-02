@@ -4,7 +4,7 @@
 local Config = {
 	GRID_SIZE = 8,
 	PIECES_PER_SET = 3,
-	MAX_REVIVES_PER_RUN = 2,
+	MAX_REVIVES_PER_RUN = math.huge, -- no limit: from the third revive on, each one costs the last price
 
 	-- Scoring
 	SCORE_PER_CELL = 1,
@@ -18,6 +18,10 @@ local Config = {
 
 	-- Revive clears a square of this size in the middle of the board.
 	REVIVE_CLEAR_SIZE = 4,
+
+	-- Developer products for a revive, by how many revives the run has used already (the last one is used from
+	-- then on): 10, 15 and 25 Robux.
+	REVIVE_PRODUCTS = table.freeze({ 3727116317, 3727116434, 3727116486 }),
 
 	-- Progression (see Progression): a run earns floor(score / EXP_SCORE_DIVISOR) EXP; going from level n
 	-- to n + 1 takes LEVEL_EXP_BASE + LEVEL_EXP_STEP * (n - 1) EXP.

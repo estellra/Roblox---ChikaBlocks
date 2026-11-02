@@ -37,6 +37,7 @@ export type PlaceOutcome =
 		moveIndex: number,
 		score: number,
 		linesCleared: number, -- rows plus columns this move cleared
+		endsRun: boolean, -- game over, and the first one of this run (a revived run can end again)
 		set: { string }?,
 		isOver: boolean,
 		best: number,
@@ -45,9 +46,17 @@ export type PlaceOutcome =
 	| { kind: "ignored", reason: string }
 
 -- A run in a few numbers, for analytics.
-export type RunSummary = { mode: RunMode, score: number, moves: number, maxCombo: number, isOver: boolean }
+export type RunSummary = {
+	runId: number,
+	mode: RunMode,
+	score: number,
+	moves: number,
+	maxCombo: number,
+	isOver: boolean,
+	revives: number,
+}
 
-type Run = { id: number, mode: RunMode, session: any, maxCombo: number }
+type Run = { id: number, mode: RunMode, session: any, maxCombo: number, endCounted: boolean }
 
 local MODES: { [string]: boolean } = { normal = true, tutorial = true }
 
@@ -129,7 +138,7 @@ function GameRuns.start(self: GameRuns, key: any, mode: unknown?): RunState?
 	else
 		session = deps.GameSession.new(dealNext)
 	end
-	local run = { id = self.nextRunId, mode = runMode, session = session, maxCombo = 0 }
+	local run = { id = self.nextRunId, mode = runMode, session = session, maxCombo = 0, endCounted = false }
 	self.nextRunId += 1
 	self.runs[key] = run
 	return stateOf(self, key, run)
@@ -176,6 +185,10 @@ function GameRuns.place(
 	run.maxCombo = math.max(run.maxCombo, result.combo)
 	local best = math.max(self.bests[key] or 0, session.score)
 	self.bests[key] = best
+	local endsRun = session.isOver and not run.endCounted
+	if endsRun then
+		run.endCounted = true
+	end
 	local set: { string }? = nil
 	if result.refilled then
 		local ids = {}
@@ -191,6 +204,7 @@ function GameRuns.place(
 		moveIndex = index,
 		score = session.score,
 		linesCleared = #result.clearedRows + #result.clearedCols,
+		endsRun = endsRun,
 		set = set,
 		isOver = session.isOver,
 		best = best,
@@ -212,6 +226,22 @@ function GameRuns.peek(self: GameRuns, key: any): RunState?
 	return if run then stateOf(self, key, run) else nil
 end
 
+-- Revives the player's finished run: the middle of the board is cleared and a fresh set dealt. Nil when
+-- there is nothing to revive (no such run, a tutorial run, not over). Paying for it is the caller's business.
+function GameRuns.revive(self: GameRuns, key: any, runId: unknown): RunState?
+	local run = self.runs[key]
+	if not run or run.mode ~= "normal" then
+		return nil
+	end
+	if Validate.integer(runId, 1, MAX_RUN_ID) ~= run.id then
+		return nil
+	end
+	if not run.session:revive() then
+		return nil
+	end
+	return stateOf(self, key, run)
+end
+
 -- The player's current run in a few numbers, or nil when they have none.
 function GameRuns.summary(self: GameRuns, key: any): RunSummary?
 	local run = self.runs[key]
@@ -220,11 +250,13 @@ function GameRuns.summary(self: GameRuns, key: any): RunSummary?
 	end
 	local session = run.session
 	return {
+		runId = run.id,
 		mode = run.mode,
 		score = session.score,
 		moves = session.moveCount,
 		maxCombo = run.maxCombo,
 		isOver = session.isOver,
+		revives = session.revivesUsed,
 	}
 end
 

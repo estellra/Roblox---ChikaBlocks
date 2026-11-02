@@ -8,7 +8,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 |---|---|---|---|
 | **M6** Server giữ quyền quyết định | `GameService` chạy `GameSession` trên server, seed bí mật, client dự đoán và đồng bộ lại khi lệch | Không | ✅ Xong |
 | **M7** Lưu dữ liệu | ProfileStore (qua Wally): best, số ván, cờ "đã xem tutorial" | Bật *Enable Studio Access to API Services* | ✅ Xong |
-| **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Giá Robux, tạo product, chọn Group hay cá nhân | |
+| **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Đã có giá và 3 product | ✅ Xong |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
 | **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | ✅ Xong (âm thanh để sau) |
 | **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Không | |
@@ -175,6 +175,101 @@ Client                                         Server (GameService → GameRuns)
   - Cách sửa (`DragMath.touchLift`): chỉ khi ngón tay không thể với tới hàng cuối với độ nâng đầy đủ, độ nâng mới giảm dần trong 3 ô cuối của vùng ngón tay với được. Hàng cuối với tới được ở 0,25 ô trên mép màn hình. Trong vùng này khối đi nhanh hơn ngón tay một chút (khoảng 1,5 lần ở iPhone ngang), và không bao giờ nằm dưới ngón tay.
   - Màn dọc và PC không đổi, vì bên dưới bảng còn khay.
 - **Lưu ý khi test:** client giữ best theo kiểu chỉ tăng, nên sau `resetdata` HUD và menu vẫn hiện best cũ cho tới khi vào lại game. Khi chơi thật best không bao giờ giảm nên không ảnh hưởng.
+
+
+## M8: Hồi sinh bằng Robux
+
+### Đầu vào đã có
+
+- Game thuộc **tài khoản cá nhân**.
+- **3 Developer Product**, giá tăng dần theo số lần hồi sinh trong cùng một ván:
+
+| Lần hồi sinh trong ván | Giá | Product ID |
+|---|---|---|
+| 1 | 10 R$ | `3727116317` |
+| 2 | 15 R$ | `3727116434` |
+| 3 trở đi | 25 R$ | `3727116486` |
+
+### Điểm khác với plan cũ
+
+Plan cũ giới hạn **tối đa 2 lần hồi sinh mỗi ván** (`MAX_REVIVES_PER_RUN = 2`). Việc bạn đặt giá cho "các lần sau" nghĩa là không giới hạn (quyết định AJ, đã duyệt).
+
+### Thiết kế
+
+Server quyết định mọi thứ về tiền: client chỉ xin hồi sinh, không bao giờ chọn product hay tự hồi sinh.
+
+```
+Client                                              Server
+  │ (game over) ◀──── ReviveOffer(runId, offer) ───── giá lần này, số lượt đã mua còn dư
+  │ bấm Revive
+  │ RequestRevive(runId) ─────────────────────────▶  kiểm tra ván đã thua, chưa hồi sinh quá,
+  │                                                  không phải ván tutorial, giới hạn tần suất
+  │                                                  còn lượt đã mua? → hồi sinh ngay
+  │                                                  không → PromptProductPurchase(product của lần này)
+  │                                  (hộp thoại mua của Roblox)
+  │                                                  ProcessReceipt: cấp 1 lượt, lưu xong mới báo OK,
+  │                                                  rồi dùng lượt đó hồi sinh ván đang chờ
+  │ ◀──── GameState(state, "revive") ──────────────  bảng đã xoá vùng 4×4, bộ khối mới
+  │ ◀──── ReviveResult(runId, false) ──────────────  người chơi huỷ mua (để nút hết "đang xử lý")
+```
+
+- **`PurchaseService`** (server): đặt `MarketplaceService.ProcessReceipt` (chỉ một nơi duy nhất).
+  - Logic thuần tách riêng (`Purchases.luau`, test bằng Lune): nhận biên lai và các hàm truyền vào (lấy dữ liệu người chơi, lưu xong chưa, cấp thưởng).
+  - **Không cấp trùng:** mỗi `PurchaseId` đã xử lý được ghi vào profile (`purchaseIds`, giữ 100 cái gần nhất); biên lai gọi lại chỉ trả "đã cấp".
+  - **Chỉ báo thành công khi đã lưu:** cấp xong thì `profile:Save()` và chờ lưu thành công. Lưu lỗi thì trả `NotProcessedYet` để Roblox gọi lại sau (kể cả lần vào game kế tiếp). Danh sách `PurchaseId` chống cấp hai lần khi gọi lại.
+  - Người chơi chưa vào được hoặc dữ liệu chưa tải: `NotProcessedYet`. Product không có trong danh sách: cũng `NotProcessedYet` kèm cảnh báo.
+- **Mua xong là cấp một "lượt hồi sinh đã mua"** (`reviveTokens` trong profile), rồi dùng ngay cho ván đang chờ. Nếu lúc đó không dùng được (người chơi đã thoát ván, đổi ván, mất kết nối), lượt vẫn nằm trong profile và hiện ở lần game over sau ("Revive · Free", còn N lượt). Tiền không bao giờ mất mà không được gì. Xem quyết định AK.
+- **`GameRuns.revive(key, runId)`**: kiểm tra ván còn, đã thua, là ván thường; gọi `GameSession:revive()` (đã có từ M1: xoá vùng 4×4 giữa bảng, cho bộ khối chắc chắn đặt được, tăng `revivesUsed`).
+- **Giá hiển thị** lấy từ Roblox (`GetProductInfoAsync`, cache theo server), không ghi cứng trong code. Gửi cho client trong `ReviveOffer`.
+- **Một ván chỉ tính một lần kết thúc** khi thống kê: hồi sinh rồi thua lại không cộng thêm `gamesPlayed`, không log thêm sự kiện `RunScore` (cần sửa `GameRuns` và `GameService`).
+- **Client:** `Hud.setRevive` đã có từ M10c; nút gọi `RequestRevive`, hiện trạng thái "đang xử lý" tới khi có `GameState "revive"` hoặc `ReviveResult(false)`. `GameState` có thêm lý do `"revive"` (không cảnh báo "resync" trong Studio).
+- **Analytics** (làm nốt phần đã hứa ở M12): funnel `ReviveOffer` gồm 4 bước: thấy lời mời, mở hộp mua, mua xong, đã hồi sinh (`LogFunnelStepEvent`).
+- **`Config`:** thêm `REVIVE_PRODUCTS = { 3727116317, 3727116434, 3727116486 }`; `MAX_REVIVES_PER_RUN` thành không giới hạn nhưng vẫn là một số chỉnh được.
+- **Debug (chỉ Studio):** lệnh server `fakepurchase [productId]` giả một biên lai (dùng được hai lần cùng `PurchaseId` để thử chống cấp trùng); `data` hiện thêm `reviveTokens`.
+
+### Quyết định cần chốt
+
+| Điểm | Câu hỏi | Đề xuất |
+|---|---|---|
+| **AJ.** Số lần hồi sinh tối đa mỗi ván | Bạn đặt giá cho "các lần sau" nên không còn giới hạn 2 lần | **Không giới hạn** (`MAX_REVIVES_PER_RUN` vô hạn, đổi được trong `Config`). Giá lần 3 trở đi giữ 25 R$. Nếu muốn có trần (vd. 5 lần) thì nói số |
+| **AK.** Mua xong mà không hồi sinh được | Người chơi thoát ván hoặc mất mạng giữa chừng | **Giữ lại thành lượt đã mua** trong profile, dùng ở lần game over kế tiếp |
+| **AL.** Dòng gợi ý dưới nút Revive | Mockup ghi "1 of 2 left", giờ không còn giới hạn | Chỉ ghi **"Clears the center 4×4"**; khi dùng lượt đã mua thì ghi thêm số lượt còn |
+
+### Kiểm thử
+
+- Lune: biên lai gọi hai lần (cấp một lần), lưu lỗi (trả `NotProcessedYet`, gọi lại thì cấp đúng một lần), người chơi chưa tải dữ liệu, product lạ; chọn product theo số lần đã hồi sinh (10 / 15 / 25); `revive` chỉ khi đã thua và là ván thường; hồi sinh nhiều lần không cộng thêm `gamesPlayed`; test tuần tự `GameSession` cập nhật theo AJ.
+- Studio: hiện lời mời đúng giá sau khi thua, bấm Revive mở hộp mua của Roblox (xem ảnh chụp), `fakepurchase` hồi sinh thật qua đường `ProcessReceipt`, biên lai trùng không cấp thêm, ván thua lần hai hiện giá lần sau.
+- **Chưa thử được:** giao dịch Robux thật trên server đã publish (cần M11). Trong Studio, hộp thoại mua là bản thử không trừ Robux.
+
+### Kết quả M8
+
+- **Quyết định:** AJ (không giới hạn số lần hồi sinh), AK (mua xong mà không dùng được thì giữ thành lượt đã mua) và AL (dòng gợi ý chỉ ghi "Clears the center 4×4") đều theo đề xuất.
+- **`Purchases.luau`** (logic thuần, test bằng Lune): chọn product theo số lần đã hồi sinh (10 / 15 / 25 R$) và xử lý biên lai: chỉ cấp một lần cho mỗi `PurchaseId`, chỉ báo "granted" khi đã xác nhận lưu xong, người chơi chưa vào được hoặc product lạ thì `NotProcessedYet`, nhớ 100 giao dịch gần nhất.
+- **`PurchaseService`** (server): đặt `ProcessReceipt` (một nơi duy nhất); đọc giá 3 product từ Roblox (`GetProductInfoAsync`, lưu cả phiên); nhận `RequestRevive`, kiểm tra ván đã thua, là ván thường, đúng `runId`; còn lượt đã mua thì hồi sinh ngay, không thì mở hộp mua của Roblox với product đúng lần; mua xong thì cấp lượt, chờ lưu xong rồi dùng cho ván đang chờ. Huỷ mua thì `ReviveResult(false)` để nút hết "Please wait…".
+- **`DataService.waitUntilSaved`:** gọi `profile:Save()` rồi chờ tới khi `LastSavedData` chứa đúng `PurchaseId` (theo hướng dẫn "caching PurchaseId" của ProfileStore).
+- **`GameRuns.revive`** (dùng `GameSession:revive` từ M1): chỉ ván thường, đã thua, đúng `runId`. Một ván chỉ tính **một lần kết thúc** (`endsRun`): hồi sinh rồi thua lại không cộng `gamesPlayed` và không ghi thêm `RunScore` / `RunMoves` / `RunMaxCombo`.
+- **Remote mới:** `RequestRevive`, `ReviveOffer(runId, { tokens, price? })`, `ReviveResult(runId, ok)`; `GameState` có thêm lý do `"revive"` (không còn cảnh báo "resynced" trong Studio).
+- **Client:** nút Revive hiện ở Game Over ("Revive · R$ 10", "Revive · Free" khi có lượt đã mua kèm "You have N"), bấm thì thành "Please wait…" tới khi có kết quả. Giá lấy từ Roblox, không ghi cứng.
+- **Analytics:** funnel `ReviveOffer` (1 Offered, 2 Requested, 3 Paid, 4 Revived; lượt đã mua không có bước 3), session id `runId.số lần đã hồi sinh`.
+- **Dữ liệu:** profile thêm `reviveTokens` và `purchaseIds` (version vẫn là 2, `Reconcile` tự điền mặc định). `Config.REVIVE_PRODUCTS` giữ ba ID, `MAX_REVIVES_PER_RUN` là `math.huge`.
+- **Debug (chỉ Studio):** `fakepurchase [userId] [productId] [purchaseId]` đưa biên lai giả vào đúng hàm xử lý thật; `data` hiện `reviveTokens` và số giao dịch đã nhớ; `resetdata` xoá cả hai.
+- **137 test pass** (thêm 13: `Purchases` 7, hồi sinh và `endsRun` trong `GameRuns` 3, `PlayerData` 2, funnel trong `Telemetry` 1; cập nhật test `GameSession` vì không còn giới hạn).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Thua ván | Nút "Revive · R$ 10", gợi ý "Clears the center 4×4" (giá đọc được từ Roblox) |
+| Bấm Revive thật | Nút chuyển "Please wait…" |
+| Biên lai giả (product 1) khi đang chờ | `granted`; bảng xoá vùng 4×4 giữa, bộ khối mới, điểm giữ nguyên; lượt vừa cấp được dùng ngay (`reviveTokens=0`) |
+| Cùng `PurchaseId` lần hai | `granted`, **không cấp thêm** (`purchases=1`, `reviveTokens=0`) |
+| Thua lần hai | "Revive · R$ 15"; `games` vẫn là 2; `RunScore` chỉ ghi một lần |
+| Biên lai giả khi không có hộp chờ (product 2) | `reviveTokens=1`; nút đổi thành "Revive · Free", "You have 1" |
+| Dùng lượt đã mua | Hồi sinh, `reviveTokens=0`, funnel đủ bước Offered, Requested, Revived |
+| Output | Không có lỗi từ game |
+
+- **Chưa kiểm tra được:**
+  - Hộp thoại mua thật của Roblox: bấm Revive thật gửi yêu cầu và mở hộp mua, nhưng ảnh chụp trong Studio không hiện hộp đó. Các lần bấm sau đó không tới được nút (có thể hộp mua đang chặn); mình kiểm tra các lần sau qua remote.
+  - Giao dịch Robux thật trên server đã publish (cần M11), và bấm huỷ trong hộp mua.
+  - Giá lần 3 trở đi (25 R$): đã kiểm tra chọn product trong test Lune, chưa thấy hiện trong Studio vì ván cần thua lần thứ ba.
 
 ## M10: Giao diện thật
 

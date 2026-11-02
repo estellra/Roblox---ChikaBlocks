@@ -82,6 +82,29 @@ function DataService.waitForData(player: Player, timeoutSeconds: number): Player
 	return DataService.get(player)
 end
 
+-- Yields until `isSaved(lastSavedData)` holds for the player's profile, saving it now and again every ten
+-- seconds. False when the session ends first (the player left, or the data went to another server).
+function DataService.waitUntilSaved(player: Player, isSaved: (saved: any) -> boolean): boolean
+	local profile = profiles[player]
+	while profile and profile:IsActive() do
+		if isSaved(profile.LastSavedData or {}) then
+			return true
+		end
+		local before = profile.LastSavedData
+		profile:Save()
+		if profile.LastSavedData == before then
+			profile.OnAfterSave:Wait()
+		end
+		if isSaved(profile.LastSavedData or {}) then
+			return true
+		end
+		if profile:IsActive() then
+			task.wait(10)
+		end
+	end
+	return false
+end
+
 -- For the Studio debug bridge: store name and whether ProfileStore can reach the DataStore API
 -- ("Access") or is using an in-memory mock ("NoAccess", "NoInternet").
 function DataService.describeStore(): string
