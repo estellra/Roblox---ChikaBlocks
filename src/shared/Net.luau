@@ -10,18 +10,20 @@
 --   RequestLeaderboard()                         send the cached leaderboards
 --   RequestRotations()                           out of rotations: open the purchase prompt for a pack
 --   RotatePiece(runId, moveIndex, slot)          turn the piece in a tray slot (predicted by the client)
+--   RequestDonate(tier)                          a donation tier chosen on the Support screen (1 = smallest)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
 --                                                a move was accepted; set = new piece ids when the tray refilled
---   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, rotations, title? }
+--   Profile(profile)                             { best, gamesPlayed, tutorialDone, level, exp, rotations, donated, title? }
 --   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
 --                                                titles unlocked during the run (see GameService)
 --   ReviveOffer(runId, offer)                    after a game over: { tokens, price? }, the revives already paid for and
 --                                                the Robux price of the next one
 --   ReviveResult(runId, ok)                      the revive didn't happen (purchase cancelled or not possible)
+--   Donated(amount, total)                       a donation was granted: its Robux, and the player's total
 --   Leaderboard(snapshot)                        top entries of every board and the player's own values
 --                                                (see LeaderboardService.Snapshot)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -64,6 +66,8 @@ return {
 	RequestLeaderboard = remoteEvent("RequestLeaderboard"),
 	RequestRotations = remoteEvent("RequestRotations"),
 	RotatePiece = remoteEvent("RotatePiece"),
+	RequestDonate = remoteEvent("RequestDonate"),
+	Donated = remoteEvent("Donated"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
 	Profile = remoteEvent("Profile"),

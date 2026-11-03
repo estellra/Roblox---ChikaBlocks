@@ -16,6 +16,7 @@ export type PlayerData = {
 	weekly: { week: string, bestScore: number, exp: number },
 	reviveTokens: { number }, -- paid revives not used yet, counted per price tier 1..3 (see Purchases)
 	rotations: number, -- bought rotations not used yet
+	robuxDonated: number, -- Robux given through donation products, for the Supporters board
 	purchaseIds: { string }, -- receipts already handled, the latest 100, newest last
 }
 
@@ -43,6 +44,7 @@ end
 local CURRENT_VERSION = #MIGRATIONS + 1
 
 local MAX_REMEMBERED_PURCHASES = 100
+local MAX_DONATED = 1e9 -- far beyond any real total; keeps the board's integer safe
 
 local PlayerData = {}
 
@@ -63,6 +65,7 @@ PlayerData.TEMPLATE = table.freeze({
 	weekly = table.freeze({ week = "", bestScore = 0, exp = 0 }),
 	reviveTokens = table.freeze({ 0, 0, 0 }),
 	rotations = 0,
+	robuxDonated = 0,
 	purchaseIds = table.freeze({}),
 })
 
@@ -144,6 +147,11 @@ end
 -- Adds bought rotations.
 function PlayerData.addRotations(data: PlayerData, count: number)
 	data.rotations += count
+end
+
+-- Adds Robux the player gave through a donation product.
+function PlayerData.addDonation(data: PlayerData, robux: number)
+	data.robuxDonated = math.min(data.robuxDonated + math.max(robux, 0), MAX_DONATED)
 end
 
 -- Spends one bought rotation. False when there is none.

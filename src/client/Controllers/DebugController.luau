@@ -24,6 +24,7 @@ local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
 local GamepadController = require("./GamepadController")
 local LeaderboardController = require("./LeaderboardController")
+local SupportController = require("./SupportController")
 local MenuController = require("./MenuController")
 local TutorialController = require("./TutorialController")
 
@@ -211,6 +212,15 @@ local function handle(rng: Random, command: string, ...: any): string
 			LeaderboardController.close()
 		end
 		return `open={LeaderboardController.isOpen()} menuOpen={MenuController.isOpen()}\n{LeaderboardController.describe()}`
+	elseif command == "support" then
+		local action = ...
+		if action == "open" then
+			MenuController.openSupport()
+			task.wait(1) -- the server's answer
+		elseif action == "close" then
+			SupportController.close()
+		end
+		return `open={SupportController.isOpen()} menuOpen={MenuController.isOpen()}\n{SupportController.describe()}`
 	elseif command == "flow" then
 		local profile = GameController.getProfile()
 		local keys = GamepadController.getStats()

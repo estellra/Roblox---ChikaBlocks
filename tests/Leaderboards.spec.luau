@@ -12,9 +12,15 @@ local function stats(
 	level: number,
 	week: string,
 	weekBest: number,
-	weekExp: number
+	weekExp: number,
+	robuxDonated: number?
 ): Leaderboards.Stats
-	return { bestScore = bestScore, level = level, weekly = { week = week, bestScore = weekBest, exp = weekExp } }
+	return {
+		bestScore = bestScore,
+		level = level,
+		weekly = { week = week, bestScore = weekBest, exp = weekExp },
+		robuxDonated = robuxDonated or 0,
+	}
 end
 
 return function(t: TestKit.TestKit)
@@ -66,6 +72,19 @@ return function(t: TestKit.TestKit)
 				Highscore_all = Leaderboards.encode(2094, 2),
 				Level_all = Leaderboards.encode(5, 2),
 			})
+		end)
+
+		t.it("keeps the Supporters board in its own store, the same in every week", function()
+			t.expect(Leaderboards.storeName(Leaderboards.SUPPORTERS_KEY, NOV_2_2026, false)).toBe("RobuxDonated")
+			t.expect(Leaderboards.storeName(Leaderboards.SUPPORTERS_KEY, NOV_1_2026, true)).toBe("RobuxDonated_Dev")
+		end)
+
+		t.it("writes the Robux donated as they are, only once there is something to show", function()
+			t.expect(Leaderboards.values(stats(0, 1, "", 0, 0, 0), 0, NOV_2_2026)).toEqual({})
+			t.expect(Leaderboards.values(stats(0, 1, "", 0, 0, 125), 3, NOV_2_2026)).toEqual({
+				Supporters_all = 125, -- no title mixed in
+			})
+			t.expect(Leaderboards.values(stats(2094, 5, "2026W45", 900, 90, 30), 2, NOV_2_2026).Supporters_all).toBe(30)
 		end)
 
 		t.it("writes again only what changed", function()

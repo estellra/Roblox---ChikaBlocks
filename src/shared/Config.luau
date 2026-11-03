@@ -30,6 +30,21 @@ local Config = {
 	ROTATION_PRODUCT = 3727205638,
 	ROTATION_PACK = 5,
 
+	-- Donations: developer products that give nothing but a place on the Supporters board, in order of price
+	-- (5, 10, 25, 50, 100, 200, 500, 1000 and 2500 Robux). 0 would mean a tier whose product doesn't exist yet;
+	-- it is left out of the Support screen. Prices are read from Roblox, never written here.
+	DONATE_PRODUCTS = table.freeze({
+		3727223223,
+		3727223687,
+		3727223870,
+		3727224068,
+		3727724626,
+		3727725321,
+		3727725778,
+		3727726113,
+		3727726800,
+	}),
+
 	-- Progression (see Progression): a run earns floor(score / EXP_SCORE_DIVISOR) EXP; going from level n
 	-- to n + 1 takes LEVEL_EXP_BASE + LEVEL_EXP_STEP * (n - 1) EXP.
 	EXP_SCORE_DIVISOR = 10,

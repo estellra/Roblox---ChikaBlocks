@@ -31,8 +31,9 @@ Mình không publish thay được: việc này chạy trong Studio bằng tài 
 | 9 | Tay cầm và bàn phím | Gắn tay cầm; thử phím mũi tên, Enter, Esc | Chơi và tạm dừng được |
 | 10 | Mạng chậm | Đặt điện thoại ở 3G / Wi-Fi yếu, hoặc Network Simulator trong Studio | Khối đặt được ngay (client dự đoán), không bị "đặt lại" liên tục, Game Over vẫn tới |
 | 11 | **Mua gói xoay thật** | Hết lượt xoay, bấm nút xoay, mua gói 5 lượt (25 R$) bằng tài khoản của bạn | Hộp mua hiện đúng giá, mua xong dòng dưới khay ghi "Rotate: 5 owned", **Robux bị trừ đúng 1 lần**, thoát và vào lại vẫn còn lượt |
+| 12 | **Donate thật** | Menu → Support us, mua mức 5 R$ bằng tài khoản của bạn | Hộp mua hiện đúng giá, mua xong hiện lời cảm ơn, "Your total" tăng 5, tên bạn lên bảng Top supporters sau vài giây, **Robux bị trừ đúng 1 lần**, thoát và vào lại tổng vẫn còn |
 
-Sau mỗi lượt chơi mở **F9 → Server log** (cần quyền chủ game) và tìm dòng lỗi màu đỏ. Mục tiêu của PLAN: **≥95% lượt thử không gặp lỗi**; tính bằng số người hoàn thành đủ mười một việc trên chia cho tổng số người thử.
+Sau mỗi lượt chơi mở **F9 → Server log** (cần quyền chủ game) và tìm dòng lỗi màu đỏ. Mục tiêu của PLAN: **≥95% lượt thử không gặp lỗi**; tính bằng số người hoàn thành đủ mười hai việc trên chia cho tổng số người thử.
 
 ## 3. Hướng dẫn cho người thử
 

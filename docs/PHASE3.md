@@ -1,6 +1,6 @@
 # Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 
-> Plan đã duyệt; M12, M13, M14 và M15 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
+> Plan đã duyệt; M12 đến M16 xong. Các điểm cần bạn quyết định cho các mốc sau nằm ở [cuối file](#quyết-định-cần-chốt).
 
 ## Bối cảnh
 
@@ -21,7 +21,7 @@
 | **M14** Leaderboard | Highscore và Level (toàn thời gian và theo tuần) | Quyết định Y | ✅ Xong |
 | **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ✅ Xong (dùng lại cho M15, M16) |
 | **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z, AM, AN, AO | ✅ Xong (chờ thử giao dịch thật khi publish) |
-| **M16** Donate | Nhiều mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA | ⏳ |
+| **M16** Donate | 9 mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA, AB, AC, AD | ✅ Xong (chờ thử giao dịch thật khi publish) |
 | **M17** Rewarded video ad | Xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lượt xoay | Game public, ≥ 2k người/tháng | ⏳ sau publish |
 
 **Thứ tự đề xuất:** M12 → M13 → M14 làm ngay. Khi bạn chốt xong giá và Group thì làm M8 → M15 → M16. M10/M11 chen vào khi có mockup. M17 làm sau khi publish và đủ điều kiện.
@@ -239,10 +239,80 @@ Tạo Developer Product **"5 Rotations" giá 25 R$** trong đúng experience đ�
 
 ## M16: Donate
 
-- 3–4 mức Developer Product (giá theo quyết định AA). Cộng `receipt.CurrencySpent` (số Robux người chơi thực trả) vào `robuxDonated`.
-- **Bảng "Supporters"** dùng lại M14 (`OrderedDataStore` `RobuxDonated`).
-- Nút "Support us" ở menu, không hiện giữa ván.
-- Hoàn tiền: khi game có doanh thu thật thì nối webhook *Transaction Refunded* để trừ lại. Để ngoài phạm vi GĐ3, ghi vào rủi ro.
+Các quyết định đã chốt: **AB** 9 mức donate (5, 10, 25, 50, 100, 200, 500, 1000, 2500 R$), **AC** bảng Supporters hiện tên, không có nút ẩn danh, **AD** người donate chỉ có vị trí trên bảng Supporters (danh hiệu và cosmetic để dành cho giai đoạn 4).
+
+### Cách chơi
+
+- Ở menu có nút **Support us**. Bấm vào mở màn hình Support: một câu giải thích ("Support ChikaBlocks. You get no items; your name appears on the Supporters board"), lưới 9 nút giá, bảng **Top supporters** (10 người đầu, cuộn được) và "Your total".
+- Bấm một mức thì mở hộp mua của Roblox. Mua xong hiện lời cảm ơn, tổng của bạn và bảng cập nhật ngay.
+- Không có nút này giữa ván, trong tutorial hay ở màn Game Over.
+- Bảng Supporters xếp theo tổng Robux đã donate (toàn thời gian), hiện display name của Roblox. Bảng này **riêng** với bảng thi đấu (quyết định Y), không thêm vào màn Leaderboard.
+
+### Thiết kế
+
+- **Config:** `DONATE_PRODUCTS` là danh sách 9 product ID theo thứ tự giá tăng dần. ID `0` là mức chưa có product: ẩn khỏi lưới. Giá hiển thị đọc từ `GetProductInfoAsync`, không ghi cứng (kể cả số 5…2500 ở đây chỉ là ghi chú).
+- **Cộng tổng:** `Purchases.process` thêm loại product `donation`. Cộng `receipt.CurrencySpent` (số Robux người chơi thực trả, có thể khác giá niêm yết vì giá theo vùng) vào `robuxDonated`, chỉ khi tiền là Robux, một lần cho mỗi `PurchaseId`, chỉ báo "granted" sau khi lưu xong như hồi sinh và xoay. Số tiền lạ (không phải số, âm, vô cực) thì không cộng nhưng vẫn ghi nhận biên lai để không cấp lặp.
+- **Dữ liệu:** thêm `robuxDonated` (mặc định 0, tối đa 1e9). `Reconcile` tự điền nên version vẫn là 3.
+- **Bảng Supporters:** `OrderedDataStore` riêng `RobuxDonated` (`RobuxDonated_Dev` trong Studio). `Leaderboards.values` thêm khoá `Supporters_all` khi tổng > 0; giá trị là số Robux thuần, không gắn danh hiệu. `LeaderboardService` ghi ngay sau khi nhận donate (không chờ khoảng cách 20 giây) và đọc top 50 mỗi phút cùng các bảng khác (thêm một lần đọc). Snapshot `Leaderboard` thêm `boards.Supporters_all` và `you.donated`.
+- **Remote:** `RequestDonate(tier)` (client chỉ gửi số thứ tự mức, server kiểm số nguyên 1…9, mức có product, giới hạn tần suất; server chọn product, client không gửi số tiền), `Donated(amount)` để hiện lời cảm ơn. `Profile` thêm `donated`.
+- **PurchaseService:** gom ba bảng "đang mở hộp mua" (hồi sinh, xoay, donate) thành một chỗ, vì ba thứ này loại trừ nhau. Giá 9 mức công bố qua attribute `DonatePrice1…9` của `ReplicatedStorage`, như `RotationPrice`.
+- **Analytics:** funnel `DonateOffer` (1 Requested, 2 Paid) và sự kiện `Donated` (giá trị là số Robux, trường là số thứ tự mức).
+- **Hoàn tiền:** chưa xử lý (cần webhook *Transaction Refunded*, ngoài phạm vi). Ghi vào rủi ro.
+
+### Giao diện (gray-box theo style hiện tại)
+
+- `SupportView` và `SupportController` mới, dựng bằng Clay. Lưới 3×3 nút giá (kiểu "reward"). Trên điện thoại ngang (thấp) cả màn hình cuộn được. Mỗi nút chạm ≥ 44 px.
+- Menu thêm nút phụ "Support us" (nút Back, Backspace và B đóng màn như Leaderboard).
+- Hộp mua mở thì nút bị khoá tới khi có kết quả (hoặc 180 giây).
+
+### Test
+
+- Lune: `Purchases` với product donate (cộng đúng `CurrencySpent`, không cộng trùng, số tiền lạ, chờ lưu xong), `PlayerData` (cộng, trần 1e9), `Leaderboards` (khoá `Supporters_all`, tên store và store Studio, chỉ ghi khi đổi), `Telemetry`, `Config` (product ID không trùng giữa hồi sinh, xoay và donate).
+- Studio (PC, iPhone dọc và ngang): mở Support, cuộn, bấm mức, `fakepurchase` product donate (tổng, bảng, lời cảm ơn, mua lặp cùng `PurchaseId` không cộng thêm), `boards` đọc lại từ `OrderedDataStore` thật.
+
+### Bạn cần làm
+
+1. Tạo **9 Developer Product** giá 5, 10, 25, 50, 100, 200, 500, 1000, 2500 R$ trong đúng experience. Tên gợi ý "Support 5 R$" và nhớ ghi trong mô tả: "A tip to support the developer. Gives no items; your name appears on the Supporters board."
+2. Gửi 9 ID theo thứ tự giá tăng dần. Mình làm được trước khi có ID (mức ID 0 bị ẩn).
+3. **Kiểm tra chính sách Roblox về product donate/tip** trên Creator Hub (cách đặt tên, lời kêu gọi, việc không được hứa quà hay nói là từ thiện). Mình không kiểm tra được chính sách hiện hành; câu chữ trong game đã tránh hứa quà và tránh từ "charity".
+
+### Giới hạn đã biết
+
+- Bảng Supporters công khai tên theo display name, không ẩn được (quyết định AC). Người dưới 13 tuổi có thể mua Robux và xuất hiện trên bảng; đó là tên Roblox vốn công khai.
+- `OrderedDataStore` không cho tra hạng riêng, nên ngoài top 50 chỉ hiện "Your total", không hiện hạng (giống M14).
+- Dữ liệu trên `OrderedDataStore` theo `userId`; xoá dữ liệu theo yêu cầu (right to be forgotten) cho bảng này làm chung với các bảng M14 sau.
+- Tổng bị lệch nếu Roblox hoàn tiền sau đó (chưa nối webhook).
+
+### Kết quả M16
+
+- **Quyết định:** AB (9 mức), AC (hiện tên, không ẩn) và AD (chỉ bảng Supporters) theo đúng lựa chọn của bạn. 9 product ID đã vào `Config.DONATE_PRODUCTS` theo thứ tự giá tăng dần.
+- **Cộng tổng:** `Purchases.process` có thêm loại product `donation`, cộng số Robux thực trả (`CurrencySpent`, chỉ khi tiền là Robux) vào `PlayerData.robuxDonated` (tối đa 1e9). Số tiền thiếu, âm, NaN hoặc vô cực thì cộng 0 nhưng biên lai vẫn được ghi nhận. Mỗi `PurchaseId` chỉ cộng một lần và chỉ báo "granted" sau khi lưu xong.
+- **Bảng Supporters:** `OrderedDataStore` `RobuxDonated` (`RobuxDonated_Dev` trong Studio), khoá `Supporters_all`, giá trị là Robux thuần (không gắn danh hiệu). `LeaderboardService.refresh` đọc thêm top 10 của bảng này cùng các bảng khác mỗi phút; `refreshSoon()` đọc lại sau 3 giây khi có donate. Snapshot có thêm `you.donated`.
+- **Server:** remote `RequestDonate(tier)` (kiểm số nguyên, mức có product, giới hạn một lần mỗi 2 giây, mỗi người một hộp mua mở cùng lúc) và `Donated(amount, total)`. `PurchaseService` viết lại gọn: hộp mua của xoay và donate dùng chung `openPrompt`/`promptPending`. Giá 9 mức đọc từ Roblox và công bố qua attribute `DonatePrice1…9`. Sau khi cấp: ghi ngay lên bảng, gửi `Profile` (thêm `donated`) và lời cảm ơn.
+- **Analytics:** funnel `DonateOffer` (1 Requested, 2 Paid) và sự kiện `Donated` (giá trị là Robux, trường là số thứ tự mức).
+- **Client:** nút "Support us" nhỏ ở góc trên trái menu; `SupportView` và `SupportController` mới. Màn Support có giải thích, lưới 3×3 nút giá, top 10 supporters (dòng của bạn tô vàng), "Your total" và lời cảm ơn hiện 6 giây sau khi mua. Cả màn cuộn được. Đóng bằng nút X, Backspace, Escape hoặc B trên tay cầm. Giá trên nút tự cập nhật khi server công bố.
+- **166 test pass** (thêm 8: `Config` 1, `Leaderboards` 2, `PlayerData` 1, `Purchases` 3, `Telemetry` 1).
+
+| Kiểm tra trong Studio | Kết quả |
+|---|---|
+| Mở Support | 9 nút đọc đúng giá từ Roblox: 5, 10, 25, 50, 100, 200, 500, 1.000, 2.500 (cũng xác nhận 9 ID đều đúng) |
+| `fakepurchase` product 25 R$, rồi lại cùng `PurchaseId` | `granted` cả hai, `donated=25` (không cộng hai lần) |
+| `fakepurchase` product 200 R$ | `donated=225`; funnel `DonateOffer 2 Paid`, sự kiện `Donated=25 [3]` và `Donated=200 [6]` |
+| Bảng Supporters sau vài giây | `#1 muyu_21xSept R$ 225` (từ `OrderedDataStore` thật) |
+| Mua thêm 5 R$ khi màn đang mở | Lời cảm ơn "Thank you! R$ 5 received." và "Your total: R$ 230" hiện ngay; dòng bảng lên 230 sau vài giây |
+| Bấm chuột thật vào mức 10 R$ | Server ghi funnel `DonateOffer 1 Requested` (hộp mua của Roblox mở) |
+| Đóng bằng nút X và Backspace | Về lại menu |
+| Menu | Nút "Support us" ở góc trên trái, không đè lên mascot hay logo |
+| iPhone 17 Pro dọc (401×777) và ngang (749×381) | Dọc vừa màn; ngang cuộn được, không tràn ngang |
+| Output | Không có lỗi từ game |
+
+- **Chưa kiểm tra được:**
+  - Hộp mua thật và giao dịch Robux thật (cần publish); trong Studio mới thử bằng `fakepurchase`.
+  - Bảng có nhiều người (Studio chỉ có một tài khoản).
+  - Phím B trên tay cầm thật.
+  - Nút Escape qua MCP: trong Studio, Escape mở menu của Roblox nên không thử được bằng cách đó.
+- **Lưu ý khi thử trong Studio:** hộp mua của Studio đang mở sẽ chặn các phím và nút bấm của game cho tới khi bạn đóng nó, kể cả sau khi chạy lại phiên.
+- **Giới hạn:** chưa xử lý hoàn tiền (cần webhook *Transaction Refunded*), ngoài top 10 chỉ hiện "Your total", tên hiện công khai theo display name.
 
 ## M17: Rewarded video ad (khi đủ điều kiện)
 
@@ -269,3 +339,6 @@ Tạo Developer Product **"5 Rotations" giá 25 R$** trong đúng experience đ�
 | **AM.** Xoay và game over | Hết chỗ đặt khối nhưng xoay một khối sẽ vừa thì có thua không? | ✅ **Chốt:** vẫn game over. Xoay chỉ để lên kế hoạch, không cứu ván. |
 | **AN.** Cách tính lượt xoay | Mỗi lần chạm hay mỗi khối? | ✅ **Chốt:** mỗi khối một lượt, khối đó xoay tự do tới khi đặt xuống. |
 | **AO.** Gói lượt xoay | Bán bao nhiêu lượt, giá bao nhiêu? | ✅ **Chốt:** một gói 5 lượt giá 25 R$ (bạn tạo product và gửi ID). |
+| **AB.** Mức donate | Mấy mức, giá nào? | ✅ **Chốt:** 9 mức: 5, 10, 25, 50, 100, 200, 500, 1000, 2500 R$ (bạn tạo product và gửi ID theo thứ tự giá). |
+| **AC.** Ẩn danh trên Supporters | Người donate có ẩn tên được không? | ✅ **Chốt:** hiện display name, không có nút ẩn. Màn Support nói rõ tên sẽ hiện trên bảng. |
+| **AD.** Quà cho người donate | Ngoài vị trí trên bảng? | ✅ **Chốt:** chỉ bảng Supporters. Danh hiệu và cosmetic để dành cho giai đoạn 4. |

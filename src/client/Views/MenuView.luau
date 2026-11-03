@@ -1,6 +1,7 @@
 --!strict
 -- Main menu, as in the mockups: the two-line logo and the mascot, a Best pill and a level pill, Play and
--- Leaderboard, a "?" button for How to play, and blocks floating on the sky behind. Landscape puts the logo
+-- Leaderboard, a "?" button for How to play, a small Support us button in the other top corner, and blocks
+-- floating on the sky behind. Landscape puts the logo
 -- and mascot beside the buttons; portrait stacks them.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
@@ -51,6 +52,7 @@ export type MenuView = typeof(setmetatable(
 		playButton: TextButton,
 		leaderboardButton: TextButton,
 		helpButton: TextButton,
+		supportButton: TextButton,
 		floaters: { Tween },
 		ready: boolean, -- false until the saved profile has arrived
 		onPlay: () -> (),
@@ -92,7 +94,13 @@ local function addFloaters(parent: GuiObject): { Tween }
 	return tweens
 end
 
-function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () -> (), onHowToPlay: () -> ()): MenuView
+function MenuView.new(
+	playerGui: PlayerGui,
+	onPlay: () -> (),
+	onLeaderboard: () -> (),
+	onHowToPlay: () -> (),
+	onSupport: () -> ()
+): MenuView
 	local colors, fonts = Theme.Colors, Theme.Fonts
 	local lip = Theme.Spacing.ButtonLip
 
@@ -236,11 +244,20 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 	local helpButton = Clay.iconButton({ name = "HowToPlay", text = "?" })
 	helpButton.AnchorPoint = Vector2.new(1, 0)
 	helpButton.Position = UDim2.new(1, -12, 0, 12)
+	-- Out of the main column, so a short phone screen has room for it: a small button in the top-left corner.
+	local supportRoot = Clay.button({
+		name = "Support",
+		text = "Support us",
+		style = "secondary",
+		size = UDim2.fromOffset(124, 44 + lip),
+		textSize = Theme.TextSize.Label,
+	})
+	supportRoot.Position = UDim2.fromOffset(12, 12)
 	local content = create("Frame", {
 		Name = "Content",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-	}, { main, helpButton })
+	}, { main, helpButton, supportRoot })
 	local gui = create("ScreenGui", {
 		Name = "Menu",
 		DisplayOrder = 11,
@@ -252,6 +269,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 	}, { content })
 
 	local playButton, leaderboardButton = Clay.face(playRoot), Clay.face(leaderboardRoot)
+	local supportButton = Clay.face(supportRoot)
 	local self = setmetatable({
 		backdrop = backdrop,
 		gui = gui,
@@ -268,6 +286,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 		playButton = playButton,
 		leaderboardButton = leaderboardButton,
 		helpButton = helpButton,
+		supportButton = supportButton,
 		floaters = floaters,
 		ready = false,
 		onPlay = onPlay,
@@ -298,6 +317,7 @@ function MenuView.new(playerGui: PlayerGui, onPlay: () -> (), onLeaderboard: () 
 			end
 		end)
 	)
+	table.insert(self.connections, supportButton.Activated:Connect(onSupport))
 	table.insert(
 		self.connections,
 		content:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
@@ -373,7 +393,12 @@ function MenuView.hide(self: MenuView)
 		tween:Pause()
 	end
 	local selected = GuiService.SelectedObject
-	if selected == self.playButton or selected == self.leaderboardButton or selected == self.helpButton then
+	if
+		selected == self.playButton
+		or selected == self.leaderboardButton
+		or selected == self.helpButton
+		or selected == self.supportButton
+	then
 		GuiService.SelectedObject = nil
 	end
 	if self.keyConnection then

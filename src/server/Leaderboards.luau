@@ -7,22 +7,28 @@
 -- ranks the EXP earned this week (a level never resets). Weekly stores carry the ISO week in their name
 -- ("Highscore_2026W45"), so a new week starts with empty boards on its own.
 --
+-- The Supporters board ("Supporters_all", store "RobuxDonated") is separate from these: its values are the Robux
+-- a player has donated, as they are, without a title.
+--
 -- A stored value is stat * TITLE_SLOTS + title index (0 = no title; see Progression.titleIndex): the title
 -- shows next to the name without reading every player's profile, and the order is still by stat.
 
 export type Weekly = { week: string, bestScore: number, exp: number }
 
 -- The parts of PlayerData this module reads and changes.
-export type Stats = { bestScore: number, level: number, weekly: Weekly }
+export type Stats = { bestScore: number, level: number, weekly: Weekly, robuxDonated: number }
 
 local TITLE_SLOTS = 100
 local DAY = 86400
+local STORE_NAMES: { [string]: string } = { Supporters = "RobuxDonated" } -- boards whose store is named otherwise
 
 local Leaderboards = {}
 
 Leaderboards.BOARDS = table.freeze({ "Highscore", "Level" })
 Leaderboards.PERIODS = table.freeze({ "all", "week" })
 Leaderboards.TOP = 50 -- entries shown per board
+Leaderboards.SUPPORTERS_KEY = "Supporters_all"
+Leaderboards.SUPPORTERS_TOP = 10 -- entries on the Supporters board
 Leaderboards.TITLE_SLOTS = TITLE_SLOTS
 
 -- ISO 8601 week of a UTC time, like "2026W45". Weeks start on Monday; week 1 holds the year's first Thursday.
@@ -37,7 +43,7 @@ end
 function Leaderboards.storeName(key: string, time: number, isStudio: boolean): string
 	local board, period = string.match(key, "^(%a+)_(%a+)$")
 	assert(board and period, `bad board key {key}`)
-	local name = if period == "week" then `{board}_{Leaderboards.weekKey(time)}` else board
+	local name = if period == "week" then `{board}_{Leaderboards.weekKey(time)}` else (STORE_NAMES[board] or board)
 	return if isStudio then `{name}_Dev` else name
 end
 
@@ -85,6 +91,9 @@ function Leaderboards.values(stats: Stats, titleIndex: number, time: number): { 
 		if weekly.exp > 0 then
 			values.Level_week = Leaderboards.encode(weekly.exp, titleIndex)
 		end
+	end
+	if stats.robuxDonated > 0 then
+		values[Leaderboards.SUPPORTERS_KEY] = math.floor(stats.robuxDonated)
 	end
 	return values
 end

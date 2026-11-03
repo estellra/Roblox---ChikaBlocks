@@ -19,6 +19,7 @@ local RateLimiter = require("../Util/RateLimiter")
 
 local IS_STUDIO = RunService:IsStudio()
 local REFRESH_SECONDS = 60
+local REFRESH_SOON_SECONDS = 3 -- how long refreshSoon() waits, for a write to show up in the sorted read
 local SHUTDOWN_WAIT_SECONDS = 20 -- how long a closing server waits for leaderboard writes (the limit is 30)
 
 export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
@@ -27,7 +28,7 @@ export type Entry = { rank: number, userId: number, name: string, title: string?
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number, -- os.time() of the last read
-	you: { best: number, level: number, weekBest: number, weekExp: number },
+	you: { best: number, level: number, weekBest: number, weekExp: number, donated: number },
 }
 
 local LeaderboardService = {}
@@ -37,6 +38,7 @@ local boards: { [string]: { Entry } } = {}
 local updatedAt = 0
 local names: { [number]: string } = {} -- display names by user id, kept for the server's lifetime
 local requestLimiter = RateLimiter.new(1, 2, os.clock)
+local refreshQueued = false -- a refreshSoon() is waiting to run
 local writesInFlight = 0 -- DataStore writes started and not finished, so shutdown can wait for them
 local lastFlush: { [Player]: number } = {} -- when each player's boards were last written
 
@@ -115,7 +117,8 @@ local function resolveNames(userIds: { number })
 	end
 end
 
--- Reads the top of every board. A board that fails to load keeps its last good copy.
+-- Reads the top of every board: the competitive ones, then the Supporters board (a shorter list of plain Robux
+-- totals). A board that fails to load keeps its last good copy.
 function LeaderboardService.refresh()
 	for _, player in Players:GetPlayers() do
 		local data = DataService.get(player)
@@ -125,35 +128,45 @@ function LeaderboardService.refresh()
 	end
 
 	local now = os.time()
-	local raw: { [string]: { { userId: number, value: number } } } = {}
-	local userIds: { number } = {}
+	local reads: { { key: string, top: number } } = {}
 	for _, board in Leaderboards.BOARDS do
 		for _, period in Leaderboards.PERIODS do
-			local key = `{board}_{period}`
-			local ok, page = pcall(function()
-				return storeFor(key, now):GetSortedAsync(false, Leaderboards.TOP):GetCurrentPage()
-			end)
-			if ok then
-				local items = {}
-				for _, item in page do
-					local userId = tonumber(item.key)
-					if userId then
-						table.insert(items, { userId = userId, value = item.value })
-						table.insert(userIds, userId)
-					end
+			table.insert(reads, { key = `{board}_{period}`, top = Leaderboards.TOP })
+		end
+	end
+	table.insert(reads, { key = Leaderboards.SUPPORTERS_KEY, top = Leaderboards.SUPPORTERS_TOP })
+
+	local raw: { [string]: { { userId: number, value: number } } } = {}
+	local userIds: { number } = {}
+	for _, read in reads do
+		local key = read.key
+		local ok, page = pcall(function()
+			return storeFor(key, now):GetSortedAsync(false, read.top):GetCurrentPage()
+		end)
+		if ok then
+			local items = {}
+			for _, item in page do
+				local userId = tonumber(item.key)
+				if userId then
+					table.insert(items, { userId = userId, value = item.value })
+					table.insert(userIds, userId)
 				end
-				raw[key] = items
-			elseif IS_STUDIO then
-				warn(`[ChikaBlock] leaderboard read {key} failed: {page}`)
 			end
+			raw[key] = items
+		elseif IS_STUDIO then
+			warn(`[ChikaBlock] leaderboard read {key} failed: {page}`)
 		end
 	end
 
 	resolveNames(userIds)
 	for key, items in raw do
+		local plain = key == Leaderboards.SUPPORTERS_KEY -- Robux as they are, no title mixed in
 		local entries = table.create(#items)
 		for rank, item in items do
-			local stat, titleIndex = Leaderboards.decode(item.value)
+			local stat, titleIndex = item.value, 0
+			if not plain then
+				stat, titleIndex = Leaderboards.decode(item.value)
+			end
 			entries[rank] = {
 				rank = rank,
 				userId = item.userId,
@@ -165,6 +178,19 @@ function LeaderboardService.refresh()
 		boards[key] = entries
 	end
 	updatedAt = now
+end
+
+-- Reads the boards again in a few seconds, e.g. after a donation so the Supporters board shows it. Asking
+-- again meanwhile changes nothing.
+function LeaderboardService.refreshSoon()
+	if refreshQueued then
+		return
+	end
+	refreshQueued = true
+	task.delay(REFRESH_SOON_SECONDS, function()
+		refreshQueued = false
+		LeaderboardService.refresh()
+	end)
 end
 
 -- For the Studio debug bridge: every board as "key: rank. name [title] value" lines.
@@ -181,6 +207,12 @@ function LeaderboardService.describe(): string
 			table.insert(lines, `{key}: {if entries then table.concat(parts, " | ") else "not loaded"}`)
 		end
 	end
+	local supporters = boards[Leaderboards.SUPPORTERS_KEY]
+	local parts = {}
+	for _, entry in supporters or {} do
+		table.insert(parts, `{entry.rank}. {entry.name} {entry.value}`)
+	end
+	table.insert(lines, `Supporters: {if supporters then table.concat(parts, " | ") else "not loaded"}`)
 	return table.concat(lines, "\n")
 end
 
@@ -194,6 +226,7 @@ local function snapshotFor(data: PlayerData.PlayerData): Snapshot
 			level = data.level,
 			weekBest = data.weekly.bestScore,
 			weekExp = data.weekly.exp,
+			donated = data.robuxDonated,
 		},
 	}
 end

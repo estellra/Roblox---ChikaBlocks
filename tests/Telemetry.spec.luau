@@ -136,6 +136,18 @@ return function(t: TestKit.TestKit)
 			})
 		end)
 
+		t.it("logs the donation funnel per prompt and each donation by tier", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:donateStep(PLAYER, "7", 1)
+			telemetry:donateStep(PLAYER, "7", 2)
+			telemetry:donated(PLAYER, 25, 3)
+			t.expect(logged).toEqual({
+				{ kind = "funnel", name = "Requested", step = 1, session = "7", fields = { "DonateOffer" } },
+				{ kind = "funnel", name = "Paid", step = 2, session = "7", fields = { "DonateOffer" } },
+				{ kind = "custom", name = "Donated", value = 25, fields = { "3" } },
+			})
+		end)
+
 		t.it("logs the rotation funnel per run and how each rotation was paid", function()
 			local telemetry, logged = newTelemetry()
 			telemetry:rotationStep(PLAYER, "4", 1)

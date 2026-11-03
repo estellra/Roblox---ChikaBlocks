@@ -6,6 +6,7 @@ local TestKit = require("./TestKit")
 local PRODUCTS = { 111, 222, 333 }
 local ROTATION_PRODUCT = 444
 local ROTATION_PACK = 5
+local DONATE_PRODUCTS = { 551, 552, 553 }
 local PLAYER_ID = 7
 
 local function newData(): PlayerData.PlayerData
@@ -16,6 +17,7 @@ local function newData(): PlayerData.PlayerData
 	data.purchaseIds = {}
 	data.reviveTokens = { 0, 0, 0 }
 	data.rotations = 0
+	data.robuxDonated = 0
 	return data
 end
 
@@ -26,6 +28,7 @@ local function world(data: PlayerData.PlayerData?, saves: boolean)
 		saves = saves,
 		afterGrants = 0,
 		lastKind = nil :: string?,
+		lastDonated = 0,
 		warnings = {} :: { string },
 	}
 	local deps: Purchases.Deps = {
@@ -37,6 +40,10 @@ local function world(data: PlayerData.PlayerData?, saves: boolean)
 			if productId == ROTATION_PRODUCT then
 				return { kind = "rotation", count = ROTATION_PACK }
 			end
+			local donation = table.find(DONATE_PRODUCTS, productId)
+			if donation then
+				return { kind = "donation", tier = donation }
+			end
 			return nil
 		end,
 		getData = function(_playerId: number): PlayerData.PlayerData?
@@ -45,9 +52,15 @@ local function world(data: PlayerData.PlayerData?, saves: boolean)
 		confirmSaved = function(_playerId: number, _purchaseId: string): boolean
 			return state.saves
 		end,
-		afterGrant = function(_playerId: number, _data: PlayerData.PlayerData, product: Purchases.Product)
+		afterGrant = function(
+			_playerId: number,
+			_data: PlayerData.PlayerData,
+			product: Purchases.Product,
+			donated: number
+		)
 			state.afterGrants += 1
 			state.lastKind = product.kind
+			state.lastDonated = donated
 		end,
 		warn = function(message: string)
 			table.insert(state.warnings, message)
@@ -60,8 +73,8 @@ local function total(data: PlayerData.PlayerData): number
 	return data.reviveTokens[1] + data.reviveTokens[2] + data.reviveTokens[3]
 end
 
-local function receipt(productId: number, purchaseId: string): Purchases.Receipt
-	return { PlayerId = PLAYER_ID, ProductId = productId, PurchaseId = purchaseId }
+local function receipt(productId: number, purchaseId: string, spent: number?): Purchases.Receipt
+	return { PlayerId = PLAYER_ID, ProductId = productId, PurchaseId = purchaseId, CurrencySpent = spent }
 end
 
 return function(t: TestKit.TestKit)
@@ -87,6 +100,50 @@ return function(t: TestKit.TestKit)
 			Purchases.process(receipt(111, "a"), deps)
 			Purchases.process(receipt(333, "b"), deps)
 			t.expect(data.reviveTokens).toEqual({ 1, 0, 1 })
+		end)
+
+		t.it("counts what the player really paid toward their donations, once per purchase", function()
+			local data = newData()
+			local state, deps = world(data, true)
+			t.expect(Purchases.process(receipt(DONATE_PRODUCTS[2], "d1", 10), deps)).toBe("granted")
+			t.expect(data.robuxDonated).toBe(10)
+			t.expect(state.lastKind).toBe("donation")
+			t.expect(state.lastDonated).toBe(10)
+			t.expect(total(data)).toBe(0) -- nothing else came with it
+			t.expect(data.rotations).toBe(0)
+
+			t.expect(Purchases.process(receipt(DONATE_PRODUCTS[2], "d1", 10), deps)).toBe("granted") -- asked again
+			t.expect(data.robuxDonated).toBe(10)
+			t.expect(state.afterGrants).toBe(1)
+
+			-- A regional price is counted as paid, not as listed.
+			t.expect(Purchases.process(receipt(DONATE_PRODUCTS[3], "d2", 18), deps)).toBe("granted")
+			t.expect(data.robuxDonated).toBe(28)
+		end)
+
+		t.it("counts nothing for a donation paid in anything but a usable number of Robux", function()
+			for index, spent in { -5, 0 / 0, math.huge } do
+				local data = newData()
+				local _, deps = world(data, true)
+				t.expect(Purchases.process(receipt(DONATE_PRODUCTS[1], `d{index}`, spent), deps)).toBe("granted")
+				t.expect(data.robuxDonated).toBe(0)
+			end
+			local data = newData()
+			local _, deps = world(data, true)
+			Purchases.process(receipt(DONATE_PRODUCTS[1], "no-amount", nil), deps)
+			t.expect(data.robuxDonated).toBe(0)
+			t.expect(Purchases.donationAmount(5.9)).toBe(5)
+			t.expect(Purchases.donationAmount("5")).toBe(0)
+		end)
+
+		t.it("grants a donation only once the purchase is saved", function()
+			local data = newData()
+			local state, deps = world(data, false)
+			t.expect(Purchases.process(receipt(DONATE_PRODUCTS[1], "d1", 5), deps)).toBe("notProcessedYet")
+			t.expect(state.afterGrants).toBe(0)
+			state.saves = true
+			t.expect(Purchases.process(receipt(DONATE_PRODUCTS[1], "d1", 5), deps)).toBe("granted")
+			t.expect(data.robuxDonated).toBe(5) -- not paid out twice
 		end)
 
 		t.it("adds a pack of rotations for the rotation product, once per purchase", function()

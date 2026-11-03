@@ -5,7 +5,7 @@
 -- then uses it on the run that was waiting. A revive that cannot be used right away (the player left the run,
 -- the connection dropped) stays in their data for the next game over. Everything about money is decided
 -- here: the client only asks, and never picks a product. The same goes for the pack of rotations the player
--- can buy when they have none left.
+-- can buy when they have none left, and for donations: the Support screen sends only which tier was chosen.
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +16,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
 local GameService = require("./GameService")
+local LeaderboardService = require("./LeaderboardService")
 local PlayerData = require("../PlayerData")
 local Purchases = require("../Purchases")
 local RateLimiter = require("../Util/RateLimiter")
@@ -29,11 +30,11 @@ type Pending = { runId: number, productId: number, token: number }
 
 local PurchaseService = {}
 
-local pending: { [Player]: Pending } = {}
+local pending: { [Player]: Pending } = {} -- the open prompt for a revive
+local promptPending: { [Player]: number } = {} -- the open prompt for a rotation pack or a donation, by token
 local prices: { [number]: number } = {} -- Robux price of each product, read from Roblox
 local requestLimiter = RateLimiter.new(1, 1, os.clock)
-local rotationLimiter = RateLimiter.new(1, 2, os.clock)
-local rotationPending: { [Player]: number } = {} -- the open prompt for a pack of rotations, by token
+local promptLimiter = RateLimiter.new(1, 2, os.clock)
 local pendingCounter = 0
 
 -- What a product gives, nil for a product the game doesn't sell.
@@ -45,6 +46,10 @@ local function productOf(productId: number): Purchases.Product?
 	if Config.ROTATION_PRODUCT ~= 0 and productId == Config.ROTATION_PRODUCT then
 		return { kind = "rotation", count = Config.ROTATION_PACK }
 	end
+	local donation = if productId ~= 0 then table.find(Config.DONATE_PRODUCTS, productId) else nil
+	if donation then
+		return { kind = "donation", tier = donation }
+	end
 	return nil
 end
 
@@ -54,11 +59,17 @@ local function nextTier(summary: GameRuns.RunSummary): number
 end
 
 -- Reads the prices once (cached for the server's lifetime); a failed read just means no price is shown. The
--- rotation pack's price is published as an attribute of ReplicatedStorage for the clients' button.
+-- rotation pack's and the donation tiers' prices are published as attributes of ReplicatedStorage for the clients'
+-- buttons (RotationPrice, DonatePrice1 ... DonatePrice9).
 local function fetchPrices()
 	local productIds = table.clone(Config.REVIVE_PRODUCTS)
 	if Config.ROTATION_PRODUCT ~= 0 then
 		table.insert(productIds, Config.ROTATION_PRODUCT)
+	end
+	for _, productId in Config.DONATE_PRODUCTS do
+		if productId ~= 0 then
+			table.insert(productIds, productId)
+		end
 	end
 	for _, productId in productIds do
 		local ok, info = pcall(function()
@@ -74,6 +85,17 @@ local function fetchPrices()
 	if rotationPrice then
 		ReplicatedStorage:SetAttribute("RotationPrice", rotationPrice)
 	end
+	for tier, productId in Config.DONATE_PRODUCTS do
+		local price = prices[productId]
+		if price then
+			ReplicatedStorage:SetAttribute(`DonatePrice{tier}`, price)
+		end
+	end
+end
+
+-- The Robux price Roblox lists for a product (nil until it has been read); for the Studio debug bridge.
+function PurchaseService.priceOf(productId: number): number?
+	return prices[productId]
 end
 
 -- Offers a revive on the game over panel: the price of the next one, or that one is already paid for.
@@ -155,10 +177,32 @@ local function onRequestRevive(player: Player, runId: unknown)
 	end)
 end
 
+-- Opens the purchase prompt for a product that isn't tied to a run (a rotation pack or a donation) and
+-- remembers it until it is answered or times out. Returns the prompt's token, or nil when it could not open.
+local function openPrompt(player: Player, productId: number): number?
+	pendingCounter += 1
+	local token = pendingCounter
+	promptPending[player] = token
+	local ok, err = pcall(function()
+		MarketplaceService:PromptProductPurchase(player, productId)
+	end)
+	if not ok then
+		warn(`[ChikaBlock] couldn't open the purchase prompt for {player.Name}: {err}`)
+		promptPending[player] = nil
+		return nil
+	end
+	task.delay(PROMPT_TIMEOUT_SECONDS, function()
+		if promptPending[player] == token then
+			promptPending[player] = nil
+		end
+	end)
+	return token
+end
+
 -- The player is out of rotations and pressed rotate during a run: open the prompt for the pack. The granted
 -- purchase comes back through ProcessReceipt, which adds the rotations and sends the profile.
 local function onRequestRotations(player: Player)
-	if not rotationLimiter:allow(player) or Config.ROTATION_PRODUCT == 0 or rotationPending[player] then
+	if not promptLimiter:allow(player) or Config.ROTATION_PRODUCT == 0 or promptPending[player] then
 		return
 	end
 	local summary = GameService.getRuns():summary(player)
@@ -166,34 +210,46 @@ local function onRequestRotations(player: Player)
 		return
 	end
 	GameService.logRotation(player, 1)
-	pendingCounter += 1
-	local token = pendingCounter
-	rotationPending[player] = token
-	local ok, err = pcall(function()
-		MarketplaceService:PromptProductPurchase(player, Config.ROTATION_PRODUCT)
-	end)
-	if not ok then
-		warn(`[ChikaBlock] couldn't open the purchase prompt for {player.Name}: {err}`)
-		rotationPending[player] = nil
+	openPrompt(player, Config.ROTATION_PRODUCT)
+end
+
+-- A tier was chosen on the Support screen: open the prompt for its product. The client only says which tier
+-- (1 is the smallest); the granted purchase comes back through ProcessReceipt, which adds what the player really
+-- paid to their total.
+local function onRequestDonate(player: Player, tier: unknown)
+	if not promptLimiter:allow(player) or typeof(tier) ~= "number" or tier ~= math.floor(tier) then
 		return
 	end
-	task.delay(PROMPT_TIMEOUT_SECONDS, function()
-		if rotationPending[player] == token then
-			rotationPending[player] = nil
-		end
-	end)
+	local productId = Config.DONATE_PRODUCTS[tier]
+	if not productId or productId == 0 or promptPending[player] or not DataService.get(player) then
+		return
+	end
+	local token = openPrompt(player, productId)
+	if token then
+		GameService.logDonate(player, tostring(token), 1)
+	end
 end
 
 -- After a purchase is granted and saved: use it on the run that was waiting, if that run still can be revived.
-local function afterGrant(playerId: number, data: PlayerData.PlayerData, product: Purchases.Product)
+local function afterGrant(playerId: number, data: PlayerData.PlayerData, product: Purchases.Product, donated: number)
 	local player = Players:GetPlayerByUserId(playerId)
 	if not player then
 		return
 	end
 	if product.kind == "rotation" then
-		rotationPending[player] = nil
+		promptPending[player] = nil
 		GameService.logRotation(player, 2)
 		GameService.sendProfile(player) -- the new count
+		return
+	end
+	if product.kind == "donation" then
+		GameService.logDonate(player, tostring(promptPending[player] or 0), 2)
+		promptPending[player] = nil
+		GameService.logDonated(player, donated, product.tier)
+		LeaderboardService.flush(player, data) -- onto the Supporters board right away
+		LeaderboardService.refreshSoon()
+		GameService.sendProfile(player) -- the new total
+		Net.Donated:FireClient(player, donated, data.robuxDonated)
 		return
 	end
 	GameService.logRevive(player, 3)
@@ -243,23 +299,24 @@ function PurchaseService.start(_self: any)
 	end)
 	Net.RequestRevive.OnServerEvent:Connect(onRequestRevive)
 	Net.RequestRotations.OnServerEvent:Connect(onRequestRotations)
+	Net.RequestDonate.OnServerEvent:Connect(onRequestDonate)
 
-	-- Closing the prompt without buying frees the Revive button again.
+	-- Closing a prompt frees the Revive button, or the next rotation or donation request, again.
 	MarketplaceService.PromptProductPurchaseFinished:Connect(
 		function(userId: number, productId: number, bought: boolean)
-			if productId == Config.ROTATION_PRODUCT then
-				local rotationPlayer = Players:GetPlayerByUserId(userId)
-				if rotationPlayer then
-					rotationPending[rotationPlayer] = nil
-				end
+			local player = Players:GetPlayerByUserId(userId)
+			if not player then
+				return
+			end
+			if productId == Config.ROTATION_PRODUCT or table.find(Config.DONATE_PRODUCTS, productId) then
+				promptPending[player] = nil
 				return
 			end
 			if bought then
 				return -- ProcessReceipt takes it from here
 			end
-			local player = Players:GetPlayerByUserId(userId)
-			local entry = player and pending[player]
-			if player and entry and entry.productId == productId then
+			local entry = pending[player]
+			if entry and entry.productId == productId then
 				pending[player] = nil
 				Net.ReviveResult:FireClient(player, entry.runId, false)
 			end
@@ -271,6 +328,7 @@ function PurchaseService.start(_self: any)
 			PlayerId = info.PlayerId,
 			ProductId = info.ProductId,
 			PurchaseId = info.PurchaseId,
+			CurrencySpent = if info.CurrencyType == Enum.CurrencyType.Robux then info.CurrencySpent else nil,
 		})
 		return if decision == "granted"
 			then Enum.ProductPurchaseDecision.PurchaseGranted
@@ -279,9 +337,9 @@ function PurchaseService.start(_self: any)
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		pending[player] = nil
-		rotationPending[player] = nil
+		promptPending[player] = nil
 		requestLimiter:forget(player)
-		rotationLimiter:forget(player)
+		promptLimiter:forget(player)
 	end)
 end
 

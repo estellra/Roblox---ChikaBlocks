@@ -37,12 +37,16 @@ local REVIVE_STEPS = table.freeze({ "Offered", "Requested", "Paid", "Revived" })
 -- Funnel "RotationOffer": the player ran out of rotations and pressed rotate, the purchase was granted.
 local ROTATION_STEPS = table.freeze({ "Requested", "Paid" })
 
+-- Funnel "DonateOffer": a tier chosen on the Support screen, the donation granted.
+local DONATE_STEPS = table.freeze({ "Requested", "Paid" })
+
 local Telemetry = {}
 Telemetry.__index = Telemetry
 
 Telemetry.STEPS = STEPS
 Telemetry.REVIVE_STEPS = REVIVE_STEPS
 Telemetry.ROTATION_STEPS = ROTATION_STEPS
+Telemetry.DONATE_STEPS = DONATE_STEPS
 
 export type Telemetry = typeof(setmetatable({} :: { sink: Sink }, Telemetry))
 
@@ -75,6 +79,16 @@ end
 -- One step of the rotation funnel; `attempt` identifies the run it happened in.
 function Telemetry.rotationStep(self: Telemetry, player: any, attempt: string, step: number)
 	self.sink.funnel(player, "RotationOffer", attempt, step, ROTATION_STEPS[step])
+end
+
+-- One step of the donation funnel; `attempt` tells the prompts apart.
+function Telemetry.donateStep(self: Telemetry, player: any, attempt: string, step: number)
+	self.sink.funnel(player, "DonateOffer", attempt, step, DONATE_STEPS[step])
+end
+
+-- A donation was granted: the Robux it counts for, split by the tier of the product.
+function Telemetry.donated(self: Telemetry, player: any, robux: number, tier: number)
+	self.sink.custom(player, "Donated", robux, { tostring(tier) })
 end
 
 -- A piece was unlocked for turning; `how` is what it cost: "free" or "paid" (a bought rotation).

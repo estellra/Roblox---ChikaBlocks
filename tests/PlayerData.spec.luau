@@ -11,6 +11,7 @@ local function fresh(): PlayerData.PlayerData
 	data.purchaseIds = {}
 	data.reviveTokens = { 0, 0, 0 }
 	data.rotations = 0
+	data.robuxDonated = 0
 	return data
 end
 
@@ -30,6 +31,7 @@ return function(t: TestKit.TestKit)
 				weekly = { week = "", bestScore = 0, exp = 0 },
 				reviveTokens = { 0, 0, 0 },
 				rotations = 0,
+				robuxDonated = 0,
 				purchaseIds = {},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
@@ -129,6 +131,17 @@ return function(t: TestKit.TestKit)
 			end
 			t.expect(PlayerData.useRotation(data)).toBe(false)
 			t.expect(data.rotations).toBe(0)
+		end)
+
+		t.it("adds up the Robux donated, never going down and never past the cap", function()
+			local data = fresh()
+			PlayerData.addDonation(data, 25)
+			PlayerData.addDonation(data, 5)
+			t.expect(data.robuxDonated).toBe(30)
+			PlayerData.addDonation(data, -100)
+			t.expect(data.robuxDonated).toBe(30)
+			PlayerData.addDonation(data, 5e9)
+			t.expect(data.robuxDonated).toBe(1e9)
 		end)
 
 		t.it("moves the old single revive count to the highest tier", function()

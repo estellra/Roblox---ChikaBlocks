@@ -1,6 +1,6 @@
 --!strict
 -- Developer product purchases, without Roblox: which product a revive costs and how a receipt is handled
--- (a revive bought at some price, or a pack of rotations).
+-- (a revive bought at some price, a pack of rotations, or a donation).
 -- Pure Luau so Lune can test it; PurchaseService passes in the real services.
 --
 -- A receipt is handled so that a purchase is never granted twice and never reported as granted before it is
@@ -11,12 +11,18 @@
 --     confirmed, the answer is "notProcessedYet" and Roblox asks again later.
 local PlayerData = require("./PlayerData")
 
-export type Receipt = { PlayerId: number, ProductId: number, PurchaseId: string }
+-- CurrencySpent is what the player really paid in Robux (regional prices make it differ from the list
+-- price); nil when they paid with anything else.
+export type Receipt = { PlayerId: number, ProductId: number, PurchaseId: string, CurrencySpent: number? }
 
 export type Decision = "granted" | "notProcessedYet"
 
--- What a product gives: a revive at a price tier (1 is the cheapest), or a number of rotations.
-export type Product = { kind: "revive", tier: number } | { kind: "rotation", count: number }
+-- What a product gives: a revive at a price tier (1 is the cheapest), a number of rotations, or a donation
+-- (tier 1 is the smallest).
+export type Product =
+	{ kind: "revive", tier: number }
+	| { kind: "rotation", count: number }
+	| { kind: "donation", tier: number }
 
 export type Deps = {
 	-- What a product gives, nil for a product the game doesn't sell.
@@ -26,7 +32,7 @@ export type Deps = {
 	-- Yields until the data holding `purchaseId` is saved; false if that can't be confirmed (session ended).
 	confirmSaved: (playerId: number, purchaseId: string) -> boolean,
 	-- Runs once, after the first grant is saved: e.g. use the new revive on the run waiting for it.
-	afterGrant: (playerId: number, data: PlayerData.PlayerData, product: Product) -> (),
+	afterGrant: (playerId: number, data: PlayerData.PlayerData, product: Product, donated: number) -> (),
 	warn: (message: string) -> (),
 }
 
@@ -42,6 +48,15 @@ function Purchases.reviveProduct(products: { number }, revivesUsed: number): num
 	return products[Purchases.reviveTier(revivesUsed, #products)]
 end
 
+-- The Robux a donation counts for: what the player paid, in whole Robux. Nothing for a missing, negative
+-- or otherwise unusable number.
+function Purchases.donationAmount(spent: unknown): number
+	if typeof(spent) ~= "number" or spent ~= spent or spent < 0 or spent == math.huge then
+		return 0
+	end
+	return math.floor(spent)
+end
+
 function Purchases.process(receipt: Receipt, deps: Deps): Decision
 	local product = deps.productOf(receipt.ProductId)
 	if not product then
@@ -53,13 +68,16 @@ function Purchases.process(receipt: Receipt, deps: Deps): Decision
 		return "notProcessedYet" -- asked again when the player is back
 	end
 
+	local donated = if product.kind == "donation" then Purchases.donationAmount(receipt.CurrencySpent) else 0
 	local purchaseId = receipt.PurchaseId
 	local isNew = not PlayerData.hasPurchase(data, purchaseId)
 	if isNew then
 		if product.kind == "revive" then
 			PlayerData.addReviveToken(data, product.tier)
-		else
+		elseif product.kind == "rotation" then
 			PlayerData.addRotations(data, product.count)
+		else
+			PlayerData.addDonation(data, donated)
 		end
 		PlayerData.rememberPurchase(data, purchaseId)
 	end
@@ -67,7 +85,7 @@ function Purchases.process(receipt: Receipt, deps: Deps): Decision
 		return "notProcessedYet"
 	end
 	if isNew then
-		deps.afterGrant(receipt.PlayerId, data, product)
+		deps.afterGrant(receipt.PlayerId, data, product, donated)
 	end
 	return "granted"
 end

@@ -9,6 +9,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local GameController = require("./GameController")
 local LeaderboardController = require("./LeaderboardController")
 local MenuView = require("../Views/MenuView")
+local SupportController = require("./SupportController")
 
 local MenuController = {}
 
@@ -49,9 +50,15 @@ function MenuController.openLeaderboard()
 	LeaderboardController.open(MenuController.show)
 end
 
--- True on the menu and on screens opened from it (the leaderboard).
+-- Swaps the menu for the Support screen; going back brings the menu back.
+function MenuController.openSupport()
+	MenuController.hide()
+	SupportController.open(MenuController.show)
+end
+
+-- True on the menu and on screens opened from it (the leaderboard, the Support screen).
 function MenuController.isOpen(): boolean
-	return (menu ~= nil and menu:isOpen()) or LeaderboardController.isOpen()
+	return (menu ~= nil and menu:isOpen()) or LeaderboardController.isOpen() or SupportController.isOpen()
 end
 
 function MenuController.start(_self: any)
@@ -64,7 +71,8 @@ function MenuController.start(_self: any)
 		MenuController.openLeaderboard,
 		function()
 			MenuController.play("tutorial")
-		end
+		end,
+		MenuController.openSupport
 	)
 	menu = view
 	GameController.onProfileChanged(function()

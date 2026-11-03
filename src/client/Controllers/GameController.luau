@@ -36,6 +36,7 @@ export type Profile = {
 	level: number,
 	exp: number,
 	rotations: number, -- bought rotations left
+	donated: number, -- Robux given through donation products
 	title: string?,
 }
 export type RunRewards = Hud.RunRewards

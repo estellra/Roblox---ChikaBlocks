@@ -36,6 +36,7 @@ export type Profile = {
 	level: number,
 	exp: number,
 	rotations: number, -- bought rotations left
+	donated: number, -- Robux given through donation products
 	title: string?,
 }
 
@@ -113,6 +114,7 @@ local function profileOf(player: Player, data: PlayerData.PlayerData): Profile
 		level = data.level,
 		exp = data.exp,
 		rotations = data.rotations,
+		donated = data.robuxDonated,
 		title = Progression.title(data.milestonesClaimed),
 	}
 end
@@ -335,6 +337,16 @@ function GameService.logRotation(player: Player, step: number)
 	if summary then
 		telemetry:rotationStep(player, tostring(summary.runId), step)
 	end
+end
+
+-- One step of the donation funnel; `attempt` tells the purchase prompts apart.
+function GameService.logDonate(player: Player, attempt: string, step: number)
+	telemetry:donateStep(player, attempt, step)
+end
+
+-- A donation was granted: the Robux it counts for and the tier of its product.
+function GameService.logDonated(player: Player, robux: number, tier: number)
+	telemetry:donated(player, robux, tier)
 end
 
 -- Revives the player's finished run and sends them the new state. False when it can't be revived (the caller
