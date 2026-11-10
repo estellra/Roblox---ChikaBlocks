@@ -11,7 +11,7 @@ Mục tiêu theo [PLAN.md](PLAN.md): game an toàn trước gian lận, lưu đ�
 | **M8** Hồi sinh bằng Robux | Developer Product, `ProcessReceipt` an toàn khi gọi lặp, giá tăng dần | Đã có giá và 3 product | ✅ Xong |
 | **M9** Menu, tutorial, gamepad | Màn hình chính, tutorial lần đầu (ván dựng sẵn), bàn phím và tay cầm qua Input Action System | Ngôn ngữ (English) | ✅ Xong |
 | **M10** Giao diện thật | Làm lại `Views/` theo mockup Figma, linh vật (âm thanh để sau) | Không | ✅ Xong (âm thanh để sau) |
-| **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Bạn publish và mời người thử ([QA.md](QA.md)) | 🟡 Code đã rà và thử tải xong; chờ bạn publish và thử với người thật |
+| **M11** Publish thử và QA | ≥95% test không lỗi, thử người mới, thử mạng chậm | Bạn publish và mời người thử ([QA.md](QA.md)) | 🟡 Đã publish và thử trên PC. Còn: điện thoại thật, tay cầm thật, mua Robux thật (hồi sinh, xoay, donate), mạng yếu thật, người mới (xem [QA.md](QA.md)) |
 
 ## M6: Server giữ quyền quyết định
 
@@ -434,6 +434,7 @@ Mỗi bước kết thúc bằng bộ test (logic không đổi nên các test h
 | M10c | Menu và Game Over (Revive dựng sẵn, ẩn đến khi có M8) |
 | M10d | Tutorial (thẻ, mũi tên chấm, bàn tay, Skip) và popup combo |
 | M10e | Leaderboard |
+| M10f | Chuyển động: khối thả trượt vào ô, ghost trượt giữa các ô, hàng sáng lên khi sắp xóa, bảng nhún khi xóa nhiều hàng, khối vừa xoay quay vào chỗ (commit `5988c8e`) |
 
 - **Để lại sau:** âm thanh (hiệu ứng và nhạc, kèm nút Âm thanh và panel Cài đặt), 8 linh vật và theme cosmetic (GĐ4), bản icon trắng cho theme tối.
 - **Khác mockup:** ô đích dùng viền liền thay nét đứt; pill level, nút "?" và Leaderboard dạng thẻ là phần mình bổ sung.

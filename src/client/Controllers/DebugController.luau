@@ -9,6 +9,8 @@
 --           leaderboard [open|close] (opens it from the menu and lists what it shows)
 --           playdrag <moves> (plays through the drag intents) | stats (leak checks)
 --           touchdrop <slot> <x> <y> (drops through the touch path, reports where the finger had to be)
+--           dragturn <slot> [times] (holds a piece over the board and turns it) | waitfx (the tray's waiting effect)
+--           rotatebuttons (size and place of each Rotate touch area)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
@@ -27,6 +29,7 @@ local LeaderboardController = require("./LeaderboardController")
 local SupportController = require("./SupportController")
 local MenuController = require("./MenuController")
 local TutorialController = require("./TutorialController")
+local Theme = require("../Views/Theme")
 
 local SIZE = Config.GRID_SIZE
 local MAX_GAME_OVER_MOVES = 500
@@ -168,6 +171,84 @@ local function handle(rng: Random, command: string, ...: any): string
 		local slot = ...
 		local turned = GameController.tryRotate(slot)
 		return `{if turned then "rotated" else "not rotated"} | {GameController.getRotationText()}\n{describeState()}`
+	elseif command == "dragturn" then
+		-- Picks the piece in a slot, holds it over the board and turns it `times` times (the drag-rotate path).
+		local slot, times = ...
+		local views = GameController.getViews()
+		if not views or not DragController.pick(slot, false) then
+			return "nothing to pick"
+		end
+		local grid = views.board.grid
+		local reach = grid.AbsoluteSize.X * 0.4
+		DragController.movePointer(Vector2.new(grid.AbsolutePosition.X + reach, grid.AbsolutePosition.Y + reach))
+		local lines = {}
+		for turn = 1, tonumber(times) or 1 do
+			local turned = DragController.rotate()
+			local piece = DragController.getPiece()
+			table.insert(
+				lines,
+				`turn {turn}: turned={turned} piece={piece and piece.id} target={DragController.hasTarget()}`
+			)
+		end
+		local other = if slot == 1 then 2 else 1
+		local preview = views.tray.contents[slot]:FindFirstChild("Piece")
+		local otherTurns = GameController.tryRotate(other)
+		table.insert(
+			lines,
+			`held={views.tray:heldSlot()} trayPreviewVisible={preview and (preview :: GuiObject).Visible} rotateButtonVisible={views.tray.rotateButtons[slot].Visible} dragFrames={#views.gui.dragLayer:GetChildren()} otherSlotTurns={otherTurns}`
+		)
+		table.insert(lines, GameController.getRotationText())
+		DragController.cancel()
+		task.wait(0.4)
+		local after = GameController.getSession().tray[slot]
+		table.insert(lines, `after cancel: dragging={DragController.isDragging()} slot piece={after and after.id}`)
+		return table.concat(lines, "\n")
+	elseif command == "waitfx" then
+		-- Shows the tray's waiting effect for a moment and reports what it did.
+		local views = GameController.getViews()
+		if not views then
+			return "UI not built yet"
+		end
+		local tray = views.tray
+		tray:setWaiting(true)
+		local lines = { `right away: glow1={tray.waits[1].Visible}` }
+		task.wait(Theme.Motion.WaitDelay + 0.3)
+		table.insert(
+			lines,
+			`after delay: glow1={tray.waits[1].Visible} glow3={tray.waits[3].Visible} tweens={#tray.waitTweens}`
+		)
+		tray:setWaiting(false)
+		table.insert(lines, `stopped: glow1={tray.waits[1].Visible} tweens={#tray.waitTweens}`)
+		tray:setWaiting(true)
+		task.wait(0.1)
+		tray:setWaiting(false) -- a quick set never starts the effect
+		task.wait(Theme.Motion.WaitDelay + 0.2)
+		table.insert(lines, `quick set: glow1={tray.waits[1].Visible} tweens={#tray.waitTweens}`)
+		return table.concat(lines, "\n")
+	elseif command == "rotatebuttons" then
+		-- Size and place of each Rotate touch area against its slot, in the current layout.
+		local views = GameController.getViews()
+		if not views then
+			return "UI not built yet"
+		end
+		local lines = { `mode={views.gui.getMode()}` }
+		for index, button in views.tray.rotateButtons do
+			local slot = views.tray.slots[index]
+			lines[#lines + 1] = string.format(
+				"slot%d %dx%d@%d,%d  button %dx%d@%d,%d visible=%s",
+				index,
+				slot.AbsoluteSize.X,
+				slot.AbsoluteSize.Y,
+				slot.AbsolutePosition.X,
+				slot.AbsolutePosition.Y,
+				button.AbsoluteSize.X,
+				button.AbsoluteSize.Y,
+				button.AbsolutePosition.X,
+				button.AbsolutePosition.Y,
+				tostring(button.Visible)
+			)
+		end
+		return table.concat(lines, "\n")
 	elseif command == "autoplay" then
 		local moves = tonumber((...)) or 10
 		local played = 0

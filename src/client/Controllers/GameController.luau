@@ -72,6 +72,7 @@ local sessionReplacedListeners: { () -> () } = {}
 local movePlayedListeners: { (result: GameSession.PlaceResult) -> () } = {}
 local profileListeners: { (profile: Profile) -> () } = {}
 local menuRequestedListeners: { () -> () } = {}
+local pieceTurnedListeners: { (slot: number) -> () } = {}
 
 local function notify<T...>(listeners: { (T...) -> () }, ...: T...)
 	for _, listener in listeners do
@@ -104,6 +105,8 @@ local function render()
 	end
 	views.board:render(session.board)
 	views.tray:render(session.tray)
+	-- The tray is out of pieces and the server has not dealt the next set yet.
+	views.tray:setWaiting(runId > 0 and session.awaitingSet and not session.isOver)
 	refreshRotatable()
 	views.hud:setScore(session.score, best)
 	views.hud:setCombo(session.combo.combo)
@@ -295,10 +298,12 @@ function GameController.start(_self: any)
 			onRevive = GameController.requestRevive,
 		}),
 	}
-	local hud = views.hud
+	local hud, tray = views.hud, views.tray
 	hud:setLayout(gui.getMode())
+	tray:setLayout(gui.getMode())
 	gui.onLayoutChanged(function(mode)
 		hud:setLayout(mode)
+		tray:setLayout(mode)
 	end)
 	Net.GameState.OnClientEvent:Connect(onGameState)
 	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
@@ -360,10 +365,16 @@ end
 
 -- Turns the piece in `slot` a quarter clockwise, on the board right away and on the server by request. The
 -- first turn of a piece costs a rotation: the run's free one, else one bought earlier; with none left it
--- opens the purchase prompt instead. Returns whether the piece turned.
+-- opens the purchase prompt instead (not while a piece is in hand: a purchase window mid-drag would interrupt
+-- it; the line under the tray already says what a pack costs). While a piece is in hand only that piece can be
+-- turned. Returns whether the piece turned.
 function GameController.tryRotate(slot: unknown): boolean
 	local ui = views
-	if not ui or runId == 0 or runMode ~= "normal" or ui.tray:isHeld() then
+	if not ui or runId == 0 or runMode ~= "normal" then
+		return false
+	end
+	local inHand = ui.tray:heldSlot()
+	if inHand and inHand ~= slot then
 		return false
 	end
 	local bought = if profile then profile.rotations else 0
@@ -372,7 +383,8 @@ function GameController.tryRotate(slot: unknown): boolean
 	if not result then
 		local piece = if typeof(slot) == "number" then session.tray[slot :: number] else nil
 		if
-			piece
+			not inHand
+			and piece
 			and Pieces.canRotate(piece)
 			and not session.isOver
 			and not session.unlocked[slot :: number]
@@ -391,6 +403,7 @@ function GameController.tryRotate(slot: unknown): boolean
 	Net.RotatePiece:FireServer(runId, moveIndex, slot)
 	ui.tray:markTurned(result.slot)
 	render()
+	notify(pieceTurnedListeners, result.slot)
 	return true
 end
 
@@ -474,6 +487,12 @@ end
 -- Called after each move the player makes (before the server confirms it).
 function GameController.onMovePlayed(callback: (result: GameSession.PlaceResult) -> ())
 	table.insert(movePlayedListeners, callback)
+end
+
+-- Called after a piece in the tray turned (the session already holds the turned piece). DragController uses it to
+-- swap the piece in hand.
+function GameController.onPieceTurned(callback: (slot: number) -> ())
+	table.insert(pieceTurnedListeners, callback)
 end
 
 -- Called whenever the server sends the saved profile.

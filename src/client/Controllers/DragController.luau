@@ -27,6 +27,8 @@ type Drag = {
 	cell: number, -- board cell size in pixels
 	target: { x: number, y: number }?, -- board cell the piece would drop on
 	blocked: boolean, -- faded: held with keys over cells it can't land on
+	pointer: Vector2?, -- where the pointer last was (mouse and touch drags)
+	hovered: { x: number, y: number }?, -- the cell the piece was last put over (keyboard and gamepad drags)
 	connections: { RBXScriptConnection },
 }
 
@@ -179,6 +181,8 @@ function DragController.pick(slot: number, isTouch: boolean): boolean
 		cell = cell,
 		target = nil,
 		blocked = false,
+		pointer = nil,
+		hovered = nil,
 		connections = {},
 	}
 	drag = current
@@ -202,6 +206,7 @@ function DragController.movePointer(position: Vector2)
 		return
 	end
 	local piece, cell = current.piece, current.cell
+	current.pointer, current.hovered = position, nil
 	local grid = gridOf(getViews())
 	local lift = if current.isTouch
 		then DragMath.touchLift(position.Y, grid, DragController.TOUCH_LIFT_CELLS, DragController.getScreenBottom())
@@ -225,6 +230,7 @@ function DragController.hover(x: number, y: number)
 	end
 	local grid = gridOf(getViews())
 	local piece, cell = current.piece, current.cell
+	current.pointer, current.hovered = nil, { x = x, y = y }
 	placeFrame(current, grid.x + (x + piece.width / 2) * cell, grid.y + (y + piece.height / 2) * cell)
 	local fits = GameController.getSession():canPlace(current.slot, x, y)
 	setTarget(current, if fits then x else nil, if fits then y else nil)
@@ -257,6 +263,60 @@ function DragController.cancel()
 	end
 	endDrag(current)
 	returnToTray(current)
+end
+
+-- Intent: turn the piece in hand a quarter clockwise (it costs a rotation like any first turn of a piece).
+-- GameController tells us when it turned; see onPieceTurned.
+function DragController.rotate(): boolean
+	local current = drag
+	return current ~= nil and GameController.tryRotate(current.slot)
+end
+
+-- The piece in hand just turned in the tray's session: swap the floating piece for the turned one, spinning into
+-- place, and aim it again at where the pointer or the keys had it.
+local function onPieceTurned(slot: number)
+	local current = drag
+	local piece = GameController.getSession().tray[slot]
+	if not current or current.slot ~= slot or not piece then
+		return
+	end
+	setTarget(current, nil, nil) -- the old shape's ghost must go
+	local old = current.frame
+	local frame = PieceView.build(piece)
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Size = UDim2.fromOffset(piece.width * current.cell, piece.height * current.cell)
+	frame.Position = old.Position
+	-- A quarter turn back, the new piece looks just like the one it replaces.
+	frame.Rotation = -90
+	local scale = Instance.new("UIScale")
+	scale.Scale = current.scale.Scale
+	scale.Parent = frame
+	frame.Parent = old.Parent
+	old:Destroy()
+	current.frame, current.scale, current.piece, current.blocked = frame, scale, piece, false
+	local info = TweenInfo.new(Theme.Motion.Turn, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	TweenService:Create(frame, info, { Rotation = 0 }):Play()
+
+	local pointer, hovered = current.pointer, current.hovered
+	if pointer then
+		DragController.movePointer(pointer)
+	elseif hovered then
+		-- The turned piece has other sides: keep it on the board.
+		DragController.hover(
+			math.clamp(hovered.x, 0, Config.GRID_SIZE - piece.width),
+			math.clamp(hovered.y, 0, Config.GRID_SIZE - piece.height)
+		)
+	end
+end
+
+-- The board cell the piece in hand was last put over with keys or a gamepad (nil for pointer drags).
+function DragController.getHoverCell(): (number?, number?)
+	local current = drag
+	local hovered = current and current.hovered
+	if hovered then
+		return hovered.x, hovered.y
+	end
+	return nil, nil
 end
 
 function DragController.isDragging(): boolean
@@ -362,6 +422,13 @@ function DragController.start(_self: any)
 		DragController.cancel()
 	end)
 	GameController.onSessionReplaced(DragController.cancel)
+	GameController.onPieceTurned(onPieceTurned)
+	-- A right click turns the piece in hand. Over the UI the click counts as processed, so that flag is ignored.
+	UserInputService.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			DragController.rotate()
+		end
+	end)
 end
 
 return DragController

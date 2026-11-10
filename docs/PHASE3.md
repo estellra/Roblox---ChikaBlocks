@@ -22,7 +22,8 @@
 | **M8** Hồi sinh (của GĐ2) | `PurchaseService`, `ProcessReceipt` không cấp trùng | Giá, Group/cá nhân, tạo product | ✅ Xong (dùng lại cho M15, M16) |
 | **M15** Xoay khối | 1 lượt miễn phí mỗi ván, mua thêm bằng Robux | M8, quyết định Z, AM, AN, AO | ✅ Xong (chờ thử giao dịch thật khi publish) |
 | **M16** Donate | 9 mức Developer Product, bảng "Supporters" | M8, M14, quyết định AA, AB, AC, AD | ✅ Xong (chờ thử giao dịch thật khi publish) |
-| **M17** Rewarded video ad | Xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lượt xoay | Game public, ≥ 2k người/tháng | ⏳ sau publish |
+| **M17** Rewarded video ad | Xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lượt xoay | Game public, ≥ 2k người/tháng | ⏳ hoãn (theo bạn) |
+| **M18** Dọn dẹp sau publish | Hiệu ứng chờ bộ khối, nút xoay cỡ chạm, xoay khi đang kéo, xóa dữ liệu theo yêu cầu | Đã publish | ✅ Xong và đã thử trong Studio (PC, bố cục ngang); còn thử điện thoại dọc, tay cầm và script xóa với API thật |
 
 **Thứ tự đề xuất:** M12 → M13 → M14 làm ngay. Khi bạn chốt xong giá và Group thì làm M8 → M15 → M16. M10/M11 chen vào khi có mockup. M17 làm sau khi publish và đủ điều kiện.
 
@@ -319,6 +320,65 @@ Các quyết định đã chốt: **AB** 9 mức donate (5, 10, 25, 50, 100, 200
 - Phần thưởng phải là một Developer Product cố định (không ngẫu nhiên), cấp qua `ProcessReceipt` của M8.
 - Client chỉ hiện nút "Watch an ad" khi `AdService:GetAdAvailabilityNowAsync` báo có quảng cáo. Server gọi `ShowRewardedVideoAdAsync`.
 - Vị trí: màn Game Over (đổi 1 lần hồi sinh) và khi hết lượt xoay (đổi 1 lượt). Mỗi ván tối đa 1 lần.
+
+## M18: Dọn dẹp sau publish
+
+Bốn việc nhỏ gom lại sau khi game đã publish, cộng việc đồng bộ tài liệu.
+
+### Hiệu ứng chờ bộ khối mới
+
+- Khi khối cuối cùng đã đặt mà server chưa gửi bộ mới (`session.awaitingSet`), ba ô khay **thở nhẹ** (một lớp sáng xanh nhạt đổi độ mờ, lệch nhau 0,12 giây) để khay không trông như bị treo.
+- Chỉ bắt đầu sau `Theme.Motion.WaitDelay` = 0,25 giây (dài hơn một vòng 4G bình thường, khoảng 0,17 giây), nên mạng tốt không bao giờ thấy hiệu ứng nhấp nháy. Bộ mới tới thì tắt ngay. Dưới 3G, nơi bộ mới tới sau khoảng 0,45 giây, hiệu ứng hiện khoảng 0,2 giây.
+- `TrayView.setWaiting`, gọi từ `GameController.render` mỗi lần vẽ (gọi lặp không có tác dụng).
+
+### Nút xoay đủ cỡ chạm
+
+- Nút xoay giờ là **vùng chạm** (`TextButton` trong suốt, tối thiểu `Theme.MinTouchTarget` = 44×44 px) chứa đĩa nhìn thấy bên trong (80% vùng chạm). Trên điện thoại ngang, ô khay chỉ khoảng 67 px nên nút cũ chỉ cao khoảng 23 px.
+- **Bố cục dọc:** vùng chạm ở góc dưới phải ô khay như trước. **Bố cục ngang:** đặt **bên phải ô khay**, ngoài ô (cột bên có chỗ rộng), nên không che ô nào của khối. `TrayView.setLayout(mode)` đổi chỗ theo bố cục.
+- Đĩa không nhận chạm (`Interactable = false`); hiệu ứng nhấn thu nhỏ do vùng chạm điều khiển.
+
+### Xoay khối khi đang kéo
+
+- Khi đang cầm một khối, xoay được **chính khối đó** (khối khác thì không): phím **R** hoặc nút **Y** tay cầm (cả khi kéo bằng chuột hay cảm ứng), **chuột phải**, hoặc ngón tay thứ hai chạm nút xoay (nút giờ ở lại khi khối đang cầm).
+- Quy tắc lượt xoay giữ nguyên (khối chưa mở khoá tốn một lượt; đã mở khoá xoay tự do). **Khi đang cầm, hết lượt thì không mở hộp mua** (hộp mua giữa lúc kéo sẽ làm gián đoạn); dòng dưới khay đã ghi giá gói.
+- `GameController.tryRotate` báo `onPieceTurned(slot)`; `DragController` thay khối đang bay bằng khối đã xoay (quay từ −90° về 0°), bỏ ghost cũ và nhắm lại theo vị trí con trỏ, hoặc ô đang chỉ bằng phím (bị kẹp lại trong bảng vì khối xoay đổi chiều rộng và cao). `GamepadController` lấy lại ô đó qua `DragController.getHoverCell()` nên bước phím kế tiếp không lệch.
+- Khay không vẽ lại khối đang cầm (`TrayView.render` giữ ẩn khối của ô đang cầm).
+- Kéo bằng cảm ứng một ngón: chưa có cách xoay trừ khi chạm thêm ngón thứ hai vào nút xoay.
+
+### Xóa dữ liệu người chơi theo yêu cầu
+
+Dữ liệu một người nằm ở hai chỗ, đều khoá theo `UserId`:
+
+| Chỗ | Khoá | Ghi chú |
+|---|---|---|
+| ProfileStore `PlayerData` | `User_<id>` | Đã gắn `AddUserId`, nên công cụ xoá dữ liệu của Roblox tìm được |
+| `OrderedDataStore` | `<id>` | `Highscore`, `Level`, `RobuxDonated`, và mỗi tuần một store (`Highscore_2026W45`...). `OrderedDataStore` không gắn được user id, nên Roblox không tự tìm ra |
+
+- **`Erasure`** (`src/server/Erasure.luau`, logic thuần, 7 test): liệt kê mọi store và khoá cần xoá cho một `UserId`, kể cả mọi store tuần từ `FIRST_WEEK_TIME` (2026-10-30) tới nay; `parseUserId` chỉ nhận chuỗi toàn chữ số. `DataService` dùng chung `Erasure.profileKey`.
+- **`scripts/erase-user.luau`** (chạy bằng Lune, qua Open Cloud nên xoá được cả người đang offline): `lune run scripts/erase-user.luau <userId> [--dry-run] [--no-kick]`. Cần biến môi trường `ROBLOX_UNIVERSE_ID` và `ROBLOX_API_KEY` (quyền xoá entry của DataStore và Ordered DataStore, và publish Messaging). Các bước: (1) báo cho server đang chạy, (2) chờ 20 giây, (3) xoá profile và từng entry (404 tính là đã không có gì; 429 và 5xx thử lại), (4) in kết quả, thoát mã 1 nếu có lỗi.
+- **`ErasureService`**: nghe topic MessagingService `EraseUser`; nếu người đó đang ở server này thì kick, để lần lưu cuối của họ xong **trước** khi script xoá (nếu không lần lưu đó làm dữ liệu quay lại). Chỉ Open Cloud với API key của chủ game mới publish được lên topic; tin nhắn không phải `UserId` thì bị bỏ qua.
+- Studio dùng store `_Dev` nên không bị đụng tới.
+- **Chưa kiểm tra với API thật** (cần API key). Chạy `--dry-run`, rồi chạy thử với tài khoản test và kiểm dữ liệu đã mất, trước khi dùng cho một yêu cầu thật. Mình cũng chưa kiểm tra giao diện Creator Hub hiện tại để xem Roblox có cho khai báo mẫu khoá `<id>` cho tự động xoá hay không; nếu có thì khai báo thêm cho các `OrderedDataStore`.
+- **Giới hạn:** số store tuần tăng một cặp mỗi tuần, nên mỗi lần xoá thêm khoảng 2 request mỗi tuần (khoảng 100 request sau một năm). Dữ liệu analytics trên Creator Hub do Roblox giữ, ngoài phạm vi của game.
+
+### Test
+
+- **173 test pass** (thêm 7 cho `Erasure`); `stylua` và `selene` sạch; `rojo build` sạch.
+- Lệnh debug mới trên client: `dragturn <slot> [times]`, `waitfx`, `rotatebuttons`.
+
+| Kiểm tra trong Studio (cửa sổ 1276×584, bố cục ngang, PC) | Kết quả |
+|---|---|
+| Hiệu ứng chờ (`waitfx`) | Chưa hiện ngay; sau 0,25 giây cả 3 ô sáng (3 tween); tắt hết khi gọi `setWaiting(false)`; bộ khối tới sau 0,1 giây thì không hiện gì |
+| Vùng chạm nút xoay | 54×54 (≥ 44), nằm bên phải ô khay cách 6 px, giữa theo chiều dọc ô; đĩa 44 px bên trong. Ảnh chụp màn hình: ba nút nằm ngoài ô, không che khối |
+| Bấm chuột thật vào mép vùng chạm (ngoài vòng tròn của đĩa) | Khối L4 xoay, khớp với server |
+| Xoay 3 lần khi đang giữ khối (`dragturn`) | L3_1 → L3_2 → L3_4 → L3_3, ghost nhắm lại mỗi lần; khối ở khay vẫn ẩn; nút xoay vẫn hiện; khối ô khác không xoay được; thả về thì khay giữ hướng mới, khớp server |
+| Phím R khi kéo bằng bàn phím | Khối ở ô đã chọn xoay |
+| Xoay sát mép dưới bằng phím (I4 nằm ngang ở hàng cuối thành dọc) | Ô đích được kẹp lên hàng 4 (`2,7` → `2,4`); phím Lên kế tiếp đi từ 4 xuống 3, không lệch |
+| Kéo bằng chuột thật, bấm chuột phải giữa chừng, thả | Khối dọc thành ngang (244×61), đặt đúng `####` ở hàng 4, server và client cùng bảng, không cảnh báo resync |
+| `ErasureService` | Gửi "abc" lên topic `EraseUser`: bị bỏ qua, có cảnh báo; gửi UserId thật: người chơi bị kick với lời nhắn, kèm dòng log |
+| Output | Không có lỗi từ game |
+
+- **Chưa kiểm tra được:** bố cục dọc (cửa sổ Studio chỉ ở dạng ngang), nút Y trên tay cầm thật, ngón thứ hai trên cảm ứng thật, hiệu ứng chờ khi mạng yếu thật (chỉ gọi `setWaiting` trực tiếp), và `scripts/erase-user.luau` với API thật.
 
 ## Kiểm thử chung
 

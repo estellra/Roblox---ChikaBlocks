@@ -24,6 +24,7 @@ local specs = {
 	require("./Progression.spec"),
 	require("./Leaderboards.spec"),
 	require("./Purchases.spec"),
+	require("./Erasure.spec"),
 }
 
 for _, spec in specs do

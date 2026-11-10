@@ -113,7 +113,7 @@ Kế hoạch chi tiết: [PHASE1.md](PHASE1.md)
 - [x] UI theme pastel, menu chính, màn Game Over, popup linh vật (M10, theo mockup Figma). SFX và nhạc để các giai đoạn sau.
 - [x] Tutorial lần đầu chơi. Hỗ trợ gamepad và bàn phím (M9).
 - **Xong khi:** đạt ≥95% số lần test không lỗi, người mới hiểu cách chơi trong 15 giây, kéo thả không thấy trễ.
-- → Publish bản test (friends/private) rồi public.
+- → Publish bản test (friends/private) rồi public. ✅ Đã publish; đã thử trên PC. Còn thử điện thoại, tay cầm, mua thật và người mới (M11, [QA.md](QA.md)).
 
 ### Giai đoạn 3: Giữ chân người chơi và kiếm tiền
 Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
@@ -123,7 +123,9 @@ Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 - [x] Donate bằng nhiều Developer Product với các mức khác nhau. (M16: 9 mức từ 5 đến 2.500 R$, bảng Supporters.)
 - [x] Xoay khối: 1 lần miễn phí mỗi ván, mua thêm bằng Robux. (M15: gói 5 lượt, 25 R$, lượt mua được giữ cho các ván sau.)
 - [ ] Rewarded video ad: xem quảng cáo đổi 1 lần hồi sinh hoặc 1 lần xoay.
-- [ ] AnalyticsService: theo dõi funnel tutorial, lần xóa hàng đầu tiên, game over, mua hồi sinh. (M12 xong phần funnel và số liệu ván; phần mua hồi sinh làm cùng M8.)
+- [x] AnalyticsService: theo dõi funnel tutorial, lần xóa hàng đầu tiên, game over, mua hồi sinh. (M12: funnel và số liệu ván; funnel `ReviveOffer`, `RotationOffer`, `DonateOffer` làm cùng M8, M15, M16. Số liệu thật chỉ có trên dashboard sau khi publish.)
+- [x] Dọn dẹp sau publish (M18, đã thử trong Studio trên PC; còn điện thoại dọc, tay cầm, script xóa với API thật): hiệu ứng chờ bộ khối mới, nút xoay đủ cỡ chạm trên điện thoại ngang, xoay khối khi đang kéo, công cụ xóa dữ liệu người chơi theo yêu cầu. Chi tiết: [PHASE3.md](PHASE3.md).
+- [ ] Hoãn lại (theo bạn): badge (chờ tạo ID), SFX và nhạc, Rewarded video ad, toàn bộ GĐ4 Cosmetic.
 
 ### Giai đoạn 4: Cosmetic
 - [ ] Theme cho bảng chơi, skin cho khối, gói VFX và SFX khi combo.

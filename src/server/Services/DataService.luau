@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local Erasure = require("../Erasure")
 local PlayerData = require("../PlayerData")
 local ProfileStore = require(ServerScriptService.ServerPackages.ProfileStore) :: any
 
@@ -21,7 +22,7 @@ local store: any
 local profiles: { [Player]: any } = {}
 
 local function onPlayerAdded(player: Player)
-	local profile = store:StartSessionAsync(`User_{player.UserId}`, {
+	local profile = store:StartSessionAsync(Erasure.profileKey(player.UserId), {
 		Cancel = function(): boolean
 			return player.Parent ~= Players -- stop waiting if the player already left
 		end,

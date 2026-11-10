@@ -121,6 +121,11 @@ end
 local function step(dx: number, dy: number)
 	local piece = if isKeyDragging() then DragController.getPiece() else nil
 	if piece then
+		-- A turn may have moved the piece to keep it on the board; carry on from where it is now.
+		local hoverX, hoverY = DragController.getHoverCell()
+		if hoverX and hoverY then
+			target.x, target.y = hoverX, hoverY
+		end
 		target.x += dx
 		target.y += dy
 		hoverTarget(piece.width, piece.height)
@@ -251,7 +256,12 @@ function GamepadController.start(_self: any)
 	confirmAction.Pressed:Connect(confirm)
 	putBackAction.Pressed:Connect(putBack)
 	rotateAction.Pressed:Connect(function()
-		if canAct() and not DragController.isDragging() then
+		if not canAct() then
+			return
+		end
+		if DragController.isDragging() then
+			DragController.rotate() -- the piece in hand, for a mouse or touch drag as much as a key drag
+		else
 			GameController.tryRotate(selectedSlot)
 		end
 	end)

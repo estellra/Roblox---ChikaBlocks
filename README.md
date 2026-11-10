@@ -27,6 +27,7 @@ Game xếp khối 8x8 trên Roblox. Kế hoạch và các quyết định thiế
 | `lune run tests/run.luau` | Chạy unit test cho logic trong `src/shared` |
 | `stylua src tests` | Format code |
 | `selene src` | Lint |
+| `lune run scripts/erase-user.luau <userId> --dry-run` | Liệt kê dữ liệu sẽ xoá cho một người chơi (bỏ `--dry-run` để xoá thật; cần `ROBLOX_UNIVERSE_ID` và `ROBLOX_API_KEY`, xem đầu file script) |
 
 ## Cấu trúc
 

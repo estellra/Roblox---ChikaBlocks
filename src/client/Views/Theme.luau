@@ -63,6 +63,9 @@ export type Theme = {
 		Deal: number, -- a new piece popping into the tray
 		DealStep: number, -- between one tray slot and the next
 		Turn: number, -- a piece turning in the tray
+		WaitDelay: number, -- how long the tray stays empty before it shows it is waiting for a new set
+		WaitPulse: number, -- one breath of an empty slot while it waits
+		WaitStep: number, -- between one waiting slot's breath and the next
 		SlotFade: number,
 		Gain: number,
 		ScoreCount: number, -- the score counting up to its new value
@@ -204,6 +207,9 @@ local Theme: Theme = {
 		Deal = 0.22,
 		DealStep = 0.05,
 		Turn = 0.18,
+		WaitDelay = 0.25, -- longer than a normal round trip, so a quick new set never flashes the effect
+		WaitPulse = 0.5,
+		WaitStep = 0.12,
 		SlotFade = 0.12,
 		Gain = 0.8,
 		ScoreCount = 0.25,

@@ -2,8 +2,10 @@
 -- Draws the tray slots. Each piece is drawn on a 5x5 grid centered in its slot, so every piece uses the same
 -- cell size and the longest (5-cell) piece just fits. Slot sizes come from the Gui layout.
 -- Each slot has a transparent Hitbox button on top that drag and drop listens to. A piece that can be turned
--- also gets a small Rotate button in the corner of its slot.
+-- also gets a Rotate button: a round disc whose touch area is at least Theme.MinTouchTarget, in the corner of
+-- its slot (or beside it in the landscape layout, where the slots are small and the column has room).
 -- New pieces pop in one slot after the other, a turned piece spins into place, and slots fade as they empty.
+-- While the tray waits for the server's next set, the empty slots breathe so it doesn't look frozen.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -17,6 +19,9 @@ local create = require("./Create")
 type Piece = Pieces.Piece
 
 local PREVIEW_GRID = 5
+local ROTATE_OUTSIDE_GAP = 6 -- pixels between a slot and its Rotate button in the landscape layout
+
+export type LayoutMode = "Portrait" | "Landscape"
 
 local TrayView = {}
 TrayView.__index = TrayView
@@ -31,11 +36,15 @@ export type TrayView = typeof(setmetatable(
 		hint: number?, -- the slot the tutorial points at; the others fade
 		hintStrokes: { UIStroke },
 		held: { boolean }, -- slots whose piece is in hand
-		rotateButtons: { TextButton },
+		rotateButtons: { TextButton }, -- the touch areas; each holds the visible disc
 		rotatable: { boolean }, -- slots whose piece can be turned, as far as the game says
 		turning: number?, -- the slot the next render() spins instead of popping
 		slotFades: { number }, -- the transparency each slot is at or fading to
 		shown: { Piece | false },
+		waits: { Frame }, -- the glow that breathes in an empty slot
+		waitTweens: { Tween },
+		waiting: boolean,
+		waitToken: number, -- identifies the latest change of `waiting`, for the delayed start
 	},
 	TrayView
 ))
@@ -44,6 +53,7 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 	local padding = Theme.Spacing.TraySlotPadding
 	local slots, contents, hitboxes, selections, hintStrokes = {}, {}, {}, {}, {}
 	local rotateButtons: { TextButton } = {}
+	local waits: { Frame } = {}
 	for i = 1, Config.PIECES_PER_SET do
 		local content = create("Frame", {
 			Name = "Content",
@@ -65,24 +75,66 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 			AutoButtonColor = false,
 			Text = "",
 		})
-		-- The game fonts have no turn arrow; this glyph comes from the emoji fallback.
-		local rotate = Clay.iconButton({ name = "Rotate", text = "🔄" })
-		-- Centered near the corner, so it sits mostly outside the 5x5 grid the piece is drawn on and covers no cell.
-		rotate.AnchorPoint = Vector2.new(0.5, 0.5)
-		rotate.Position = UDim2.fromScale(0.95, 0.95)
-		rotate.Size = UDim2.fromScale(0.34, 0.34)
-		rotate.ZIndex = 3 -- above the Hitbox, so a press on it doesn't start a drag
-		rotate.Visible = false
-		local glyph = rotate:FindFirstChild("Icon")
+		-- The visible disc. The game fonts have no turn arrow; its glyph comes from the emoji fallback.
+		local disc = Clay.iconButton({ name = "Disc", text = "🔄" })
+		disc.AnchorPoint = Vector2.new(0.5, 0.5)
+		disc.Position = UDim2.fromScale(0.5, 0.5)
+		disc.Size = UDim2.fromScale(0.8, 0.8)
+		disc.Interactable = false -- presses fall through to the touch area around it
+		disc.ZIndex = 3
+		local glyph = disc:FindFirstChild("Icon")
 		if glyph and glyph:IsA("TextLabel") then
 			glyph.TextScaled = true
 			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			glyph.Position = UDim2.fromScale(0.5, 0.5)
 			glyph.Size = UDim2.fromScale(0.6, 0.6) -- the emoji's square must stay inside the disc
 		end
+		-- The touch area is a square that is never smaller than the minimum touch target, even when the slot is
+		-- tiny (a phone held sideways); the disc inside may be smaller. setLayout() places it.
+		local rotate = create("TextButton", {
+			Name = "Rotate",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.95, 0.95),
+			Size = UDim2.fromScale(0.4, 0.4),
+			BackgroundTransparency = 1,
+			AutoButtonColor = false,
+			Text = "",
+			ZIndex = 3, -- above the Hitbox, so a press on it doesn't start a drag
+			Visible = false,
+		}, {
+			create("UIAspectRatioConstraint", { AspectRatio = 1 }),
+			create("UISizeConstraint", { MinSize = Theme.MinTouchTarget }),
+			disc,
+		})
+		local pressScale = disc:FindFirstChildOfClass("UIScale")
+		local function press(down: boolean)
+			if pressScale then
+				local seconds = if down then Theme.Motion.ButtonPress else Theme.Motion.ButtonRelease
+				local info = TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+				TweenService:Create(pressScale, info, { Scale = if down then 0.92 else 1 }):Play()
+			end
+		end
+		rotate.MouseButton1Down:Connect(function()
+			press(true)
+		end)
+		rotate.MouseButton1Up:Connect(function()
+			press(false)
+		end)
+		rotate.MouseLeave:Connect(function()
+			press(false)
+		end)
 		rotate.Activated:Connect(function()
 			onRotate(i)
 		end)
+		-- Breathes while the tray waits for a new set; the slot's own fade is left alone.
+		local wait = create("Frame", {
+			Name = "Wait",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Theme.Colors.CellEmpty,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Visible = false,
+		}, { create("UICorner", { CornerRadius = Theme.Radius.TraySlot }) })
 		local hintStroke = create("UIStroke", {
 			Name = "Hint",
 			Color = Theme.Colors.Selection,
@@ -110,12 +162,14 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 				AspectRatio = 1,
 				AspectType = Enum.AspectType.FitWithinMaxSize,
 			}),
+			wait,
 			selection,
 			hintStroke,
 			content,
 			hitbox,
 			rotate,
 		})
+		waits[i] = wait
 		contents[i] = content
 		hitboxes[i] = hitbox
 		selections[i] = selection
@@ -136,6 +190,10 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		rotatable = table.create(Config.PIECES_PER_SET, false),
 		turning = nil,
 		slotFades = table.create(Config.PIECES_PER_SET, Theme.Transparency.TraySlot),
+		waits = waits,
+		waitTweens = {},
+		waiting = false,
+		waitToken = 0,
 	}, TrayView)
 end
 
@@ -150,9 +208,10 @@ local function refreshSlot(self: TrayView, index: number)
 	end
 end
 
--- The Rotate button shows for a piece that can be turned, unless the piece is in hand.
+-- The Rotate button shows for a piece that can be turned. It stays while the piece is in hand: a second finger
+-- can tap it to turn the piece mid-drag.
 local function refreshRotate(self: TrayView, index: number)
-	self.rotateButtons[index].Visible = self.rotatable[index] and not self.held[index] and self.shown[index] ~= false
+	self.rotateButtons[index].Visible = self.rotatable[index] and self.shown[index] ~= false
 end
 
 function TrayView.render(self: TrayView, tray: { Piece | false })
@@ -170,6 +229,7 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 			preview.AnchorPoint = Vector2.new(0.5, 0.5)
 			preview.Position = UDim2.fromScale(0.5, 0.5)
 			preview.Size = UDim2.fromScale(piece.width / PREVIEW_GRID, piece.height / PREVIEW_GRID)
+			preview.Visible = not self.held[index] -- a piece turned in hand stays hidden here until it is let go
 			preview.Parent = content
 			if self.turning == index then
 				-- A quarter turn back, this piece looks just like the one it replaces.
@@ -240,6 +300,73 @@ function TrayView.isHeld(self: TrayView): boolean
 	return table.find(self.held, true) ~= nil
 end
 
+-- The slot whose piece is in hand, if any.
+function TrayView.heldSlot(self: TrayView): number?
+	return table.find(self.held, true)
+end
+
+-- Places each Rotate touch area for the layout: in the corner of its slot, or (landscape, where slots are small
+-- and the side column is wide) beside it, so it covers no cell of the piece.
+function TrayView.setLayout(self: TrayView, mode: LayoutMode)
+	for _, button in self.rotateButtons do
+		if mode == "Landscape" then
+			button.AnchorPoint = Vector2.new(0, 0.5)
+			button.Position = UDim2.new(1, ROTATE_OUTSIDE_GAP, 0.5, 0)
+			button.Size = UDim2.fromScale(0.5, 0.5)
+		else
+			button.AnchorPoint = Vector2.new(0.5, 0.5)
+			button.Position = UDim2.fromScale(0.95, 0.95)
+			button.Size = UDim2.fromScale(0.4, 0.4)
+		end
+	end
+end
+
+local function stopWaiting(self: TrayView)
+	for _, tween in self.waitTweens do
+		tween:Cancel()
+	end
+	table.clear(self.waitTweens)
+	for _, glow in self.waits do
+		glow.Visible = false
+		glow.BackgroundTransparency = 1
+	end
+end
+
+-- While `waiting` (the last piece is down and the server's next set has not come) the empty slots breathe, but
+-- only after WaitDelay, so a normal round trip never flashes it. Safe to call on every render.
+function TrayView.setWaiting(self: TrayView, waiting: boolean)
+	if self.waiting == waiting then
+		return
+	end
+	self.waiting = waiting
+	self.waitToken += 1
+	if not waiting then
+		stopWaiting(self)
+		return
+	end
+	local token = self.waitToken
+	task.delay(Theme.Motion.WaitDelay, function()
+		if token ~= self.waitToken then
+			return
+		end
+		for index, glow in self.waits do
+			glow.BackgroundTransparency = 0.85
+			glow.Visible = true
+			local info = TweenInfo.new(
+				Theme.Motion.WaitPulse,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.InOut,
+				-1,
+				true,
+				(index - 1) * Theme.Motion.WaitStep
+			)
+			local tween = TweenService:Create(glow, info, { BackgroundTransparency = 0.3 })
+			table.insert(self.waitTweens, tween)
+			tween:Play()
+		end
+	end)
+end
+
 -- Pixel size of one preview cell in this slot (0 when the slot is empty).
 function TrayView.cellSize(self: TrayView, slot: number): number
 	if not self.shown[slot] then
@@ -258,6 +385,8 @@ function TrayView.center(self: TrayView, slot: number): Vector2
 end
 
 function TrayView.destroy(self: TrayView)
+	self.waitToken += 1
+	stopWaiting(self)
 	for _, slot in self.slots do
 		slot:Destroy()
 	end
