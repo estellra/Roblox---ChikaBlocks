@@ -1,7 +1,8 @@
 --!strict
 -- The top bar (see HudBar), gains floating over the board after line clears, and the two panels over the
 -- game: game over, with what the run earned (EXP bar, level up, new titles) once the server's RunRewards
--- arrive, and pause. Both panels share one overlay; only one is open at a time.
+-- arrive, and pause. Both panels share one overlay; only one is open at a time. A panel slides up as the
+-- dimmer fades in; closing drops the panel at once, so the game answers right away, and the dimmer fades out.
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -18,6 +19,9 @@ local create = require("./Create")
 
 local PANEL_MARGIN = 8 -- pixels kept free above and below a panel when it has to shrink
 local COMPACT_HEIGHT = 480 -- below this (phones held sideways) the game over panel goes two columns
+local PANEL_REST = UDim2.fromScale(0.5, 0.5)
+local PANEL_START = UDim2.fromScale(0.5, 0.57) -- where a panel starts its slide
+local GAIN_POP_SCALE = 0.6 -- a gain grows from this
 
 local RESTART_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Return] = true,
@@ -60,11 +64,15 @@ export type Hud = typeof(setmetatable(
 		popups: Frame, -- floating gain labels, over the board
 		overlay: ScreenGui, -- panels (safe area)
 		backdrop: ScreenGui, -- full-screen dimmer under the panels
+		dim: Frame,
+		dimToken: number, -- bumped when the dimmer changes direction, so a finished fade-out can tell it is stale
 		gameOverPanel: Frame,
 		pausePanel: Frame,
 		mascot: ImageLabel,
 		titleLabel: TextLabel,
 		finalScoreLabel: TextLabel,
+		finalCounter: NumberValue, -- the final score on show, counting up
+		finalTween: Tween?,
 		finalBestPill: Frame,
 		reviveRoot: Frame,
 		reviveButton: TextButton,
@@ -186,11 +194,11 @@ function Hud.new(
 	})
 
 	-- The dimmer covers the whole screen; the panels live in the safe-area overlay above it.
-	create("Frame", {
+	local dim = create("Frame", {
 		Name = "Dim",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = colors.Overlay,
-		BackgroundTransparency = Theme.Transparency.Overlay,
+		BackgroundTransparency = 1, -- faded in with each panel
 		BorderSizePixel = 0,
 		Active = true, -- swallow clicks so nothing under the panels reacts
 		Parent = backdrop,
@@ -207,6 +215,10 @@ function Hud.new(
 	local titleLabel = label("Title", "No more moves!", fonts.Title, sizes.Title, colors.Text, 2)
 	local scoreCaption = label("Caption", "SCORE", fonts.Label, 15, colors.TextMuted, 3)
 	local finalScoreLabel = label("FinalScore", "0", fonts.Title, 52, colors.Text, 4)
+	local finalCounter = create("NumberValue", {})
+	finalCounter:GetPropertyChangedSignal("Value"):Connect(function()
+		finalScoreLabel.Text = Format.withCommas(math.round(finalCounter.Value))
+	end)
 	local finalBestPill = Clay.pill({ name = "Best", text = "Best 0", icon = Theme.Images.Crown, order = 5 })
 	local expLabel = label("Exp", "", fonts.Body, sizes.Label, colors.TextMuted, 1)
 	local expFill = create("Frame", {
@@ -321,11 +333,15 @@ function Hud.new(
 		popups = popups,
 		overlay = overlay,
 		backdrop = backdrop,
+		dim = dim,
+		dimToken = 0,
 		gameOverPanel = gameOverPanel,
 		pausePanel = pausePanel,
 		mascot = mascot,
 		titleLabel = titleLabel,
 		finalScoreLabel = finalScoreLabel,
+		finalCounter = finalCounter,
+		finalTween = nil,
 		finalBestPill = finalBestPill,
 		reviveRoot = reviveRoot,
 		reviveButton = Clay.face(reviveRoot),
@@ -411,6 +427,7 @@ function Hud.showGain(self: Hud, result: GameSession.PlaceResult)
 			MaxTextSize = Theme.TextSize.GainMax,
 		}),
 	})
+	Clay.popIn(create("UIScale", { Parent = gain }), GAIN_POP_SCALE, Theme.Motion.ScorePop)
 	local info = TweenInfo.new(Theme.Motion.Gain, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	TweenService:Create(stroke, info, { Transparency = 1 }):Play()
 	local float = TweenService:Create(gain, info, { Position = UDim2.fromScale(0.5, 0.36), TextTransparency = 1 })
@@ -431,16 +448,35 @@ end
 
 -- Shows `panel` (and hides the other) over the dimmer.
 local function openOverlay(self: Hud, panel: Frame)
+	local wasOpen = self.overlay.Enabled
 	self.gameOverPanel.Visible = panel == self.gameOverPanel
 	self.pausePanel.Visible = panel == self.pausePanel
+	self.dimToken += 1
+	self.dim.Active = true
 	self.backdrop.Enabled = true
 	self.overlay.Enabled = true
+	if wasOpen then
+		return
+	end
+	local fade = TweenInfo.new(Theme.Motion.Dim, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(self.dim, fade, { BackgroundTransparency = Theme.Transparency.Overlay }):Play()
+	panel.Position = PANEL_START
+	local slide = TweenInfo.new(Theme.Motion.Panel, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	TweenService:Create(panel, slide, { Position = PANEL_REST }):Play()
 end
 
 -- Opens the game over panel. "Play again" works by click/tap, Enter or Space, and the gamepad A button
 -- (the button is selected when a gamepad is in use); "Menu" goes back to the main menu.
 function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boolean)
-	self.finalScoreLabel.Text = Format.withCommas(score)
+	if self.finalTween then
+		self.finalTween:Cancel()
+	end
+	self.finalCounter.Value = 0
+	self.finalScoreLabel.Text = "0"
+	local count = TweenInfo.new(Theme.Motion.FinalScoreCount, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(self.finalCounter, count, { Value = score })
+	self.finalTween = tween
+	tween:Play()
 	Clay.pillLabel(self.finalBestPill).Text = `Best {Format.withCommas(best)}`
 	self.titleLabel.Text = if isNewBest then "New best!" else "No more moves!"
 	self.mascot.Image = if isNewBest then Theme.Images.MascotCheer else Theme.Images.MascotSad
@@ -539,7 +575,20 @@ function Hud.hideGameOver(self: Hud)
 	self.rewardsToken += 1
 	self.rewards.Visible = false
 	self.overlay.Enabled = false
-	self.backdrop.Enabled = false
+	if self.backdrop.Enabled then
+		-- The game is back already: the fading dimmer lets input through to it.
+		self.dimToken += 1
+		local token = self.dimToken
+		self.dim.Active = false
+		local info = TweenInfo.new(Theme.Motion.Dim, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		local fade = TweenService:Create(self.dim, info, { BackgroundTransparency = 1 })
+		fade.Completed:Once(function()
+			if token == self.dimToken then
+				self.backdrop.Enabled = false
+			end
+		end)
+		fade:Play()
+	end
 	self.gameOverPanel.Visible = false
 	self.pausePanel.Visible = false
 	local selected = GuiService.SelectedObject

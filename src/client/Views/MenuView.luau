@@ -24,6 +24,7 @@ local PLAY_KEYS: { [Enum.KeyCode]: boolean } = {
 
 local LANDSCAPE_MIN_RATIO = 1.1 -- width / height of the safe area
 local DECOR_CELL = 26 -- pixels per cell of the floating blocks
+local OPEN_START_SCALE = 0.96 -- the menu grows from this as it opens
 -- Floating blocks: piece, position (share of the screen), tilt in degrees.
 local DECOR = {
 	{ id = "L3_2", x = 0.12, y = 0.24, tilt = -8 },
@@ -41,6 +42,7 @@ export type MenuView = typeof(setmetatable(
 		gui: ScreenGui,
 		content: Frame,
 		main: Frame,
+		pop: UIScale,
 		heroLayout: UIListLayout,
 		logoLayout: UIListLayout,
 		logoTop: TextLabel,
@@ -223,6 +225,7 @@ function MenuView.new(
 		tagline,
 	})
 
+	local pop = create("UIScale", { Name = "Pop" })
 	local main = create("Frame", {
 		Name = "Main",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -237,6 +240,7 @@ function MenuView.new(
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 			Padding = UDim.new(0, 24),
 		}),
+		pop,
 		hero,
 		actions,
 	})
@@ -275,6 +279,7 @@ function MenuView.new(
 		gui = gui,
 		content = content,
 		main = main,
+		pop = pop,
 		heroLayout = heroLayout,
 		logoLayout = logoLayout,
 		logoTop = logoTop,
@@ -371,6 +376,7 @@ end
 function MenuView.show(self: MenuView)
 	self.backdrop.Enabled = true
 	self.gui.Enabled = true
+	Clay.popIn(self.pop, OPEN_START_SCALE, Theme.Motion.Panel)
 	for _, tween in self.floaters do
 		tween:Play()
 	end

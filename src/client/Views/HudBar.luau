@@ -1,7 +1,9 @@
 --!strict
 -- The bar above the board: pause button, score, best score and combo. In landscape it sits on a card in the
 -- side column; in portrait it floats on the sky across the top. All sizes are shares of the HUD area, so it
--- keeps its proportions on any screen.
+-- keeps its proportions on any screen. The score counts up to each new value instead of jumping.
+local TweenService = game:GetService("TweenService")
+
 local Clay = require("./Clay")
 local Format = require("./Format")
 local Theme = require("./Theme")
@@ -12,6 +14,8 @@ export type Mode = "Portrait" | "Landscape"
 local SCORE_MIN, SCORE_MAX = 22, 56
 local PILL_GAP = 6
 local PILL_MIN, PILL_MAX = 22, 32
+local SCORE_POP_SCALE = 1.1 -- the score swells to this as it goes up
+local COMBO_POP_SCALE = 0.7 -- the combo pill grows from this
 
 local HudBar = {}
 HudBar.__index = HudBar
@@ -23,8 +27,14 @@ export type HudBar = typeof(setmetatable(
 		pauseButton: TextButton,
 		pills: Frame,
 		scoreLabel: TextLabel,
+		scorePop: UIScale,
+		scoreCounter: NumberValue, -- the number on show, tweened toward the score
+		scoreTween: Tween?,
+		score: number,
 		bestPill: Frame,
 		comboPill: Frame,
+		comboPop: UIScale,
+		combo: number, -- the combo on show; 0 when the pill is hidden
 	},
 	HudBar
 ))
@@ -51,6 +61,11 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		TextColor3 = colors.Text,
 		Text = "0",
 	}, { create("UITextSizeConstraint", { MinTextSize = SCORE_MIN, MaxTextSize = SCORE_MAX }) })
+
+	local scoreCounter = create("NumberValue", {})
+	scoreCounter:GetPropertyChangedSignal("Value"):Connect(function()
+		scoreLabel.Text = Format.withCommas(math.round(scoreCounter.Value))
+	end)
 	local scoreBlock = create("Frame", {
 		Name = "ScoreBlock",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -75,10 +90,12 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		}, { create("UITextSizeConstraint", { MinTextSize = 10, MaxTextSize = 16 }) }),
 		scoreLabel,
 	})
+	local scorePop = create("UIScale", { Parent = scoreBlock })
 
 	local bestPill = Clay.pill({ name = "Best", text = "0", icon = Theme.Images.Crown, order = 1 })
 	local comboPill = Clay.pill({ name = "Combo", text = "Combo x2", style = "reward", order = 2 })
 	comboPill.Visible = false
+	local comboPop = create("UIScale", { Parent = comboPill })
 	local pills = create("Frame", {
 		Name = "Pills",
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -130,8 +147,14 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		pauseButton = pauseButton,
 		pills = pills,
 		scoreLabel = scoreLabel,
+		scorePop = scorePop,
+		scoreCounter = scoreCounter,
+		scoreTween = nil,
+		score = 0,
 		bestPill = bestPill,
 		comboPill = comboPill,
+		comboPop = comboPop,
+		combo = 0,
 	}, HudBar)
 	bar:setLayout("Portrait")
 	return bar
@@ -151,10 +174,24 @@ function HudBar.setLayout(self: HudBar, mode: Mode)
 end
 
 function HudBar.setScore(self: HudBar, score: number, best: number)
-	local scoreText, bestText = Format.withCommas(score), Format.withCommas(best)
-	if self.scoreLabel.Text ~= scoreText then
-		self.scoreLabel.Text = scoreText
+	if score ~= self.score then
+		local rising = score > self.score
+		self.score = score
+		if self.scoreTween then
+			self.scoreTween:Cancel()
+			self.scoreTween = nil
+		end
+		if rising then
+			local info = TweenInfo.new(Theme.Motion.ScoreCount, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local tween = TweenService:Create(self.scoreCounter, info, { Value = score })
+			self.scoreTween = tween
+			tween:Play()
+			Clay.popIn(self.scorePop, SCORE_POP_SCALE, Theme.Motion.ScorePop)
+		else
+			self.scoreCounter.Value = score -- a new run starts from where it is, at once
+		end
 	end
+	local bestText = Format.withCommas(best)
 	local bestLabel = Clay.pillLabel(self.bestPill)
 	if bestLabel.Text ~= bestText then
 		bestLabel.Text = bestText
@@ -167,7 +204,11 @@ function HudBar.setCombo(self: HudBar, combo: number)
 	self.comboPill.Visible = show
 	if show then
 		Clay.pillLabel(self.comboPill).Text = `Combo x{combo}`
+		if combo ~= self.combo then
+			Clay.popIn(self.comboPop, COMBO_POP_SCALE, Theme.Motion.ScorePop)
+		end
 	end
+	self.combo = if show then combo else 0
 end
 
 return HudBar

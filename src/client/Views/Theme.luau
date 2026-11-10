@@ -53,8 +53,23 @@ export type Theme = {
 		Pickup: number,
 		Return: number,
 		PlacePop: number,
+		PlaceStep: number, -- between one cell of a placed piece and the next
+		Land: number, -- the dropped piece gliding into its cells
 		Clear: number,
+		ClearStep: number, -- per cell of distance, as a clear spreads out from the placed piece
+		Punch: number, -- the board settling after a clear of two lines or more
+		GhostGlide: number, -- the landing ghost moving from one cell to the next
+		LinePop: number, -- a line the held piece would complete lighting up
+		Deal: number, -- a new piece popping into the tray
+		DealStep: number, -- between one tray slot and the next
+		Turn: number, -- a piece turning in the tray
+		SlotFade: number,
 		Gain: number,
+		ScoreCount: number, -- the score counting up to its new value
+		ScorePop: number,
+		FinalScoreCount: number, -- the final score counting up on the game over panel
+		Panel: number, -- a panel or screen arriving
+		Dim: number, -- the dimmer under a panel fading
 		NoMovesFade: number,
 		GameOverDelay: number, -- from the losing move to the game over panel
 		HandMove: number, -- tutorial pointer sliding from the tray to the board
@@ -62,6 +77,7 @@ export type Theme = {
 		Tip: number, -- how long a tutorial tip stays up
 		ExpFill: number, -- EXP bar filling up on the game over panel (per segment)
 		ButtonPress: number,
+		ButtonRelease: number,
 	},
 	Fonts: {
 		Title: Font, -- headings, score, buttons (Fredoka)
@@ -175,11 +191,26 @@ local Theme: Theme = {
 		NoMoves = 0.45,
 	},
 	Motion = {
-		Pickup = 0.1,
-		Return = 0.15,
-		PlacePop = 0.15,
-		Clear = 0.2,
+		Pickup = 0.14,
+		Return = 0.18,
+		PlacePop = 0.18,
+		PlaceStep = 0.012,
+		Land = 0.07,
+		Clear = 0.22,
+		ClearStep = 0.018,
+		Punch = 0.22,
+		GhostGlide = 0.05,
+		LinePop = 0.14,
+		Deal = 0.22,
+		DealStep = 0.05,
+		Turn = 0.18,
+		SlotFade = 0.12,
 		Gain = 0.8,
+		ScoreCount = 0.25,
+		ScorePop = 0.2,
+		FinalScoreCount = 0.6,
+		Panel = 0.26,
+		Dim = 0.16,
 		NoMovesFade = 0.25,
 		GameOverDelay = 0.8,
 		HandMove = 1.0,
@@ -187,6 +218,7 @@ local Theme: Theme = {
 		Tip = 3,
 		ExpFill = 0.6,
 		ButtonPress = 0.06,
+		ButtonRelease = 0.16,
 	},
 	Fonts = {
 		Title = Font.new(FREDOKA),

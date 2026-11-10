@@ -107,7 +107,7 @@ local function returnToTray(current: Drag)
 	local center = views.tray:center(slot)
 	local layer = (current.frame.Parent :: GuiObject).AbsolutePosition
 	local trayCell = views.tray:cellSize(slot)
-	local info = TweenInfo.new(Theme.Motion.Return, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local info = TweenInfo.new(Theme.Motion.Return, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 	setBlocked(current, false)
 	returning[slot] = current.frame
@@ -126,6 +126,24 @@ local function returnToTray(current: Drag)
 		end
 	end)
 	fly:Play()
+end
+
+-- The dropped piece glides the last bit into the cells it now fills, then goes: the board draws it from here on.
+local function landOnBoard(current: Drag, x: number, y: number)
+	local grid = gridOf(getViews())
+	local layer = (current.frame.Parent :: GuiObject).AbsolutePosition
+	local piece, cell = current.piece, current.cell
+	local info = TweenInfo.new(Theme.Motion.Land, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local land = TweenService:Create(current.frame, info, {
+		Position = UDim2.fromOffset(
+			grid.x + (x + piece.width / 2) * cell - layer.X,
+			grid.y + (y + piece.height / 2) * cell - layer.Y
+		),
+	})
+	land.Completed:Once(function()
+		current.frame:Destroy()
+	end)
+	land:Play()
 end
 
 -- Intent: lift the piece in `slot` off the tray. Returns false when there is nothing to pick up.
@@ -170,7 +188,7 @@ function DragController.pick(slot: number, isTouch: boolean): boolean
 	TweenService
 		:Create(
 			scale,
-			TweenInfo.new(Theme.Motion.Pickup, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			TweenInfo.new(Theme.Motion.Pickup, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 			{ Scale = 1 }
 		)
 		:Play()
@@ -222,7 +240,7 @@ function DragController.drop(): boolean
 	local target = current.target
 	endDrag(current)
 	if target and GameController.tryPlace(current.slot, target.x, target.y) then
-		current.frame:Destroy()
+		landOnBoard(current, target.x, target.y)
 		-- The slot may hold a freshly dealt piece now; make sure its preview shows.
 		getViews().tray:setHidden(current.slot, false)
 		return true

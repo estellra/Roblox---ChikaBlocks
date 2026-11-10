@@ -3,7 +3,9 @@
 -- cell size and the longest (5-cell) piece just fits. Slot sizes come from the Gui layout.
 -- Each slot has a transparent Hitbox button on top that drag and drop listens to. A piece that can be turned
 -- also gets a small Rotate button in the corner of its slot.
+-- New pieces pop in one slot after the other, a turned piece spins into place, and slots fade as they empty.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Clay = require("./Clay")
@@ -31,6 +33,8 @@ export type TrayView = typeof(setmetatable(
 		held: { boolean }, -- slots whose piece is in hand
 		rotateButtons: { TextButton },
 		rotatable: { boolean }, -- slots whose piece can be turned, as far as the game says
+		turning: number?, -- the slot the next render() spins instead of popping
+		slotFades: { number }, -- the transparency each slot is at or fading to
 		shown: { Piece | false },
 	},
 	TrayView
@@ -130,15 +134,20 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		shown = table.create(Config.PIECES_PER_SET, false),
 		rotateButtons = rotateButtons,
 		rotatable = table.create(Config.PIECES_PER_SET, false),
+		turning = nil,
+		slotFades = table.create(Config.PIECES_PER_SET, Theme.Transparency.TraySlot),
 	}, TrayView)
 end
 
 -- A slot is faded when it is empty, its piece is in hand, or the tutorial points at another slot.
 local function refreshSlot(self: TrayView, index: number)
 	local faded = not self.shown[index] or self.held[index] or (self.hint ~= nil and self.hint ~= index)
-	self.slots[index].BackgroundTransparency = if faded
-		then Theme.Transparency.TraySlotEmpty
-		else Theme.Transparency.TraySlot
+	local target = if faded then Theme.Transparency.TraySlotEmpty else Theme.Transparency.TraySlot
+	if self.slotFades[index] ~= target then
+		self.slotFades[index] = target
+		local info = TweenInfo.new(Theme.Motion.SlotFade, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(self.slots[index], info, { BackgroundTransparency = target }):Play()
+	end
 end
 
 -- The Rotate button shows for a piece that can be turned, unless the piece is in hand.
@@ -162,11 +171,29 @@ function TrayView.render(self: TrayView, tray: { Piece | false })
 			preview.Position = UDim2.fromScale(0.5, 0.5)
 			preview.Size = UDim2.fromScale(piece.width / PREVIEW_GRID, piece.height / PREVIEW_GRID)
 			preview.Parent = content
+			if self.turning == index then
+				-- A quarter turn back, this piece looks just like the one it replaces.
+				preview.Rotation = -90
+				local info = TweenInfo.new(Theme.Motion.Turn, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				TweenService:Create(preview, info, { Rotation = 0 }):Play()
+			else
+				local pop = create("UIScale", { Scale = 0, Parent = preview })
+				local delay = (index - 1) * Theme.Motion.DealStep
+				local info =
+					TweenInfo.new(Theme.Motion.Deal, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, delay)
+				TweenService:Create(pop, info, { Scale = 1 }):Play()
+			end
 		end
 		self.shown[index] = piece
 		refreshSlot(self, index)
 		refreshRotate(self, index)
 	end
+	self.turning = nil
+end
+
+-- The next render() shows the piece in `slot` turning into place, rather than arriving.
+function TrayView.markTurned(self: TrayView, slot: number)
+	self.turning = slot
 end
 
 -- Outlines `slot` (keyboard and gamepad play); nil removes the outline.
@@ -215,12 +242,13 @@ end
 
 -- Pixel size of one preview cell in this slot (0 when the slot is empty).
 function TrayView.cellSize(self: TrayView, slot: number): number
-	local piece = self.shown[slot]
-	local preview = self.contents[slot]:FindFirstChild("Piece")
-	if not piece or not preview or not preview:IsA("GuiObject") then
+	if not self.shown[slot] then
 		return 0
 	end
-	return preview.AbsoluteSize.X / piece.width
+	-- From the slot, not the preview: a piece still popping in is smaller than it will be.
+	local width = self.contents[slot].AbsoluteSize.X
+	local padding = Theme.Spacing.TraySlotPadding
+	return (width - 2 * (width * padding.Scale + padding.Offset)) / PREVIEW_GRID
 end
 
 -- Center of the slot's preview area, in screen pixels.

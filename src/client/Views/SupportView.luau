@@ -20,6 +20,7 @@ local ROWS = 10 -- the server sends this many supporters
 local ROW_HEIGHT = 44
 local TIER_HEIGHT = 44 + Theme.Spacing.ButtonLip -- the face meets the minimum touch size; the lip comes on top
 local CLOSE_SIZE = 44
+local OPEN_START_SCALE = 0.94 -- the card grows from this as the screen opens
 local PRESS_GAP_SECONDS = 2 -- a second press waits this long: the purchase prompt is opening
 local THANKS_SECONDS = 6
 local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
@@ -46,6 +47,7 @@ export type SupportView = typeof(setmetatable(
 		thanks: TextLabel,
 		youPill: Frame,
 		closeButton: TextButton,
+		pop: UIScale,
 		snapshot: Snapshot?,
 		total: number?, -- what the player has given; fresher than the snapshot after a donation
 		thanksToken: number,
@@ -312,6 +314,7 @@ function SupportView.new(playerGui: PlayerGui, onClose: () -> (), onDonate: (tie
 	closeButton.Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE)
 	closeButton.ZIndex = 5
 
+	local pop = create("UIScale", { Name = "Pop" })
 	local card = create("Frame", {
 		Name = "Card",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -322,6 +325,7 @@ function SupportView.new(playerGui: PlayerGui, onClose: () -> (), onDonate: (tie
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
 		create("UIStroke", { Color = colors.Outline, Thickness = Theme.Stroke.Panel }),
+		pop,
 		create("UISizeConstraint", { MaxSize = Vector2.new(520, math.huge) }),
 		create("Frame", {
 			Name = "Body",
@@ -364,6 +368,7 @@ function SupportView.new(playerGui: PlayerGui, onClose: () -> (), onDonate: (tie
 		thanks = thanks,
 		youPill = youPill,
 		closeButton = closeButton,
+		pop = pop,
 		snapshot = nil,
 		total = nil,
 		thanksToken = 0,
@@ -464,6 +469,7 @@ end
 function SupportView.open(self: SupportView)
 	self.backdrop.Enabled = true
 	self.gui.Enabled = true
+	Clay.popIn(self.pop, OPEN_START_SCALE, Theme.Motion.Panel)
 	for tier, button in self.tiers do
 		Clay.face(button).Text = tierText(tier)
 	end

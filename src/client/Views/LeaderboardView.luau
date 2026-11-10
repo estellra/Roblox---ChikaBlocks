@@ -17,6 +17,7 @@ local MAX_ROWS = 50
 local ROW_HEIGHT = 48
 local TAB_HEIGHT = 44 + Theme.Spacing.ButtonLip -- the face meets the minimum touch size; the lip comes on top
 local CLOSE_SIZE = 44
+local OPEN_START_SCALE = 0.94 -- the card grows from this as the screen opens
 local COMPACT_HEIGHT = 480 -- below this (phones held sideways) the heading goes and the tabs share one row
 local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Escape] = true,
@@ -50,6 +51,7 @@ export type LeaderboardView = typeof(setmetatable(
 		status: TextLabel,
 		youPill: Frame,
 		closeButton: TextButton,
+		pop: UIScale,
 		period: Period,
 		board: Board,
 		snapshot: Snapshot?,
@@ -279,6 +281,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	closeButton.Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE)
 	closeButton.ZIndex = 5
 
+	local pop = create("UIScale", { Name = "Pop" })
 	local card = create("Frame", {
 		Name = "Card",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -289,6 +292,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Panel }),
 		create("UIStroke", { Color = colors.Outline, Thickness = Theme.Stroke.Panel }),
+		pop,
 		create("UISizeConstraint", { MaxSize = Vector2.new(520, math.huge) }),
 		create("Frame", {
 			Name = "Body",
@@ -335,6 +339,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		status = status,
 		youPill = youPill,
 		closeButton = closeButton,
+		pop = pop,
 		period = "all" :: Period,
 		board = "Highscore" :: Board,
 		snapshot = nil,
@@ -470,6 +475,7 @@ end
 function LeaderboardView.open(self: LeaderboardView)
 	self.backdrop.Enabled = true
 	self.gui.Enabled = true
+	Clay.popIn(self.pop, OPEN_START_SCALE, Theme.Motion.Panel)
 	self:render()
 	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
 		GuiService.SelectedObject = Clay.face(self.tabs.all)

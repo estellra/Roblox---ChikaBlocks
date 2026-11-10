@@ -389,6 +389,7 @@ function GameController.tryRotate(slot: unknown): boolean
 		profile = updated
 	end
 	Net.RotatePiece:FireServer(runId, moveIndex, slot)
+	ui.tray:markTurned(result.slot)
 	render()
 	return true
 end

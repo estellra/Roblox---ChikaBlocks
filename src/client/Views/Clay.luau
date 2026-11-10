@@ -24,6 +24,13 @@ local function colorsOf(style: ButtonStyle): ButtonColors
 	return { face = colors.Button, lip = colors.ButtonShadow, text = colors.ButtonText }
 end
 
+-- Quick going down, springy coming back up.
+local function pressInfo(down: boolean): TweenInfo
+	return if down
+		then TweenInfo.new(Theme.Motion.ButtonPress, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		else TweenInfo.new(Theme.Motion.ButtonRelease, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
 local function rounded(radius: UDim): UICorner
 	return create("UICorner", { CornerRadius = radius })
 end
@@ -86,10 +93,10 @@ function Clay.button(props: ButtonProps): Frame
 		}),
 	})
 
-	-- Pressing sinks the face onto its lip (all but two pixels of it).
-	local info = TweenInfo.new(Theme.Motion.ButtonPress, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	-- Pressing sinks the face onto its lip (all but two pixels of it); letting go springs it back.
 	local function sink(down: boolean)
-		TweenService:Create(face, info, { Position = UDim2.fromOffset(0, if down then lip - 2 else 0) }):Play()
+		TweenService:Create(face, pressInfo(down), { Position = UDim2.fromOffset(0, if down then lip - 2 else 0) })
+			:Play()
 	end
 	face.MouseButton1Down:Connect(function()
 		sink(true)
@@ -101,6 +108,13 @@ function Clay.button(props: ButtonProps): Frame
 		sink(false)
 	end)
 	return root
+end
+
+-- Starts `scale` at `from` and settles it at full size with a small overshoot: how things arrive on screen.
+function Clay.popIn(scale: UIScale, from: number, seconds: number)
+	scale.Scale = from
+	local info = TweenInfo.new(seconds, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	TweenService:Create(scale, info, { Scale = 1 }):Play()
 end
 
 function Clay.face(button: Frame): TextButton
@@ -234,9 +248,8 @@ function Clay.iconButton(props: IconButtonProps): TextButton
 		pressScale,
 		iconOf(props),
 	})
-	local info = TweenInfo.new(Theme.Motion.ButtonPress, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local function press(down: boolean)
-		TweenService:Create(pressScale, info, { Scale = if down then 0.92 else 1 }):Play()
+		TweenService:Create(pressScale, pressInfo(down), { Scale = if down then 0.92 else 1 }):Play()
 	end
 	button.MouseButton1Down:Connect(function()
 		press(true)
