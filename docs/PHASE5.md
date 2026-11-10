@@ -1,6 +1,6 @@
 # Giai đoạn 5: Coop 2 người
 
-> Plan đã duyệt, chưa code. Mọi điểm AP đến BA đã chốt, xem [cuối file](#quyết-định-đã-chốt).
+> Plan đã duyệt. Mọi điểm AP đến BA đã chốt, xem [cuối file](#quyết-định-đã-chốt). Đã làm: M20 (xem [Kết quả M20](#kết-quả-m20)); M19, M21–M23 chưa code.
 
 ## Bối cảnh
 
@@ -119,6 +119,41 @@ Client không bao giờ gửi `Instance`, tên hay chữ tự do; chỉ gửi s�
 ### Test
 
 - Lune: `GameSession` với `setSize` 4 (chia, thua, snapshot đi và về); `Generator` 4 khối (đủ số khối, các mức công bằng vẫn đúng, thời gian chia); `CoopSession` (quyền đặt theo chỗ, đặt hộ sau `release`, `countedScore` đứng yên sau `release`, đóng góp cộng lại bằng điểm đội, luật thua khi chỉ một bên còn nước).
+
+### Kết quả M20
+
+- **`GameSession` và `Generator` nhận số khối mỗi bộ.** `GameSession.new(setSource, initialBoard?, setSize?)` giữ `setSize` thành trường của session; `fromSnapshot` lấy cỡ bộ từ độ dài `tray` của snapshot (snapshot Coop có `tray` dài 4, dạng snapshot không đổi). `Generator.nextSet(…, setSize?, overrides?)` và `newSource(rng, setSize?, overrides?)`; bộ dự phòng toàn Chấm cũng theo cỡ bộ, `MAX_HUGE_PER_SET` vẫn là 1. Mặc định vẫn 3 và thứ tự rút ngẫu nhiên không đổi (cùng seed ra đúng bộ cũ, có test). **173 test cũ pass không sửa**: không spec cũ nào bị đụng, `tests/run.luau` chỉ thêm 3 dòng đăng ký spec mới.
+- **`CoopSession`** (`src/shared/CoopSession.luau`, dùng chung hai phía): `new`, `fromSnapshot`, `snapshot`, `receiveSet`, `seatOf(slot)`, `slotsOf(seat)`, `canPlace`, `place(seat, slot, x, y)`, `release(seat)`, `countedScore`, `contribution`, và `newSource(rng)` (4 khối, dùng `Config.COOP.GENERATOR`). Quy tắc đúng như plan: chỗ 1 giữ ô 1–2, chỗ 2 giữ ô 3–4; sau `release` người ở lại đặt được mọi ô, người rời không đặt được gì; `countedScore` đi theo `score` khi còn đủ hai người rồi đứng yên (lần `release` thứ hai không đổi nó); `contribution[1] + contribution[2]` luôn bằng điểm đội; luật thua giữ nguyên của `GameSession` (hết cả bốn khối vừa mới thua).
+- **Khác plan (nhỏ, cho M21 dùng):**
+  - Snapshot **lồng**: `{ game = <snapshot GameSession>, present, countedScore, contribution }` thay vì dàn phẳng, để không chép lại 11 trường của `GameSession.Snapshot`.
+  - Thêm `GameSession.hasPlacement(slot)` (phép thử mà game over dùng) và `CoopSession.hasMove(seat)`: "người này có khối của mình đặt vừa không". M21 cần cho điều kiện nút Take over (bạn chơi còn nước, mình hết nước).
+  - `Config.COOP = { SET_SIZE = 4, GENERATOR = { SOLVER_NODE_BUDGET = 500 } }`. `Generator.Overrides` cho ghi đè bốn số (`DIFFICULTY_MAX_SCORE`, `WHOLE_SET_BELOW_SCORE`, `EACH_PIECE_BELOW_SCORE`, `SOLVER_NODE_BUDGET`); Coop chỉ cần đổi trần node, ba số kia giữ nguyên.
+- **Độ khó** (bot tham lam, không hồi sinh vì Coop chưa có hồi sinh; 200 ván mỗi bên, một bot điều khiển cả hai chỗ):
+
+| | Trung vị số nước | Trung vị điểm | Chạm 1500 | Chạm 5000 |
+|---|---|---|---|---|
+| Solo (3 khối) | 86 | 1793 | 56% | 12% |
+| Coop (4 khối) | 94 | 1765 | 56% | 16% |
+
+  Ván Coop dài **109%** ván solo, trong mục tiêu ±30%, nên **không phải đụng tới ba ngưỡng độ khó**. Giới hạn của phép đo: không hồi sinh thì bot chết quanh 1.700 điểm, nên vùng điểm cao (từ 5000) chỉ có 12–16% ván chạm tới. Số liệu ở đó mỏng; đánh giá lại khi có người chơi thật.
+- **Thời gian chia bộ** (đo trong ván bot thật và trên bảng ngẫu nhiên đông đặc): bộ 4 khối trung bình chỉ 0,02–0,08 ms (solo 0,01–0,03), nhưng đuôi dài hơn hẳn. Với trần mặc định 20000, khoảng **1 đến 2 lần trên 1.000 lần chia vượt 5 ms và lần chậm nhất 9–49 ms** (solo chậm nhất 1–2 ms). Plan nói hạ trần nếu vượt vài ms, nên đã quét trần node trên 800 ván bot:
+
+| Trần node (4 khối) | Chia bộ chậm nhất | Số lần > 2 ms | Trung vị ván bot (điểm / nước) |
+|---|---|---|---|
+| 20000 (mặc định) | 9,1 ms | 18 / 22.860 | 1595 / 87 |
+| 1000 | 3,6 ms | 3 / 23.003 | 1603 / 87 |
+| **500 (chọn)** | **2,8 ms** | **1 / 23.230** | **1682 / 91** |
+| 250 | 1,5 ms | 0 / 23.440 | 1740 / 91 |
+| 100 | 2,3 ms | 1 / 24.306 | 1959 / 102 |
+
+  Chọn **500**: đuôi giảm ít nhất khoảng 3 lần mà ván bot chỉ dài hơn khoảng 5% (từ 250 trở xuống bộ dễ dần, ở 100 ván dài hơn 17%). Hạ trần **không** làm yếu cam kết công bằng: trần cạn thì bộ bị coi là chưa chứng minh được và rút lại, không bao giờ nhận bộ không đặt được. Tỉ lệ bộ toàn khối nhỏ giữ nguyên (0,82%) và bộ toàn Chấm là 0,004%, nên trần thấp không làm bộ khối dự phòng xuất hiện nhiều hơn. Máy này nhiễu: cùng cấu hình, chậm nhất lệch tới ×3 giữa các lần chạy, nên bảng chỉ để so sánh tương đối. Test `Co-op nextSet` chỉ báo lỗi khi tệ nhất vượt 50 ms.
+- **Test:** **207 pass** (thêm 34: `SetSize` 16, `CoopSession` 15, `CoopSimulation` 3). `SetSize` gồm `GameSession` với bộ 4 (chia, chỉ làm mới khi đủ 4, thua, snapshot đi và về, nguồn chờ) và `Generator` 4 khối (đủ số khối, mức công bằng đúng trên 4.000 bảng ngẫu nhiên, khớp tìm kiếm vét cạn, ghi đè, thời gian). `CoopSimulation` có bot tham lam chơi 200 ván solo và Coop (kiểm bất biến sau mỗi nước), 200 ván có một người rời giữa ván (người rời không đặt được gì, `countedScore` đứng yên), và 100 ván client giả theo server từng nước kể cả khi có người rời: **12.226 nước, 2.983 bộ giao, 48 người rời, không lệch**. Phần lockstep Coop đầy đủ (tin đến trễ, xung đột) vẫn là của M21. Test bot nằm trong `CoopSimulation.spec` chứ không thêm vào `Simulation.spec` để spec cũ giữ nguyên; bot là bản sao có thay `linesCompleted` bằng `Board.previewLines`.
+- **Công cụ:** `stylua src tests` sạch, `selene src` sạch, ba spec mới cũng sạch khi lint. `selene tests` còn 12 lỗi có sẵn từ trước (`assert` một tham số trong các spec cũ), không đụng tới.
+- **Chưa kiểm tra được:** kiểm kiểu `--!strict`. Repo không có luau-lsp hay luau-analyze và Lune không kiểm kiểu, nên các file mới mới chỉ chạy được, chưa được trình kiểm kiểu duyệt; sẽ biết khi Rojo sync vào Studio ở M21. Chưa có gì trên màn hình, đúng như mốc.
+- **Giới hạn đã biết:**
+  - Số liệu độ khó chỉ từ bot, chưa từ người chơi thật; bot chơi một mình điều khiển cả hai chỗ nên không có xung đột thả đè nhau.
+  - `CoopSession` chưa có xoay và hồi sinh (M23). `GameSession.rotate` vẫn dùng bộ đếm lượt miễn phí chung của phiên, cần đổi sang "ví" theo người khi tới M23.
+  - `hasMove` dựa trên `hasPlacement` nên đã tính cả khối đã mở khóa xoay; M23 không cần sửa chỗ này.
 
 ## M21: Ván Coop
 

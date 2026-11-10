@@ -86,6 +86,19 @@ local Config = {
 		FALLBACK_ATTEMPTS = 10, -- small-only draws before dealing three dots
 		SOLVER_NODE_BUDGET = 20000, -- placements the whole-set check may try before giving up
 	}),
+
+	-- Co-op (see CoopSession): two players share one board and take two pieces each from every set of four.
+	COOP = table.freeze({
+		SET_SIZE = 4,
+
+		-- Replaces numbers in GENERATOR for Co-op's sets (Generator.Overrides). Proving that all four pieces can be
+		-- placed takes much longer than for three: one or two deals in a thousand took over 5 ms, the slowest 10 to
+		-- 50 ms. A budget of 500 placements cuts the slowest to about 3 to 10 ms and makes bot games about 5% longer
+		-- (measured with tests/CoopSimulation.spec; see docs/PHASE5.md, "Kết quả M20").
+		GENERATOR = table.freeze({
+			SOLVER_NODE_BUDGET = 500,
+		}),
+	}),
 }
 
 return table.freeze(Config)

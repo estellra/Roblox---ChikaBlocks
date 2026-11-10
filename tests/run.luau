@@ -25,6 +25,9 @@ local specs = {
 	require("./Leaderboards.spec"),
 	require("./Purchases.spec"),
 	require("./Erasure.spec"),
+	require("./SetSize.spec"),
+	require("./CoopSession.spec"),
+	require("./CoopSimulation.spec"),
 }
 
 for _, spec in specs do

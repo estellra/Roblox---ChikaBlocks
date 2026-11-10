@@ -19,6 +19,13 @@ type Rng = Rng.Rng
 export type DealReason = "Normal" | "Revive"
 export type FairnessTier = "WholeSet" | "EachPiece" | "AnyPiece"
 export type GroupShares = { [SizeGroup]: number }
+-- Replaces some of the numbers in Config.GENERATOR for one source of sets (Co-op tunes its own, see Config.COOP).
+export type Overrides = {
+	DIFFICULTY_MAX_SCORE: number?,
+	WHOLE_SET_BELOW_SCORE: number?,
+	EACH_PIECE_BELOW_SCORE: number?,
+	SOLVER_NODE_BUDGET: number?,
+}
 -- Returns the next set, or nil when it isn't available yet (the client waits for the server's).
 export type SetSource = (board: Board, score: number, reason: DealReason) -> { Piece }?
 
@@ -185,10 +192,10 @@ local function drawGroup(rng: Rng, shares: GroupShares, allowHuge: boolean): Siz
 	return lastWithShare -- floating point leftovers
 end
 
-local function drawSet(rng: Rng, shares: GroupShares): { Piece }
-	local set = table.create(Config.PIECES_PER_SET)
+local function drawSet(rng: Rng, shares: GroupShares, setSize: number): { Piece }
+	local set = table.create(setSize)
 	local hugeCount = 0
-	for i = 1, Config.PIECES_PER_SET do
+	for i = 1, setSize do
 		local group = drawGroup(rng, shares, hugeCount < SETTINGS.MAX_HUGE_PER_SET)
 		if group == "Huge" then
 			hugeCount += 1
@@ -199,9 +206,13 @@ local function drawSet(rng: Rng, shares: GroupShares): { Piece }
 	return set
 end
 
-local function meetsTier(rows: Rows, set: { Piece }, tier: FairnessTier): boolean
+local function pick(override: number?, default: number): number
+	return if override ~= nil then override else default
+end
+
+local function meetsTier(rows: Rows, set: { Piece }, tier: FairnessTier, nodeBudget: number): boolean
 	if tier == "WholeSet" then
-		return solvable(rows, set, SETTINGS.SOLVER_NODE_BUDGET)
+		return solvable(rows, set, nodeBudget)
 	elseif tier == "EachPiece" then
 		for _, piece in set do
 			if not fitsAnywhere(rows, piece) then
@@ -221,8 +232,9 @@ end
 local Generator = {}
 
 -- Normalized share of each size group for one draw.
-function Generator.groupShares(score: number, fillRatio: number): GroupShares
-	local t = math.clamp(score / SETTINGS.DIFFICULTY_MAX_SCORE, 0, 1)
+function Generator.groupShares(score: number, fillRatio: number, overrides: Overrides?): GroupShares
+	local maxScore = pick(overrides and overrides.DIFFICULTY_MAX_SCORE, SETTINGS.DIFFICULTY_MAX_SCORE)
+	local t = math.clamp(score / maxScore, 0, 1)
 	local shares: GroupShares = {}
 	local total = 0
 	for _, group in GROUPS do
@@ -240,10 +252,12 @@ function Generator.groupShares(score: number, fillRatio: number): GroupShares
 	return shares
 end
 
-function Generator.fairnessTier(score: number, reason: DealReason): FairnessTier
-	if reason == "Revive" or score < SETTINGS.WHOLE_SET_BELOW_SCORE then
+function Generator.fairnessTier(score: number, reason: DealReason, overrides: Overrides?): FairnessTier
+	local wholeSetBelow = pick(overrides and overrides.WHOLE_SET_BELOW_SCORE, SETTINGS.WHOLE_SET_BELOW_SCORE)
+	local eachPieceBelow = pick(overrides and overrides.EACH_PIECE_BELOW_SCORE, SETTINGS.EACH_PIECE_BELOW_SCORE)
+	if reason == "Revive" or score < wholeSetBelow then
 		return "WholeSet"
-	elseif score < SETTINGS.EACH_PIECE_BELOW_SCORE then
+	elseif score < eachPieceBelow then
 		return "EachPiece"
 	end
 	return "AnyPiece"
@@ -253,31 +267,42 @@ function Generator.isSetSolvable(board: Board, pieces: { Piece }, nodeBudget: nu
 	return solvable(toRows(board), pieces, nodeBudget or SETTINGS.SOLVER_NODE_BUDGET)
 end
 
-function Generator.nextSet(board: Board, score: number, rng: Rng, reason: DealReason): { Piece }
-	local tier = Generator.fairnessTier(score, reason)
+-- `setSize` is how many pieces the set holds (default Config.PIECES_PER_SET; Co-op deals 4). `overrides` replaces
+-- some of the numbers in Config.GENERATOR.
+function Generator.nextSet(
+	board: Board,
+	score: number,
+	rng: Rng,
+	reason: DealReason,
+	setSize: number?,
+	overrides: Overrides?
+): { Piece }
+	local size = setSize or Config.PIECES_PER_SET
+	local nodeBudget = pick(overrides and overrides.SOLVER_NODE_BUDGET, SETTINGS.SOLVER_NODE_BUDGET)
+	local tier = Generator.fairnessTier(score, reason, overrides)
 	local rows = toRows(board)
 	-- A revive should feel like a fresh start, so it draws with the easy shares.
-	local shares = Generator.groupShares(if reason == "Revive" then 0 else score, Board.fillRatio(board))
+	local shares = Generator.groupShares(if reason == "Revive" then 0 else score, Board.fillRatio(board), overrides)
 
 	for _ = 1, SETTINGS.MAX_ATTEMPTS do
-		local set = drawSet(rng, shares)
-		if meetsTier(rows, set, tier) then
+		local set = drawSet(rng, shares, size)
+		if meetsTier(rows, set, tier, nodeBudget) then
 			return set
 		end
 	end
 	for _ = 1, SETTINGS.FALLBACK_ATTEMPTS do
-		local set = drawSet(rng, SMALL_ONLY)
-		if meetsTier(rows, set, tier) then
+		local set = drawSet(rng, SMALL_ONLY, size)
+		if meetsTier(rows, set, tier, nodeBudget) then
 			return set
 		end
 	end
 	-- Always placeable: full lines are cleared after every move, so each row keeps at least one empty cell.
-	return table.create(Config.PIECES_PER_SET, Pieces.BY_ID.Dot)
+	return table.create(size, Pieces.BY_ID.Dot)
 end
 
-function Generator.newSource(rng: Rng): SetSource
+function Generator.newSource(rng: Rng, setSize: number?, overrides: Overrides?): SetSource
 	return function(board: Board, score: number, reason: DealReason): { Piece }?
-		return Generator.nextSet(board, score, rng, reason)
+		return Generator.nextSet(board, score, rng, reason, setSize, overrides)
 	end
 end
 

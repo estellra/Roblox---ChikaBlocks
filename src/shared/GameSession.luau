@@ -16,8 +16,6 @@ type Piece = Pieces.Piece
 type DealReason = Generator.DealReason
 type SetSource = Generator.SetSource
 
-local SET_SIZE = Config.PIECES_PER_SET
-
 export type PlaceResult = {
 	slot: number,
 	piece: Piece,
@@ -43,7 +41,7 @@ export type RotateResult = {
 -- Plain-data copy of a session, safe to send through a remote.
 export type Snapshot = {
 	cells: { number },
-	tray: { string | false }, -- piece ids
+	tray: { string | false }, -- piece ids; one entry per slot, so its length is the set size
 	unlocked: { boolean }, -- slots whose piece has been paid to rotate (it turns freely until placed)
 	freeRotations: number, -- free rotations left in this run
 	score: number,
@@ -61,6 +59,7 @@ GameSession.__index = GameSession
 export type GameSession = typeof(setmetatable(
 	{} :: {
 		board: Board,
+		setSize: number, -- pieces per set: Config.PIECES_PER_SET for a solo run, more for Co-op
 		tray: { Piece | false }, -- false marks a slot already played this set
 		unlocked: { boolean },
 		freeRotations: number,
@@ -75,12 +74,18 @@ export type GameSession = typeof(setmetatable(
 	GameSession
 ))
 
-local function emptyTray(): { Piece | false }
-	return table.create(SET_SIZE, false) :: any
+local function emptyTray(setSize: number): { Piece | false }
+	return table.create(setSize, false) :: any
 end
 
-local function lockedSlots(): { boolean }
-	return table.create(SET_SIZE, false)
+local function lockedSlots(setSize: number): { boolean }
+	return table.create(setSize, false)
+end
+
+local function checkSetSize(setSize: number)
+	if setSize ~= math.floor(setSize) or setSize < 1 then
+		error(`set size must be a positive integer, got {setSize}`)
+	end
 end
 
 -- Whether the piece fits somewhere in the orientation it has now, or (once its rotation is paid for) in any.
@@ -97,21 +102,21 @@ end
 
 local function deal(session: GameSession, reason: DealReason)
 	local set = session.setSource(session.board, session.score, reason)
-	local tray = emptyTray()
+	local tray = emptyTray(session.setSize)
 	if set == nil then
 		session.tray = tray
-		session.unlocked = lockedSlots()
+		session.unlocked = lockedSlots(session.setSize)
 		session.awaitingSet = true
 		return
 	end
-	if #set ~= SET_SIZE then
-		error(`set source returned {#set} pieces, expected {SET_SIZE}`)
+	if #set ~= session.setSize then
+		error(`set source returned {#set} pieces, expected {session.setSize}`)
 	end
 	for i, piece in set do
 		tray[i] = piece
 	end
 	session.tray = tray
-	session.unlocked = lockedSlots()
+	session.unlocked = lockedSlots(session.setSize)
 	session.awaitingSet = false
 end
 
@@ -138,15 +143,19 @@ local function isTrayEmpty(session: GameSession): boolean
 	return true
 end
 
-local function isSlot(value: unknown): boolean
-	return typeof(value) == "number" and value == math.floor(value) and value >= 1 and value <= SET_SIZE
+local function isSlot(session: GameSession, value: unknown): boolean
+	return typeof(value) == "number" and value == math.floor(value) and value >= 1 and value <= session.setSize
 end
 
-function GameSession.new(setSource: SetSource, initialBoard: Board?): GameSession
+-- `setSize` is how many pieces each set holds (default Config.PIECES_PER_SET); Co-op deals 4.
+function GameSession.new(setSource: SetSource, initialBoard: Board?, setSize: number?): GameSession
+	local size = setSize or Config.PIECES_PER_SET
+	checkSetSize(size)
 	local self = setmetatable({
 		board = if initialBoard then Board.clone(initialBoard) else Board.new(),
-		tray = emptyTray(),
-		unlocked = lockedSlots(),
+		setSize = size,
+		tray = emptyTray(size),
+		unlocked = lockedSlots(size),
 		freeRotations = Config.FREE_ROTATIONS_PER_RUN,
 		score = 0,
 		combo = Scoring.newCombo(),
@@ -161,24 +170,28 @@ function GameSession.new(setSource: SetSource, initialBoard: Board?): GameSessio
 	return self
 end
 
--- Rebuilds a session from snapshot() output (e.g. the server's state, received by the client).
+-- Rebuilds a session from snapshot() output (e.g. the server's state, received by the client). The set size is
+-- the length of the snapshot's tray.
 function GameSession.fromSnapshot(snapshot: Snapshot, setSource: SetSource): GameSession
 	if #snapshot.cells ~= Config.GRID_SIZE * Config.GRID_SIZE then
 		error(`snapshot has {#snapshot.cells} cells`)
 	end
-	local tray = emptyTray()
-	for i = 1, SET_SIZE do
+	local setSize = #snapshot.tray
+	checkSetSize(setSize)
+	local tray = emptyTray(setSize)
+	for i = 1, setSize do
 		local id = snapshot.tray[i]
 		if id then
 			tray[i] = Pieces.BY_ID[id] or error(`snapshot has unknown piece {id}`)
 		end
 	end
-	local unlocked = lockedSlots()
-	for i = 1, SET_SIZE do
+	local unlocked = lockedSlots(setSize)
+	for i = 1, setSize do
 		unlocked[i] = snapshot.unlocked[i] == true
 	end
 	return setmetatable({
 		board = { cells = table.clone(snapshot.cells) },
+		setSize = setSize,
 		tray = tray,
 		unlocked = unlocked,
 		freeRotations = snapshot.freeRotations,
@@ -193,7 +206,7 @@ function GameSession.fromSnapshot(snapshot: Snapshot, setSource: SetSource): Gam
 end
 
 function GameSession.snapshot(self: GameSession): Snapshot
-	local tray: { string | false } = table.create(SET_SIZE)
+	local tray: { string | false } = table.create(self.setSize)
 	for i, piece in self.tray do
 		tray[i] = if piece then piece.id else false
 	end
@@ -214,26 +227,37 @@ end
 
 -- Fills an empty tray that is awaiting a set. Returns false (and changes nothing) otherwise.
 function GameSession.receiveSet(self: GameSession, pieces: { Piece }): boolean
-	if not self.awaitingSet or #pieces ~= SET_SIZE then
+	if not self.awaitingSet or #pieces ~= self.setSize then
 		return false
 	end
-	local tray = emptyTray()
+	local tray = emptyTray(self.setSize)
 	for i, piece in pieces do
 		tray[i] = piece
 	end
 	self.tray = tray
-	self.unlocked = lockedSlots()
+	self.unlocked = lockedSlots(self.setSize)
 	self.awaitingSet = false
 	refreshGameOver(self)
 	return true
 end
 
 function GameSession.canPlace(self: GameSession, slot: unknown, x: unknown, y: unknown): boolean
-	if self.isOver or not isSlot(slot) or typeof(x) ~= "number" or typeof(y) ~= "number" then
+	if self.isOver or not isSlot(self, slot) or typeof(x) ~= "number" or typeof(y) ~= "number" then
 		return false
 	end
 	local piece = self.tray[slot :: number]
 	return piece ~= false and Board.canPlace(self.board, piece, x, y)
+end
+
+-- Whether the piece in `slot` fits somewhere on the board: as it lies, or turned any way once its rotation is paid for.
+-- This is the test game over is made of: the run ends when no slot has a placement.
+function GameSession.hasPlacement(self: GameSession, slot: unknown): boolean
+	if not isSlot(self, slot) then
+		return false
+	end
+	local slotIndex = slot :: number
+	local piece = self.tray[slotIndex]
+	return piece ~= false and canFit(self.board, piece, self.unlocked[slotIndex])
 end
 
 function GameSession.place(self: GameSession, slot: unknown, x: unknown, y: unknown): PlaceResult?
@@ -285,7 +309,7 @@ end
 -- result says "paid"). After that the piece turns freely until it is placed. Nil, and nothing changes, when the
 -- piece looks the same turned, the run is over, or the player can't pay.
 function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unknown): RotateResult?
-	if self.isOver or self.awaitingSet or not isSlot(slot) then
+	if self.isOver or self.awaitingSet or not isSlot(self, slot) then
 		return nil
 	end
 	local slotIndex = slot :: number
