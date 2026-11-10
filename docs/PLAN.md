@@ -134,9 +134,11 @@ Kế hoạch chi tiết: [PHASE3.md](PHASE3.md)
 - [ ] Vật phẩm limited theo sự kiện.
 
 ### Giai đoạn 5: Coop 2 người
-- [ ] Hai người dùng chung một bảng, mỗi người 2 khối. Chỉ khi cả hai đặt hết thì mới sinh bộ khối tiếp theo.
-- [ ] Server giữ trạng thái chung. Mời bạn trong cùng server.
-- [ ] Leaderboard riêng cho Coop.
+Kế hoạch chi tiết (đã duyệt): [PHASE5.md](PHASE5.md)
+
+- [ ] Hai người dùng chung một bảng, mỗi người 2 khối, đặt tự do cùng lúc. Chỉ khi cả hai đặt hết thì mới sinh bộ khối tiếp theo.
+- [ ] Server giữ trạng thái chung. Mời bạn trong cùng server. Một người rời thì người kia chơi tiếp, điểm Coop chốt tại lúc đó.
+- [ ] Leaderboard riêng cho Coop, xếp theo cặp.
 
 ### Giai đoạn 6: PVP Ranked
 - [ ] Chốt luật PVP (xem câu hỏi mở).
@@ -161,5 +163,5 @@ Các câu hỏi này không chặn Giai đoạn 0–1, nhưng cần trả lời 
 3. **Giá Robux** (trước GĐ2–3): hồi sinh lần 1 và lần 2, xoay khối, các mức donate.
 4. **Publish dưới tài khoản cá nhân hay Group?** (trước GĐ2): nếu 2 người chia doanh thu thì nên dùng Group.
 5. **Quà theo mốc:** đã chốt. Mốc highscore và mốc level đều tặng danh hiệu kèm badge; thêm cosmetic từ GĐ4 (xem quyết định W trong [PHASE3.md](PHASE3.md)).
-6. **Luật PVP** (trước GĐ6): cùng seed và đua điểm trong 2–3 phút, hay xóa hàng để "tấn công" đẩy khối rác sang bảng đối thủ?
+6. **Luật PVP** (trước GĐ6): cùng seed và đua điểm trong 2–3 phút, hay xóa hàng để "tấn công" đẩy khối rác sang bảng đối thủ? Vẫn chưa chốt khi lên plan GĐ5, nên GĐ5 chỉ dựng phần dùng chung chắc chắn (lời mời và phòng 2 người).
 7. **Lore** (tùy chọn): viết một câu chuyện ngắn cho linh vật mới.
