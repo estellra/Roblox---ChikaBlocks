@@ -1,5 +1,5 @@
 --!strict
--- The bar above the board: pause button, score, best score and combo. In landscape it sits on a card in the
+-- The bar above the board: pause button, score, best score (in Co-op: who the player is with) and combo. In landscape it sits on a card in the
 -- side column; in portrait it floats on the sky across the top. All sizes are shares of the HUD area, so it
 -- keeps its proportions on any screen. The score counts up to each new value instead of jumping.
 local TweenService = game:GetService("TweenService")
@@ -62,6 +62,17 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		Text = "0",
 	}, { create("UITextSizeConstraint", { MinTextSize = SCORE_MIN, MaxTextSize = SCORE_MAX }) })
 
+	local caption = create("TextLabel", {
+		Name = "Caption",
+		LayoutOrder = 1,
+		Size = UDim2.fromScale(1, 0.26),
+		BackgroundTransparency = 1,
+		FontFace = fonts.Label,
+		TextScaled = true,
+		TextColor3 = colors.TextMuted,
+		Text = "SCORE",
+	}, { create("UITextSizeConstraint", { MinTextSize = 10, MaxTextSize = 16 }) })
+
 	local scoreCounter = create("NumberValue", {})
 	scoreCounter:GetPropertyChangedSignal("Value"):Connect(function()
 		scoreLabel.Text = Format.withCommas(math.round(scoreCounter.Value))
@@ -78,16 +89,7 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 		}),
-		create("TextLabel", {
-			Name = "Caption",
-			LayoutOrder = 1,
-			Size = UDim2.fromScale(1, 0.26),
-			BackgroundTransparency = 1,
-			FontFace = fonts.Label,
-			TextScaled = true,
-			TextColor3 = colors.TextMuted,
-			Text = "SCORE",
-		}, { create("UITextSizeConstraint", { MinTextSize = 10, MaxTextSize = 16 }) }),
+		caption,
 		scoreLabel,
 	})
 	local scorePop = create("UIScale", { Parent = scoreBlock })
@@ -151,6 +153,8 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		scoreCounter = scoreCounter,
 		scoreTween = nil,
 		score = 0,
+		caption = caption,
+		partner = nil,
 		bestPill = bestPill,
 		comboPill = comboPill,
 		comboPop = comboPop,
@@ -191,10 +195,23 @@ function HudBar.setScore(self: HudBar, score: number, best: number)
 			self.scoreCounter.Value = score -- a new run starts from where it is, at once
 		end
 	end
-	local bestText = Format.withCommas(best)
+	local bestText = if self.partner then `With {self.partner}` else Format.withCommas(best)
 	local bestLabel = Clay.pillLabel(self.bestPill)
 	if bestLabel.Text ~= bestText then
 		bestLabel.Text = bestText
+	end
+end
+
+-- In Co-op the score is the team's and the best-score pill says who the player is with; nil goes back to solo.
+function HudBar.setPartner(self: HudBar, name: string?)
+	self.partner = name
+	self.caption.Text = if name then "TEAM SCORE" else "SCORE"
+	local icon = self.bestPill:FindFirstChild("Icon") :: ImageLabel?
+	if icon then
+		icon.Visible = name == nil
+	end
+	if name then
+		Clay.pillLabel(self.bestPill).Text = `With {name}`
 	end
 end
 

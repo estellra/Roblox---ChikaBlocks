@@ -15,6 +15,7 @@ local SupportController = require("./SupportController")
 local MenuController = {}
 
 local menu: MenuView.MenuView? = nil
+local leaving = false -- the menu and its screens are being closed for a game: closing one must not bring the menu back
 
 -- Leaves the menu and starts a run: `mode` if given, otherwise the tutorial until it has been done once.
 function MenuController.play(mode: GameController.RunMode?)
@@ -32,7 +33,7 @@ local function refresh(view: MenuView.MenuView)
 end
 
 function MenuController.show()
-	if not menu then
+	if not menu or leaving then
 		return
 	end
 	refresh(menu) -- the best may have gone up during the last run
@@ -43,6 +44,17 @@ function MenuController.hide()
 	if menu then
 		menu:hide()
 	end
+end
+
+-- A game starts that the player didn't ask for from the menu (a Co-op invitation was accepted): the menu and
+-- whatever screen is open from it go away.
+function MenuController.leaveForGame()
+	leaving = true
+	LeaderboardController.close()
+	SupportController.close()
+	CoopController.dismiss()
+	leaving = false
+	MenuController.hide()
 end
 
 -- Swaps the menu for the leaderboard screen; going back brings the menu back.

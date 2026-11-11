@@ -22,6 +22,7 @@ local MAX_PIECE_CELLS = 9
 local PLACE_START_SCALE = 0.72 -- a placed cell grows from this
 local LINE_START_SCALE = 0.86 -- a line lighting up grows from this
 local PUNCH_SCALE = 1.02 -- how far the board swells on a big clear
+local ACCENT_THICKNESS = 5 -- the outline of a piece that was just placed by the partner
 
 local BoardView = {}
 BoardView.__index = BoardView
@@ -38,6 +39,10 @@ export type BoardView = typeof(setmetatable(
 		ghostGroup: Frame, -- holds the ghosts; moving it moves the whole ghost in one tween
 		ghostTween: Tween?,
 		ghostShown: boolean,
+		aimGroup: Frame, -- the partner's shadow: holds its cells, moving it moves the whole shadow
+		aimCells: { Frame },
+		aimTween: Tween?,
+		aimShown: boolean,
 		effects: Frame,
 		highlighted: { number }, -- cells the preview painted, to restore later
 		punch: UIScale,
@@ -83,6 +88,7 @@ end
 function BoardView.new(parent: GuiObject): BoardView
 	local padding = Theme.Spacing.BoardPadding
 	local grid = layer("Grid", 1)
+	local aimLayer = layer("PartnerAim", 2) -- drawn before the ghosts: the player's own ghost stays on top
 	local ghostLayer = layer("Ghosts", 2)
 	local effects = layer("Effects", 3)
 
@@ -110,6 +116,28 @@ function BoardView.new(parent: GuiObject): BoardView
 		ghost.Visible = false
 		ghost.Parent = ghostGroup
 		ghosts[i], ghostBlocks[i] = ghost, block
+	end
+
+	-- The Co-op partner's shadow: the cells of the piece they hold, outlined in their color, where it would land.
+	local aimGroup = create("Frame", {
+		Name = "AimGroup",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Parent = aimLayer,
+	})
+	local aimCells: { Frame } = table.create(MAX_PIECE_CELLS)
+	for i = 1, MAX_PIECE_CELLS do
+		local cell, block = cellWithBlock(`Aim{i}`, 0, 0, {
+			BackgroundColor3 = Theme.Colors.Title,
+			BackgroundTransparency = Theme.Transparency.PartnerAim,
+		})
+		local edge = block:FindFirstChild("Edge") :: UIStroke
+		edge.Color = Theme.Colors.Title
+		edge.Thickness = 3
+		edge.Enabled = true
+		cell.Visible = false
+		cell.Parent = aimGroup
+		aimCells[i] = cell
 	end
 
 	local noMovesLabel = create("TextLabel", {
@@ -154,6 +182,7 @@ function BoardView.new(parent: GuiObject): BoardView
 			PaddingRight = padding,
 		}),
 		grid,
+		aimLayer,
 		ghostLayer,
 		effects,
 		noMoves,
@@ -171,6 +200,10 @@ function BoardView.new(parent: GuiObject): BoardView
 		ghostGroup = ghostGroup,
 		ghostTween = nil,
 		ghostShown = false,
+		aimGroup = aimGroup,
+		aimCells = aimCells,
+		aimTween = nil,
+		aimShown = false,
 		effects = effects,
 		highlighted = {},
 		punch = punch,
@@ -253,6 +286,43 @@ function BoardView.clearPreview(self: BoardView)
 	table.clear(self.highlighted)
 end
 
+-- Shows where the Co-op partner is holding `piece` over the board: its cells outlined in their color at (x, y), the
+-- piece's top left. Calling it again moves the shadow.
+function BoardView.showPartnerAim(self: BoardView, piece: Piece, x: number, y: number)
+	for i, cell in self.aimCells do
+		local source = piece.cells[i]
+		cell.Visible = source ~= nil
+		if source then
+			cell.Position = UDim2.fromScale(source.x / SIZE, source.y / SIZE)
+		end
+	end
+	if self.aimTween then
+		self.aimTween:Cancel()
+		self.aimTween = nil
+	end
+	local target = UDim2.fromScale(x / SIZE, y / SIZE)
+	if self.aimShown then
+		local glide = TweenInfo.new(Theme.Motion.GhostGlide, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local tween = TweenService:Create(self.aimGroup, glide, { Position = target })
+		self.aimTween = tween
+		tween:Play()
+	else
+		self.aimGroup.Position = target
+	end
+	self.aimShown = true
+end
+
+function BoardView.clearPartnerAim(self: BoardView)
+	for _, cell in self.aimCells do
+		cell.Visible = false
+	end
+	if self.aimTween then
+		self.aimTween:Cancel()
+		self.aimTween = nil
+	end
+	self.aimShown = false
+end
+
 -- Cleared cells go in a wave spreading out from where the piece landed: each one brightens, swells a little and
 -- shrinks away. The placed piece's surviving cells pop in one after the other, and a clear of two lines or more
 -- swells the whole board for a moment. Call before render(), while the board still shows the cells that are about
@@ -311,6 +381,23 @@ function BoardView.playMoveEffects(self: BoardView, result: GameSession.PlaceRes
 		self.punch.Scale = PUNCH_SCALE
 		local settle = TweenInfo.new(Theme.Motion.Punch, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		TweenService:Create(self.punch, settle, { Scale = 1 }):Play()
+	end
+end
+
+-- Outlines the cells of the piece just placed in `color` for a moment, so the player can tell who placed it (the
+-- partner's pieces in Co-op). Call after render(), when the board shows the piece; cells that were cleared are gone.
+function BoardView.accent(self: BoardView, result: GameSession.PlaceResult, color: Color3)
+	for _, cell in result.piece.cells do
+		local index = Board.index(result.x + cell.x, result.y + cell.y)
+		local value = self.shown[index]
+		if value ~= 0 and value ~= nil then
+			local edge = self.blocks[index]:FindFirstChild("Edge") :: UIStroke
+			local thickness = edge.Thickness
+			edge.Color = color
+			edge.Thickness = ACCENT_THICKNESS
+			local info = TweenInfo.new(Theme.Motion.Accent, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(edge, info, { Color = Theme.Colors.PieceOutlines[value], Thickness = thickness }):Play()
+		end
 	end
 end
 

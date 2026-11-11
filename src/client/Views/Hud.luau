@@ -1,7 +1,8 @@
 --!strict
 -- The top bar (see HudBar), gains floating over the board after line clears, and the two panels over the
 -- game: game over, with what the run earned (EXP bar, level up, new titles) once the server's RunRewards
--- arrive, and pause. Both panels share one overlay; only one is open at a time. A panel slides up as the
+-- arrive, and pause. A Co-op run uses the same panels with the team's score, each player's share and a Play
+-- again that waits for the partner, and a Take over button over the board for when the partner has gone idle. Both panels share one overlay; only one is open at a time. A panel slides up as the
 -- dimmer fades in; closing drops the panel at once, so the game answers right away, and the dimmer fades out.
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -55,6 +56,15 @@ export type Callbacks = {
 	onPause: () -> (),
 	onResume: () -> (),
 	onRevive: (() -> ())?, -- the Revive button (M8); nothing shows until setRevive() is given an offer
+	onTakeOver: (() -> ())?, -- the Take over button of a Co-op run
+}
+
+-- What the game over panel says about a finished Co-op run.
+export type CoopGameOver = {
+	score: number, -- the team's
+	shares: string, -- e.g. "You 1,234  ·  Alex 980"
+	note: string?, -- e.g. "Alex left: only 1,100 counts for Co-op"
+	canPlayAgain: boolean, -- the partner is still in the run
 }
 
 export type Hud = typeof(setmetatable(
@@ -220,6 +230,9 @@ function Hud.new(
 		finalScoreLabel.Text = Format.withCommas(math.round(finalCounter.Value))
 	end)
 	local finalBestPill = Clay.pill({ name = "Best", text = "Best 0", icon = Theme.Images.Crown, order = 5 })
+	local coopNote = label("CoopNote", "", fonts.Body, 14, colors.TextMuted, 7)
+	coopNote.TextWrapped = true
+	coopNote.Visible = false
 	local expLabel = label("Exp", "", fonts.Body, sizes.Label, colors.TextMuted, 1)
 	local expFill = create("Frame", {
 		Name = "Fill",
@@ -283,7 +296,7 @@ function Hud.new(
 	end
 	local info = column("Info", 1)
 	local choices = column("Choices", 2)
-	for _, child in { mascot, titleLabel, scoreCaption, finalScoreLabel, finalBestPill, rewards } do
+	for _, child in { mascot, titleLabel, scoreCaption, finalScoreLabel, finalBestPill, rewards, coopNote } do
 		child.Parent = info
 	end
 	for _, child in { reviveRoot, reviveHint, restartRoot, menuRoot } do
@@ -323,6 +336,19 @@ function Hud.new(
 		pauseMenuRoot,
 	})
 
+	-- Over the board, for a Co-op player who is stuck while the partner is away.
+	local takeOverRoot = Clay.button({
+		name = "TakeOver",
+		text = "Take over",
+		style = "reward",
+		size = UDim2.new(0.8, 0, 0, 52 + lip),
+	})
+	takeOverRoot.AnchorPoint = Vector2.new(0.5, 1)
+	takeOverRoot.Position = UDim2.fromScale(0.5, 0.97)
+	takeOverRoot.ZIndex = 20
+	takeOverRoot.Visible = false
+	takeOverRoot.Parent = popupArea
+
 	local restartButton, menuButton = Clay.face(restartRoot), Clay.face(menuRoot)
 	local resumeButton = Clay.face(resumeRoot)
 	local pauseRestartButton, pauseMenuButton = Clay.face(pauseRestartRoot), Clay.face(pauseMenuRoot)
@@ -343,6 +369,12 @@ function Hud.new(
 		finalCounter = finalCounter,
 		finalTween = nil,
 		finalBestPill = finalBestPill,
+		scoreCaption = scoreCaption,
+		coopNote = coopNote,
+		restartRoot = restartRoot,
+		pauseRestartRoot = pauseRestartRoot,
+		takeOverRoot = takeOverRoot,
+		takeOverButton = Clay.face(takeOverRoot),
 		reviveRoot = reviveRoot,
 		reviveButton = Clay.face(reviveRoot),
 		reviveHint = reviveHint,
@@ -368,6 +400,12 @@ function Hud.new(
 				local onRevive = callbacks.onRevive
 				if onRevive then
 					onRevive()
+				end
+			end),
+			Clay.face(takeOverRoot).Activated:Connect(function()
+				local onTakeOver = callbacks.onTakeOver
+				if onTakeOver then
+					onTakeOver()
 				end
 			end),
 			resumeButton.Activated:Connect(callbacks.onResume),
@@ -478,6 +516,11 @@ function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boo
 	self.finalTween = tween
 	tween:Play()
 	Clay.pillLabel(self.finalBestPill).Text = `Best {Format.withCommas(best)}`
+	self.scoreCaption.Text = "SCORE"
+	self.coopNote.Visible = false
+	self.restartRoot.Visible = true
+	self.restartButton.Text = "Play again"
+	self.restartButton.Active = true
 	self.titleLabel.Text = if isNewBest then "New best!" else "No more moves!"
 	self.mascot.Image = if isNewBest then Theme.Images.MascotCheer else Theme.Images.MascotSad
 	self.layoutPanels()
@@ -491,6 +534,66 @@ function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boo
 				self.callbacks.onRestart()
 			end
 		end)
+	end
+end
+
+-- Opens the game over panel for a finished Co-op run: the team's score, each player's share, and Play again (only
+-- while the partner is still in the run).
+function Hud.showCoopGameOver(self: Hud, info: CoopGameOver)
+	if self.finalTween then
+		self.finalTween:Cancel()
+	end
+	self.finalCounter.Value = 0
+	self.finalScoreLabel.Text = "0"
+	local count = TweenInfo.new(Theme.Motion.FinalScoreCount, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(self.finalCounter, count, { Value = info.score })
+	self.finalTween = tween
+	tween:Play()
+	self.scoreCaption.Text = "TEAM SCORE"
+	Clay.pillLabel(self.finalBestPill).Text = info.shares
+	self.coopNote.Text = info.note or ""
+	self.coopNote.Visible = info.note ~= nil
+	self.titleLabel.Text = "No more moves!"
+	self.mascot.Image = Theme.Images.MascotSad
+	self.restartRoot.Visible = info.canPlayAgain
+	self.restartButton.Text = "Play again"
+	self.restartButton.Active = true
+	self.layoutPanels()
+	openOverlay(self, self.gameOverPanel)
+	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+		GuiService.SelectedObject = if info.canPlayAgain then self.restartButton else self.menuButton
+	end
+	if not self.keyConnection then
+		self.keyConnection = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+			if not processed and RESTART_KEYS[input.KeyCode] and self.restartRoot.Visible then
+				self.callbacks.onRestart()
+			end
+		end)
+	end
+end
+
+-- Says what pressing Play again did: "Waiting for Alex…" (and the button waits), "Alex wants to play again", or
+-- the plain "Play again".
+function Hud.setPlayAgain(self: Hud, text: string, enabled: boolean)
+	self.restartButton.Text = text
+	self.restartButton.Active = enabled
+end
+
+-- The partner's name in the bar and the Co-op pause panel (nil for a solo run).
+function Hud.setPartner(self: Hud, name: string?)
+	self.bar:setPartner(name)
+	self.pauseRestartRoot.Visible = name == nil -- a Co-op run has no restart: leaving is the other choice
+	self.pauseMenuButton.Text = if name then "Leave run" else "Menu"
+	if not name then
+		self:setTakeOver(nil)
+	end
+end
+
+-- Shows the Take over button with `text` over the board, or hides it (nil).
+function Hud.setTakeOver(self: Hud, text: string?)
+	self.takeOverRoot.Visible = text ~= nil
+	if text then
+		self.takeOverButton.Text = text
 	end
 end
 

@@ -5,6 +5,9 @@
 -- state replaces the local copy.
 -- Runs start on request (startRun, from the menu or "Play again"). Other controllers drive the game through
 -- tryPlace() and listen through the on* functions.
+-- A Co-op run has its own protocol (CoopRunController) but is drawn and played with the same views and controls:
+-- it attaches itself as the run's Source, and from then on this controller asks it for the session to draw,
+-- which pieces can be picked up and how a move is made, until it detaches.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -28,6 +31,20 @@ export type Views = {
 }
 
 export type RunMode = "normal" | "tutorial"
+
+-- What a Co-op run gives this controller in place of a solo run's own protocol.
+export type Source = {
+	session: () -> GameSession.GameSession, -- what to draw: the confirmed state with the player's unconfirmed moves on top
+	runId: () -> number,
+	canDrag: (slot: number) -> boolean, -- the player's pieces, or all of them once the partner is gone
+	tryPlace: (slot: unknown, x: unknown, y: unknown) -> GameSession.PlaceResult?,
+	tryRotate: (slot: unknown) -> boolean,
+	statusText: () -> string, -- the line under the tray: who the player waits for, or that the partner left
+	gameOver: () -> Hud.CoopGameOver,
+	leave: () -> (), -- Menu / Leave run
+	playAgain: () -> (),
+	takeOver: () -> (),
+}
 -- What the server sends with Profile (see GameService.Profile).
 export type Profile = {
 	best: number,
@@ -54,6 +71,8 @@ local CONFIRM_TIMEOUT_SECONDS = 2 -- ask for the full state if a move is still u
 local GameController = {}
 
 local session: GameSession.GameSession
+local source: Source? = nil -- the Co-op run being played, or nil for a solo run
+local gameOverPresented = false -- the game over panel is open or about to open
 local runId = 0 -- 0 until the server starts the first run
 local runMode: RunMode = "normal"
 local views: Views? = nil
@@ -85,15 +104,26 @@ local function noSet(_board: any, _score: number, _reason: any): { Pieces.Piece 
 	return nil
 end
 
+-- What is on screen: the Co-op run's, when one is attached, else the solo run's.
+local function current(): GameSession.GameSession
+	return if source then source.session() else session
+end
+
+local function activeRunId(): number
+	return if source then source.runId() else runId
+end
+
 -- Tells the tray which pieces can be turned: in a normal run that isn't over, those that look different turned.
+-- (A Co-op run has no turning yet.)
 local function refreshRotatable()
 	if not views then
 		return
 	end
-	local playing = runId > 0 and runMode == "normal" and not session.isOver
+	local shown = current()
+	local playing = source == nil and runId > 0 and runMode == "normal" and not shown.isOver
 	local rotatable: { boolean } = {}
-	for slot = 1, Config.PIECES_PER_SET do
-		local piece = session.tray[slot]
+	for slot = 1, shown.setSize do
+		local piece = shown.tray[slot]
 		rotatable[slot] = playing and piece and Pieces.canRotate(piece) or false
 	end
 	views.tray:setRotatable(rotatable)
@@ -103,13 +133,20 @@ local function render()
 	if not views then
 		return
 	end
-	views.board:render(session.board)
-	views.tray:render(session.tray)
+	local shown = current()
+	views.board:render(shown.board)
+	views.tray:render(shown.tray)
 	-- The tray is out of pieces and the server has not dealt the next set yet.
-	views.tray:setWaiting(runId > 0 and session.awaitingSet and not session.isOver)
+	views.tray:setWaiting(activeRunId() > 0 and shown.awaitingSet and not shown.isOver)
 	refreshRotatable()
-	views.hud:setScore(session.score, best)
-	views.hud:setCombo(session.combo.combo)
+	views.hud:setScore(shown.score, best)
+	views.hud:setCombo(shown.combo.combo)
+	if source then
+		-- The partner's pieces can be looked at but not picked up (until they have gone).
+		for slot = 1, shown.setSize do
+			views.tray:setLocked(slot, not source.canDrag(slot) and shown.tray[slot] ~= false)
+		end
+	end
 end
 
 -- Dims the board with "No moves left" right away, then opens the panel after `delaySeconds`, so the last
@@ -141,10 +178,15 @@ local function presentGameOver(delaySeconds: number)
 		return
 	end
 	gameOverToken += 1
+	gameOverPresented = true
 	local token = gameOverToken
 	views.board:setNoMoves(true)
 	task.delay(delaySeconds, function()
-		if token ~= gameOverToken or not views or not session.isOver then
+		if token ~= gameOverToken or not views or not current().isOver then
+			return
+		end
+		if source then
+			views.hud:showCoopGameOver(source.gameOver())
 			return
 		end
 		local isNewBest = bestBeforeRun > 0 and session.score > bestBeforeRun
@@ -158,6 +200,7 @@ end
 
 local function hideGameOver()
 	gameOverToken += 1
+	gameOverPresented = false
 	reviveOffer = nil
 	if views then
 		views.board:setNoMoves(false)
@@ -296,6 +339,11 @@ function GameController.start(_self: any)
 			onPause = GameController.pause,
 			onResume = GameController.resume,
 			onRevive = GameController.requestRevive,
+			onTakeOver = function()
+				if source then
+					source.takeOver()
+				end
+			end,
 		}),
 	}
 	local hud, tray = views.hud, views.tray
@@ -323,11 +371,18 @@ end
 
 -- "Play again": a normal run, also after the tutorial.
 function GameController.restart()
+	if source then
+		source.playAgain()
+		return
+	end
 	GameController.startRun("normal")
 end
 
 -- Closes the game over panel and asks for the main menu (MenuController listens).
 function GameController.requestMenu()
+	if source then
+		source.leave() -- leaves the room and detaches
+	end
 	hideGameOver()
 	notify(menuRequestedListeners)
 end
@@ -369,6 +424,9 @@ end
 -- it; the line under the tray already says what a pack costs). While a piece is in hand only that piece can be
 -- turned. Returns whether the piece turned.
 function GameController.tryRotate(slot: unknown): boolean
+	if source then
+		return source.tryRotate(slot)
+	end
 	local ui = views
 	if not ui or runId == 0 or runMode ~= "normal" then
 		return false
@@ -410,6 +468,9 @@ end
 -- A line for under the tray: how many rotations the player has, or what a pack costs when none are left.
 -- Empty when rotating isn't part of what is on screen (menu, tutorial, game over).
 function GameController.getRotationText(): string
+	if source then
+		return source.statusText()
+	end
 	if runId == 0 or runMode ~= "normal" or session.isOver then
 		return ""
 	end
@@ -432,7 +493,7 @@ end
 
 -- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.
 function GameController.pause()
-	if views and runId > 0 and not session.isOver then
+	if views and activeRunId() > 0 and not current().isOver then
 		views.hud:showPause()
 	end
 end
@@ -450,6 +511,9 @@ end
 -- Plays a move from the tray right away and sends it to the server. Returns nil (and changes nothing)
 -- when the move is invalid.
 function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSession.PlaceResult?
+	if source then
+		return source.tryPlace(slot, x, y)
+	end
 	local moveIndex = session.moveCount
 	local result = session:place(slot, x, y)
 	if result then
@@ -479,6 +543,92 @@ function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSes
 	return result
 end
 
+-- A Co-op run takes over the screen: the tray is rearranged (the player's two pieces and the partner's, small),
+-- the bar says who the player is with, and the run is asked for everything from now on.
+function GameController.attachSource(newSource: Source, tray: TrayView.Coop)
+	source = newSource
+	startToken += 1 -- a StartGame still waiting for its retry must not start a solo run over this
+	reviveOffer = nil
+	hideGameOver()
+	if views then
+		views.tray:configure(tray)
+		views.hud:setPartner(tray.partnerName)
+		views.hud:setRevive(nil)
+	end
+	render()
+	notify(sessionReplacedListeners)
+end
+
+-- The Co-op run is over for this player (they left, or were put out): back to the solo screen.
+function GameController.detachSource()
+	if not source then
+		return
+	end
+	source = nil
+	hideGameOver()
+	if views then
+		views.board:clearPartnerAim()
+		views.tray:configure(nil)
+		views.hud:setPartner(nil)
+		for slot = 1, Config.COOP.SET_SIZE do
+			views.tray:setLocked(slot, false) -- every piece of a solo run can be picked up
+		end
+	end
+	render()
+	notify(sessionReplacedListeners)
+end
+
+-- Shows the shadow of the piece the Co-op partner is holding over the board at (x, y), or removes it (no piece).
+function GameController.showPartnerAim(piece: Pieces.Piece?, x: number?, y: number?)
+	local ui = views
+	if not ui then
+		return
+	end
+	if piece and x and y and source then
+		ui.board:showPartnerAim(piece, x, y)
+	else
+		ui.board:clearPartnerAim()
+	end
+end
+
+-- The Co-op run's state was replaced wholesale (a start, a resync, the partner leaving).
+function GameController.sourceReplaced()
+	if not source then
+		return
+	end
+	hideGameOver()
+	GameController.showPartnerAim(nil)
+	render()
+	notify(sessionReplacedListeners)
+	if current().isOver then
+		presentGameOver(0)
+	end
+end
+
+-- The Co-op run's state changed by one move. `result` is that move: it is played out on the board, and the
+-- partner's gets a colored outline for a moment so the player can see who placed it.
+function GameController.sourceChanged(result: GameSession.PlaceResult?, mine: boolean)
+	local ui = views
+	if not ui or not source then
+		return
+	end
+	if result then
+		ui.board:playMoveEffects(result) -- needs the board as drawn before this move
+	end
+	render()
+	if result then
+		ui.hud:showGain(result)
+		if mine then
+			notify(movePlayedListeners, result)
+		else
+			ui.board:accent(result, Theme.Colors.Title)
+		end
+	end
+	if current().isOver and not gameOverPresented then
+		presentGameOver(Theme.Motion.GameOverDelay)
+	end
+end
+
 -- Called whenever the session is replaced (new run or resync), e.g. so an in-progress drag is cancelled.
 function GameController.onSessionReplaced(callback: () -> ())
 	table.insert(sessionReplacedListeners, callback)
@@ -506,11 +656,28 @@ function GameController.onMenuRequested(callback: () -> ())
 end
 
 function GameController.getSession(): GameSession.GameSession
-	return session
+	return current()
 end
 
 function GameController.getRunId(): number
-	return runId
+	return activeRunId()
+end
+
+-- Whether the piece in `slot` may be picked up (in Co-op, the partner's may not).
+function GameController.canDrag(slot: number): boolean
+	if source then
+		return source.canDrag(slot)
+	end
+	return slot >= 1 and slot <= Config.PIECES_PER_SET
+end
+
+-- How many pieces a set has in the run being played.
+function GameController.getSlotCount(): number
+	return if source then Config.COOP.SET_SIZE else Config.PIECES_PER_SET
+end
+
+function GameController.isCoop(): boolean
+	return source ~= nil
 end
 
 function GameController.getRunMode(): RunMode

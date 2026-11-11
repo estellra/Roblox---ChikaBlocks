@@ -117,6 +117,9 @@ function RoomService.init(_self: any)
 	rooms = Rooms.new({
 		clock = os.clock,
 		canPlay = function(player: any): boolean
+			if typeof(player) ~= "Instance" then
+				return (player :: any).IsBot == true -- the practice partner of the Studio debug bridge
+			end
 			local data = DataService.get(player :: Player)
 			return data ~= nil and data.tutorialDone
 		end,
@@ -219,6 +222,16 @@ end
 -- Takes the player out of their room, if they are in one.
 function RoomService.leave(player: Player): boolean
 	return rooms:leave(player)
+end
+
+-- For the Studio debug bridge: puts the player in a room with a practice partner (a table with UserId, Name and
+-- IsBot, which is not in Players and hears nothing). False when the player can't be invited.
+function RoomService.pairWithBot(player: Player, bot: any): boolean
+	local outcome = rooms:invite(player, bot, "coop")
+	if outcome.kind ~= "sent" then
+		return false
+	end
+	return rooms:reply(bot, outcome.inviteId, true).kind == "joined"
 end
 
 -- Publishes the player's status again, e.g. after the Studio debug bridge resets their data.

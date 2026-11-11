@@ -127,8 +127,8 @@ function CoopSession.receiveSet(self: CoopSession, pieces: { Piece }): boolean
 end
 
 -- Whether `seat` may place the piece in `slot`: they are still in the run, and the slot is theirs or the other
--- player has left.
-local function mayPlace(self: CoopSession, seat: unknown, slot: unknown): boolean
+-- player has left. (Whether there is a piece there, and whether it fits, is another matter.)
+function CoopSession.mayPlace(self: CoopSession, seat: unknown, slot: unknown): boolean
 	local owner = CoopSession.seatOf(slot)
 	if owner == nil or typeof(seat) ~= "number" or self.present[seat] ~= true then
 		return false
@@ -137,7 +137,7 @@ local function mayPlace(self: CoopSession, seat: unknown, slot: unknown): boolea
 end
 
 function CoopSession.canPlace(self: CoopSession, seat: unknown, slot: unknown, x: unknown, y: unknown): boolean
-	return mayPlace(self, seat, slot) and self.session:canPlace(slot, x, y)
+	return CoopSession.mayPlace(self, seat, slot) and self.session:canPlace(slot, x, y)
 end
 
 -- Places a piece for `seat`. Nil, and nothing changes, when the seat or slot is wrong or the move is invalid.
@@ -148,7 +148,7 @@ function CoopSession.place(
 	x: unknown,
 	y: unknown
 ): GameSession.PlaceResult?
-	if not mayPlace(self, seat, slot) then
+	if not CoopSession.mayPlace(self, seat, slot) then
 		return nil
 	end
 	local result = self.session:place(slot, x, y)
@@ -166,7 +166,7 @@ end
 -- Whether `seat` has a piece they may place that fits somewhere right now.
 function CoopSession.hasMove(self: CoopSession, seat: unknown): boolean
 	for slot = 1, SET_SIZE do
-		if mayPlace(self, seat, slot) and self.session:hasPlacement(slot) then
+		if CoopSession.mayPlace(self, seat, slot) and self.session:hasPlacement(slot) then
 			return true
 		end
 	end

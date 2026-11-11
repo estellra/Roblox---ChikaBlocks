@@ -29,6 +29,9 @@ local specs = {
 	require("./CoopSession.spec"),
 	require("./CoopSimulation.spec"),
 	require("./Rooms.spec"),
+	require("./CoopRuns.spec"),
+	require("./CoopSync.spec"),
+	require("./CoopLockstep.spec"),
 }
 
 for _, spec in specs do

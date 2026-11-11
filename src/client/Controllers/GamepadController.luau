@@ -22,7 +22,6 @@ local MenuController = require("./MenuController")
 type InputMode = "pointer" | "keyboard" | "gamepad"
 
 local SIZE = Config.GRID_SIZE
-local SLOTS = Config.PIECES_PER_SET
 local REPEAT_DELAY = 0.25 -- holding a direction repeats after this long...
 local REPEAT_INTERVAL = 0.08 -- ...then this often
 local STICK_THRESHOLD = 0.5
@@ -74,12 +73,14 @@ local function isKeyDragging(): boolean
 	return keyDrag
 end
 
--- Moves the selection to the next slot holding a piece, in direction `step` (1 or -1).
+-- Moves the selection to the next slot holding a piece that can be picked up (in Co-op, one of the player's own),
+-- in direction `step` (1 or -1).
 local function cycle(step: number)
 	local tray = GameController.getSession().tray
-	for offset = 1, SLOTS do
-		local slot = ((selectedSlot - 1 + step * offset) % SLOTS) + 1
-		if tray[slot] then
+	local slots = GameController.getSlotCount()
+	for offset = 1, slots do
+		local slot = ((selectedSlot - 1 + step * offset) % slots) + 1
+		if tray[slot] and GameController.canDrag(slot) then
 			selectedSlot = slot
 			return
 		end
@@ -102,7 +103,7 @@ local function confirm()
 		end
 		return
 	end
-	if not GameController.getSession().tray[selectedSlot] then
+	if not GameController.getSession().tray[selectedSlot] or not GameController.canDrag(selectedSlot) then
 		cycle(1)
 	end
 	local piece = GameController.getSession().tray[selectedSlot]
@@ -188,7 +189,11 @@ local function update()
 		return
 	end
 
-	if showKeys and not isKeyDragging() and not GameController.getSession().tray[selectedSlot] then
+	if
+		showKeys
+		and not isKeyDragging()
+		and (not GameController.getSession().tray[selectedSlot] or not GameController.canDrag(selectedSlot))
+	then
 		cycle(1)
 	end
 	local dx, dy = readDirection()

@@ -332,6 +332,17 @@ function GameService.onGameOver(callback: (player: Player, runId: number) -> ())
 	table.insert(gameOverListeners, callback)
 end
 
+-- The player is leaving their solo run for a Co-op room: the run is logged as ended ("coop") and forgotten, so
+-- nothing of it lingers. A run that was already over has been logged.
+function GameService.abandonRun(player: Player)
+	local summary = runs:summary(player)
+	if summary and not summary.isOver then
+		telemetry:runEnded(player, DataService.get(player), summary, "coop")
+	end
+	runs:remove(player)
+	runProgress[player] = nil
+end
+
 -- Called with the player once they have finished the tutorial (or skipped it).
 function GameService.onTutorialDone(callback: (player: Player) -> ())
 	table.insert(tutorialDoneListeners, callback)

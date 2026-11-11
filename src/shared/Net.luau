@@ -16,7 +16,15 @@
 --   CoopInvite(targetUserId)                     invite a player in this server to a Co-op room
 --   CoopInviteReply(inviteId, accept)            answer an invitation (only its target can)
 --   CoopCancelInvite()                           take back the invitation the player has out
---   CoopLeave()                                  leave the Co-op room
+--   CoopLeave()                                  leave the Co-op room (and with it the run)
+--   CoopPlace(runId, moveId, slot, x, y)         a Co-op move the client has already shown (predicted); moveId is the
+--                                                client's own counter, only for recognising the move again
+--   CoopRequestState()                           the client thinks it is out of step; send the full Co-op state
+--   CoopTakeOver(runId)                          the partner has been idle too long: take their pieces and play on
+--   CoopRematch()                                Play again after a Co-op game over; needs both players
+--   CoopHover(slot, x, y)                        (unreliable) the board cell a Co-op piece is aimed at, for the partner to
+--                                                see; sent when the cell changes, at most 10 a second. No arguments: the
+--                                                piece is no longer aimed
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
@@ -36,6 +44,18 @@
 --                                                expired or cancelled (the invitation is gone)
 --   CoopRoom(room)                               { id, mode, you, present, userIds } where you is the player's seat (1 or 2),
 --                                                present and userIds go by seat; nil when the player has no room
+--   CoopState(state, reason)                     the full Co-op run: { runId, seq, seat, userIds, session, takeOverAt? } with the
+--                                                CoopSession snapshot; reason is "start", "resync" or "takeover" (the
+--                                                partner is gone and every piece is the player's now)
+--   CoopMove(runId, seq, seat, moveId, slot, x, y, score, set, isOver, takeOverAt)
+--                                                an accepted move, in the order the server took them (seq counts the
+--                                                run's moves); set = new piece ids when it used the last piece of the set;
+--                                                takeOverAt is when this player may take over (server time), or nil
+--   CoopReject(runId, moveId)                    that move no longer fits (the partner got there first); only the sender
+--   CoopRematchVotes(votes)                      who has pressed Play again, by seat
+--   CoopPartnerHover(slot, x, y)                 (unreliable) the partner's CoopHover, checked; no arguments when they
+--                                                stopped aiming. A lost message must not leave a shadow behind: the client
+--                                                drops one that isn't renewed within a second or so
 -- Who is free to be invited is published on each Player as attributes: CoopBusy ("room", "tutorial", "loading" or
 -- nil when free) and Level.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -53,18 +73,27 @@ else
 	folder = ReplicatedStorage:WaitForChild(FOLDER_NAME)
 end
 
-local function remoteEvent(name: string): RemoteEvent
+local function remote(className: "RemoteEvent" | "UnreliableRemoteEvent", name: string): any
 	if IS_SERVER then
 		local existing = folder:FindFirstChild(name)
 		if existing then
-			return existing :: RemoteEvent
+			return existing
 		end
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = name
-		remote.Parent = folder
-		return remote
+		local created = Instance.new(className)
+		created.Name = name
+		created.Parent = folder
+		return created
 	end
-	return folder:WaitForChild(name) :: RemoteEvent
+	return folder:WaitForChild(name)
+end
+
+local function remoteEvent(name: string): RemoteEvent
+	return remote("RemoteEvent", name)
+end
+
+-- For what the next message makes obsolete and a lost one doesn't hurt (it may be dropped or arrive out of order).
+local function unreliableEvent(name: string): UnreliableRemoteEvent
+	return remote("UnreliableRemoteEvent", name)
 end
 
 return {
@@ -86,6 +115,16 @@ return {
 	CoopInvited = remoteEvent("CoopInvited"),
 	CoopInviteResult = remoteEvent("CoopInviteResult"),
 	CoopRoom = remoteEvent("CoopRoom"),
+	CoopPlace = remoteEvent("CoopPlace"),
+	CoopRequestState = remoteEvent("CoopRequestState"),
+	CoopTakeOver = remoteEvent("CoopTakeOver"),
+	CoopRematch = remoteEvent("CoopRematch"),
+	CoopState = remoteEvent("CoopState"),
+	CoopMove = remoteEvent("CoopMove"),
+	CoopReject = remoteEvent("CoopReject"),
+	CoopRematchVotes = remoteEvent("CoopRematchVotes"),
+	CoopHover = unreliableEvent("CoopHover"),
+	CoopPartnerHover = unreliableEvent("CoopPartnerHover"),
 	Donated = remoteEvent("Donated"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),

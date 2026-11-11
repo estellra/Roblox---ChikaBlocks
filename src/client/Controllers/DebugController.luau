@@ -14,6 +14,9 @@
 --           coop [open|close|people <n>|invite [id] [seconds]|result <result> [userId]|room [left]|noroom|busy <reason|none>|press <userId> [result...]|cancel]
 --           (opens the Co-op screen and lists it; the rest feed it what the server would send, with the player
 --           themselves as the other party, or press Invite for a made-up person)
+--           coop run | coop play [moves] | coop again | coop leave | coop takeover
+--           (the Co-op run on this screen: its state, play random moves of the player's own, Play again, Menu / Leave
+--           run, Take over. Pair with the practice partner first: ServerStorage.ChikaServerDebug "coopbot")
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
@@ -25,6 +28,7 @@ local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
 local CoopController = require("./CoopController")
+local CoopRunController = require("./CoopRunController")
 local DragController = require("./DragController")
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
@@ -104,7 +108,7 @@ local function chooseMove(rng: Random, random: boolean): { number }?
 	local best: { number }? = nil
 	local bestLines = -1
 	for slot, piece in session.tray do
-		if not piece then
+		if not piece or not GameController.canDrag(slot) then
 			continue
 		end
 		for y = 0, SIZE - piece.height do
@@ -342,6 +346,25 @@ local function handle(rng: Random, command: string, ...: any): string
 			end
 		elseif action == "cancel" then
 			CoopController.cancel()
+		elseif action == "play" then
+			-- Plays random moves of the player's own pieces at a human pace, as far as the tray allows.
+			local played = 0
+			for _ = 1, tonumber(first) or 1 do
+				if not waitForTray() or GameController.getSession().isOver or not playOne(rng, true) then
+					break
+				end
+				played += 1
+				task.wait(MOVE_PACE_SECONDS)
+			end
+			return `played {played}\n{CoopRunController.describe()}\n{describeState()}`
+		elseif action == "again" then
+			GameController.restart()
+		elseif action == "leave" then
+			GameController.requestMenu()
+		elseif action == "takeover" then
+			CoopRunController.takeOver()
+		elseif action == "run" then
+			return `{CoopRunController.describe()}\n{describeState()}`
 		end
 		if action ~= "press" then
 			task.wait(0.1) -- let the view settle; a press is read at once, before the server's answer arrives

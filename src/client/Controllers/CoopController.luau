@@ -35,6 +35,7 @@ local status: string? = nil
 local statusToken = 0
 local canInviteFriends = false
 local watchers: { [Player]: { RBXScriptConnection } } = {}
+local roomListeners: { (room: Room?) -> () } = {}
 local pretendPeople: { CoopView.Person }? = nil -- for the Studio debug bridge: stands in for the other players
 
 -- What the inviter is told when their invitation ends without a room.
@@ -65,6 +66,9 @@ local function nameOf(userId: number): string?
 	local player = Players:GetPlayerByUserId(userId)
 	return if player then player.DisplayName else nil
 end
+
+-- The display name of a player in the server, or nil (they left, or it is a practice partner).
+CoopController.nameOf = nameOf
 
 local function peopleList(): { CoopView.Person }
 	if pretendPeople then
@@ -237,6 +241,27 @@ function CoopController.onRoom(payload: unknown)
 		return
 	end
 	render()
+	for _, listener in roomListeners do
+		task.spawn(listener, room)
+	end
+end
+
+-- The room the player is in, as the server last described it; nil when they have none.
+function CoopController.getRoom(): Room?
+	return room
+end
+
+-- Called with the new room (or nil) whenever it changes: the player joined one, it lost its other player, or it is gone.
+function CoopController.onRoomChanged(callback: (room: Room?) -> ())
+	table.insert(roomListeners, callback)
+end
+
+-- Closes the Co-op screen without going back to the menu (a Co-op game is starting over it).
+function CoopController.dismiss()
+	onClosed = nil
+	if view and view:isOpen() then
+		view:close()
+	end
 end
 
 CoopController.invite = invite

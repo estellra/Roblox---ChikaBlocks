@@ -38,6 +38,7 @@ DragController.TOUCH_LIFT_CELLS = 1.5 -- how far above the finger a touch-dragge
 DragController.SNAP_ASSIST_CELLS = 0.75 -- how far from the nearest cell a drop may still snap to a free neighbour
 
 local drag: Drag? = nil
+local aimListeners: { (slot: number?, x: number?, y: number?) -> () } = {}
 local returning: { [number]: Frame } = {} -- slot -> piece flying back to it after a cancelled drag
 local lastPointer: Vector2? = nil
 local lastInputType: Enum.UserInputType? = nil
@@ -68,6 +69,14 @@ local function placeFrame(current: Drag, x: number, y: number)
 	current.frame.Position = UDim2.fromOffset(x - layer.X, y - layer.Y)
 end
 
+-- Tells whoever listens (the Co-op partner's shadow) where the piece in hand is aimed: a slot and the board cell
+-- it would land on, or nothing.
+local function notifyAim(slot: number?, x: number?, y: number?)
+	for _, listener in aimListeners do
+		task.spawn(listener, slot, x, y)
+	end
+end
+
 local function setTarget(current: Drag, x: number?, y: number?)
 	local target = current.target
 	if target and target.x == x and target.y == y then
@@ -76,9 +85,11 @@ local function setTarget(current: Drag, x: number?, y: number?)
 	if x and y then
 		current.target = { x = x, y = y }
 		getViews().board:showPreview(GameController.getSession().board, current.piece, x, y)
+		notifyAim(current.slot, x, y)
 	elseif target then
 		current.target = nil
 		getViews().board:clearPreview()
+		notifyAim(nil, nil, nil)
 	end
 end
 
@@ -148,12 +159,19 @@ local function landOnBoard(current: Drag, x: number, y: number)
 	land:Play()
 end
 
--- Intent: lift the piece in `slot` off the tray. Returns false when there is nothing to pick up.
+-- Called whenever the cell the piece in hand is aimed at changes (slot, x, y), and with nothing when it stops being
+-- aimed at one (it left the board, was dropped or put back).
+function DragController.onAim(callback: (slot: number?, x: number?, y: number?) -> ())
+	table.insert(aimListeners, callback)
+end
+
+-- Intent: lift the piece in `slot` off the tray. Returns false when there is nothing to pick up (or, in Co-op, it is
+-- the partner's).
 function DragController.pick(slot: number, isTouch: boolean): boolean
 	local views = GameController.getViews()
 	local session = GameController.getSession()
 	local piece = session.tray[slot]
-	if drag or not views or session.isOver or not piece then
+	if drag or not views or session.isOver or not piece or not GameController.canDrag(slot) then
 		return false
 	end
 	local flying = returning[slot]

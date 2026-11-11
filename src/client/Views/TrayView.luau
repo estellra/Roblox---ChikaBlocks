@@ -6,6 +6,10 @@
 -- its slot (or beside it in the landscape layout, where the slots are small and the column has room).
 -- New pieces pop in one slot after the other, a turned piece spins into place, and slots fade as they empty.
 -- While the tray waits for the server's next set, the empty slots breathe so it doesn't look frozen.
+-- The tray builds a slot for every piece of the biggest set (Co-op's four) once. A solo run uses the first three. In
+-- Co-op the player's own two slots sit in the tray area and the partner's two are small, in a panel with the
+-- partner's name where the third slot would be (configure()); both are the same slots, so drag and drop and the
+-- gamepad treat them alike and only ask GameController which ones may be picked up.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -20,14 +24,23 @@ type Piece = Pieces.Piece
 
 local PREVIEW_GRID = 5
 local ROTATE_OUTSIDE_GAP = 6 -- pixels between a slot and its Rotate button in the landscape layout
+local SLOT_CAPACITY = Config.COOP.SET_SIZE -- the most pieces a set can have
+local PARTNER_LABEL_HEIGHT = 20
+local PARTNER_SLOT_SHARE = 0.47 -- of the panel's width, for each of the partner's two slots
 
 export type LayoutMode = "Portrait" | "Landscape"
 
 local TrayView = {}
 TrayView.__index = TrayView
 
+export type Coop = { own: { number }, partnerName: string } -- own: the slots that are the player's (the other two are the partner's)
+
 export type TrayView = typeof(setmetatable(
 	{} :: {
+		parent: GuiObject,
+		partnerPanel: Frame, -- the partner's slots and their name; in the tray area only in Co-op
+		partnerSlots: Frame,
+		partnerLabel: TextLabel,
 		slots: { Frame },
 		contents: { Frame }, -- padded area inside each slot that holds the piece preview
 		hitboxes: { TextButton },
@@ -54,7 +67,7 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 	local slots, contents, hitboxes, selections, hintStrokes = {}, {}, {}, {}, {}
 	local rotateButtons: { TextButton } = {}
 	local waits: { Frame } = {}
-	for i = 1, Config.PIECES_PER_SET do
+	for i = 1, SLOT_CAPACITY do
 		local content = create("Frame", {
 			Name = "Content",
 			Size = UDim2.fromScale(1, 1),
@@ -155,7 +168,6 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 			BackgroundColor3 = Theme.Colors.TraySlot,
 			BackgroundTransparency = Theme.Transparency.TraySlot,
 			BorderSizePixel = 0,
-			Parent = parent,
 		}, {
 			create("UICorner", { CornerRadius = Theme.Radius.TraySlot }),
 			create("UIAspectRatioConstraint", {
@@ -176,7 +188,50 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		hintStrokes[i] = hintStroke
 		rotateButtons[i] = rotate
 	end
-	return setmetatable({
+	local partnerLabel = create("TextLabel", {
+		Name = "PartnerName",
+		LayoutOrder = 1,
+		Size = UDim2.new(1, 0, 0, PARTNER_LABEL_HEIGHT),
+		BackgroundTransparency = 1,
+		FontFace = Theme.Fonts.Label,
+		TextSize = 15,
+		TextColor3 = Theme.Colors.TextMuted,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	})
+	local partnerSlots = create("Frame", {
+		Name = "Slots",
+		LayoutOrder = 2,
+		Size = UDim2.new(1, 0, 1, -PARTNER_LABEL_HEIGHT - 4),
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6),
+		}),
+	})
+	local partnerPanel = create("Frame", {
+		Name = "Partner",
+		LayoutOrder = 3,
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 4),
+		}),
+		partnerLabel,
+		partnerSlots,
+	})
+	local self = setmetatable({
+		parent = parent,
+		partnerPanel = partnerPanel,
+		partnerSlots = partnerSlots,
+		partnerLabel = partnerLabel,
 		slots = slots,
 		contents = contents,
 		hitboxes = hitboxes,
@@ -184,17 +239,58 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		selected = nil,
 		hint = nil,
 		hintStrokes = hintStrokes,
-		held = table.create(Config.PIECES_PER_SET, false),
-		shown = table.create(Config.PIECES_PER_SET, false),
+		held = table.create(SLOT_CAPACITY, false),
+		shown = table.create(SLOT_CAPACITY, false),
 		rotateButtons = rotateButtons,
-		rotatable = table.create(Config.PIECES_PER_SET, false),
+		rotatable = table.create(SLOT_CAPACITY, false),
 		turning = nil,
-		slotFades = table.create(Config.PIECES_PER_SET, Theme.Transparency.TraySlot),
+		slotFades = table.create(SLOT_CAPACITY, Theme.Transparency.TraySlot),
 		waits = waits,
 		waitTweens = {},
 		waiting = false,
 		waitToken = 0,
 	}, TrayView)
+	self:configure(nil)
+	return self
+end
+
+-- Arranges the slots: nil for a solo run (the first three, in the tray area), or for Co-op the player's own two
+-- there and the partner's two small beside them under the partner's name. Safe to call again.
+function TrayView.configure(self: TrayView, coop: Coop?)
+	if not coop then
+		for index, slot in self.slots do
+			slot.LayoutOrder = index
+			slot.Parent = if index <= Config.PIECES_PER_SET then self.parent else nil
+		end
+		self.partnerPanel.Parent = nil
+		return
+	end
+	local isOwn: { [number]: boolean } = {}
+	for _, slot in coop.own do
+		isOwn[slot] = true
+	end
+	local ownOrder, partnerOrder = 0, 0
+	for index, slot in self.slots do
+		if isOwn[index] then
+			ownOrder += 1
+			slot.LayoutOrder = ownOrder
+			slot.Parent = self.parent -- the layout sizes it like any slot
+		else
+			partnerOrder += 1
+			slot.LayoutOrder = partnerOrder
+			slot.Parent = self.partnerSlots
+			slot.Size = UDim2.fromScale(PARTNER_SLOT_SHARE, 1)
+		end
+	end
+	self.partnerLabel.Text = coop.partnerName
+	self.partnerPanel.LayoutOrder = ownOrder + 1
+	self.partnerPanel.Parent = self.parent
+end
+
+-- Whether the slot's piece can be picked up is GameController's call; this only keeps its touch area from
+-- reacting while it is locked (the partner's pieces).
+function TrayView.setLocked(self: TrayView, slot: number, locked: boolean)
+	self.hitboxes[slot].Active = not locked
 end
 
 -- A slot is faded when it is empty, its piece is in hand, or the tutorial points at another slot.
@@ -289,7 +385,7 @@ end
 
 -- Says which slots hold a piece that can be turned (and the run allows turning).
 function TrayView.setRotatable(self: TrayView, rotatable: { boolean })
-	for index = 1, Config.PIECES_PER_SET do
+	for index = 1, SLOT_CAPACITY do
 		self.rotatable[index] = rotatable[index] == true
 		refreshRotate(self, index)
 	end
@@ -390,6 +486,7 @@ function TrayView.destroy(self: TrayView)
 	for _, slot in self.slots do
 		slot:Destroy()
 	end
+	self.partnerPanel:Destroy()
 end
 
 return TrayView

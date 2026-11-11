@@ -12,7 +12,9 @@
 -- revive product; pass Config.ROTATION_PRODUCT for the rotation pack); the same purchaseId twice shows
 -- that a purchase is granted once. A donation product counts as paid at the price Roblox lists for it.
 -- boards writes the player's values, reads every leaderboard now (instead of within a minute) and lists them.
--- coop lists the Co-op invitations, rooms and rests, and every player's CoopBusy and Level attributes.
+-- coop lists the Co-op invitations, rooms and rests, every player's CoopBusy and Level attributes, and their Co-op run.
+-- coopbot [userId] [moves per second] pairs the player with a practice partner that plays on the server (it also
+-- plays again when the game is over); coopbot nil nil afk / back / leave idles it, wakes it, or takes it out.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -24,6 +26,7 @@ local GameService = require("./GameService")
 local LeaderboardService = require("./LeaderboardService")
 local PurchaseService = require("./PurchaseService")
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local CoopService = require("./CoopService")
 local RewardService = require("./RewardService")
 local RoomService = require("./RoomService")
 
@@ -82,7 +85,11 @@ function DebugService.start(_self: any)
 			local events = GameService.getRecentEvents()
 			return if #events > 0 then table.concat(events, "\n") else "no analytics events yet"
 		elseif command == "coop" then -- needs no player either
-			return RoomService.describe()
+			local lines = { RoomService.describe() }
+			for _, who in Players:GetPlayers() do
+				table.insert(lines, CoopService.describe(who))
+			end
+			return table.concat(lines, "\n")
 		end
 		local player = if userId then Players:GetPlayerByUserId(userId) else Players:GetPlayers()[1]
 		if not player then
@@ -120,6 +127,8 @@ function DebugService.start(_self: any)
 			GameService.sendProfile(player)
 			RoomService.refresh(player) -- tutorialDone is false again, so the player can't be invited
 			return `reset {player.Name}: best=0 games=0 tutorialDone=false onboardingStep=0 level=1 exp=0 milestones=none`
+		elseif command == "coopbot" then
+			return CoopService.bot(player, extra or "start", value)
 		elseif command == "fakepurchase" then
 			local productId = value or Config.REVIVE_PRODUCTS[1]
 			debugReceipts += 1

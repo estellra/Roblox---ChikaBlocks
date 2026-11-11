@@ -46,6 +46,7 @@ export type Theme = {
 		TraySlot: number,
 		TraySlotEmpty: number, -- a slot whose piece is in hand or placed
 		Ghost: number, -- where the dragged piece would land
+		PartnerAim: number, -- where the Co-op partner's held piece would land
 		Blocked: number, -- a piece held with keys over cells it can't land on
 		NoMoves: number, -- board dimmer at game over
 	},
@@ -58,6 +59,7 @@ export type Theme = {
 		Clear: number,
 		ClearStep: number, -- per cell of distance, as a clear spreads out from the placed piece
 		Punch: number, -- the board settling after a clear of two lines or more
+		Accent: number, -- the partner's piece's outline fading back to normal
 		GhostGlide: number, -- the landing ghost moving from one cell to the next
 		LinePop: number, -- a line the held piece would complete lighting up
 		Deal: number, -- a new piece popping into the tray
@@ -190,6 +192,7 @@ local Theme: Theme = {
 		TraySlot = 0,
 		TraySlotEmpty = 0.6,
 		Ghost = 0.5,
+		PartnerAim = 0.6,
 		Blocked = 0.6,
 		NoMoves = 0.45,
 	},
@@ -202,6 +205,7 @@ local Theme: Theme = {
 		Clear = 0.22,
 		ClearStep = 0.018,
 		Punch = 0.22,
+		Accent = 0.8,
 		GhostGlide = 0.05,
 		LinePop = 0.14,
 		Deal = 0.22,

@@ -15,7 +15,7 @@ export type Sink = {
 	funnel: (player: any, funnel: string, session: string, step: number, name: string) -> (),
 }
 
-export type RunEnd = "gameover" | "left" | "restart"
+export type RunEnd = "gameover" | "left" | "restart" | "coop" -- "coop": the player left their solo run to join a Co-op room
 
 export type RunSummary = { mode: string, score: number, moves: number, maxCombo: number, isOver: boolean }
 
