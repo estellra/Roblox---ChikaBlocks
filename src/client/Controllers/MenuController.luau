@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage.Shared.Net)
+local CoopController = require("./CoopController")
 local GameController = require("./GameController")
 local LeaderboardController = require("./LeaderboardController")
 local MenuView = require("../Views/MenuView")
@@ -56,9 +57,18 @@ function MenuController.openSupport()
 	SupportController.open(MenuController.show)
 end
 
--- True on the menu and on screens opened from it (the leaderboard, the Support screen).
+-- Swaps the menu for the Co-op screen; going back brings the menu back.
+function MenuController.openCoop()
+	MenuController.hide()
+	CoopController.open(MenuController.show)
+end
+
+-- True on the menu and on screens opened from it (the leaderboard, the Support and Co-op screens).
 function MenuController.isOpen(): boolean
-	return (menu ~= nil and menu:isOpen()) or LeaderboardController.isOpen() or SupportController.isOpen()
+	return (menu ~= nil and menu:isOpen())
+		or LeaderboardController.isOpen()
+		or SupportController.isOpen()
+		or CoopController.isOpen()
 end
 
 function MenuController.start(_self: any)
@@ -72,8 +82,10 @@ function MenuController.start(_self: any)
 		function()
 			MenuController.play("tutorial")
 		end,
-		MenuController.openSupport
+		MenuController.openSupport,
+		MenuController.openCoop
 	)
+	view:setCoopVisible(CoopController.isAvailable())
 	menu = view
 	GameController.onProfileChanged(function()
 		refresh(view)

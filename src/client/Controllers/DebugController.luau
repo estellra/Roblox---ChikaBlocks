@@ -11,6 +11,9 @@
 --           touchdrop <slot> <x> <y> (drops through the touch path, reports where the finger had to be)
 --           dragturn <slot> [times] (holds a piece over the board and turns it) | waitfx (the tray's waiting effect)
 --           rotatebuttons (size and place of each Rotate touch area)
+--           coop [open|close|people <n>|invite [id] [seconds]|result <result> [userId]|room [left]|noroom|busy <reason|none>|press <userId> [result...]|cancel]
+--           (opens the Co-op screen and lists it; the rest feed it what the server would send, with the player
+--           themselves as the other party, or press Invite for a made-up person)
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
@@ -21,6 +24,7 @@ local UserInputService = game:GetService("UserInputService")
 local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Pieces = require(ReplicatedStorage.Shared.Pieces)
+local CoopController = require("./CoopController")
 local DragController = require("./DragController")
 local DragMath = require("../Util/DragMath")
 local GameController = require("./GameController")
@@ -302,6 +306,47 @@ local function handle(rng: Random, command: string, ...: any): string
 			SupportController.close()
 		end
 		return `open={SupportController.isOpen()} menuOpen={MenuController.isOpen()}\n{SupportController.describe()}`
+	elseif command == "coop" then
+		local action, first, second = ...
+		local me = Players.LocalPlayer
+		if action == "open" then
+			MenuController.openCoop()
+			task.wait(0.5)
+		elseif action == "close" then
+			CoopController.close()
+		elseif action == "people" then
+			CoopController.pretendPeople(tonumber(first) or 0)
+		elseif action == "invite" then
+			local seconds = tonumber(second) or Config.COOP.INVITE_SECONDS
+			CoopController.onInvited(tonumber(first) or 1, me.UserId, workspace:GetServerTimeNow() + seconds)
+		elseif action == "result" then
+			CoopController.onInviteResult(tonumber(second) or me.UserId, first)
+		elseif action == "room" then
+			CoopController.onRoom({
+				id = 1,
+				mode = "coop",
+				you = 1,
+				present = { true, first ~= "left" },
+				userIds = { me.UserId, me.UserId },
+			})
+		elseif action == "noroom" then
+			CoopController.onRoom(nil)
+		elseif action == "busy" then
+			me:SetAttribute("CoopBusy", if first == "none" then nil else first)
+		elseif action == "press" then
+			-- Results named after the id are fed in at once, before the server has time to answer.
+			local userId = tonumber(first) or 0
+			CoopController.invite(userId)
+			for _, result in { select(3, ...) } do
+				CoopController.onInviteResult(userId, result)
+			end
+		elseif action == "cancel" then
+			CoopController.cancel()
+		end
+		if action ~= "press" then
+			task.wait(0.1) -- let the view settle; a press is read at once, before the server's answer arrives
+		end
+		return `open={CoopController.isOpen()} menuOpen={MenuController.isOpen()} available={CoopController.isAvailable()}\n{CoopController.describe()}`
 	elseif command == "flow" then
 		local profile = GameController.getProfile()
 		local keys = GamepadController.getStats()

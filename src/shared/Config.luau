@@ -89,7 +89,16 @@ local Config = {
 
 	-- Co-op (see CoopSession): two players share one board and take two pieces each from every set of four.
 	COOP = table.freeze({
+		-- The Co-op button and the invite remotes work only in Studio until the mode is playable (M21 turns this on).
+		ENABLED = false,
 		SET_SIZE = 4,
+
+		-- Invitations (see Rooms): how long one stays open, how long a pair rests after one was declined or left
+		-- unanswered, and how many unanswered invitations one player can have waiting. Each player can have one
+		-- invitation out at a time.
+		INVITE_SECONDS = 30,
+		INVITE_COOLDOWN_SECONDS = 60,
+		MAX_PENDING_INVITES = 3,
 
 		-- Replaces numbers in GENERATOR for Co-op's sets (Generator.Overrides). Proving that all four pieces can be
 		-- placed takes much longer than for three: one or two deals in a thousand took over 5 ms, the slowest 10 to

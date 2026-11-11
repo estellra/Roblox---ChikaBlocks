@@ -1,6 +1,6 @@
 # Giai đoạn 5: Coop 2 người
 
-> Plan đã duyệt. Mọi điểm AP đến BA đã chốt, xem [cuối file](#quyết-định-đã-chốt). Đã làm: M20 (xem [Kết quả M20](#kết-quả-m20)); M19, M21–M23 chưa code.
+> Plan đã duyệt. Mọi điểm AP đến BA đã chốt, xem [cuối file](#quyết-định-đã-chốt). Đã làm: M19 (xem [Kết quả M19](#kết-quả-m19)) và M20 (xem [Kết quả M20](#kết-quả-m20)); M21–M23 chưa code.
 
 ## Bối cảnh
 
@@ -92,6 +92,44 @@ Client không bao giờ gửi `Instance`, tên hay chữ tự do; chỉ gửi s�
 
 - Lune (`Rooms`, đồng hồ giả): mời, nhận, từ chối, hết hạn, nghỉ 60 giây, mời chính mình, mời người bận, mời lẫn nhau, quá 3 lời mời chờ, rời khi đang có lời mời, rời phòng, không còn sót khóa nào sau khi cả hai rời.
 - Studio, 2 client (Test → Clients and Servers): các luồng trên bằng nút thật; tin rác lên từng remote; người vào server sau xuất hiện trong danh sách.
+
+### Kết quả M19
+
+- **`Rooms`** (`src/server/Rooms.luau`, logic thuần, đồng hồ và "ai chơi được" truyền vào): đúng các luật trong plan. Một người có tối đa 1 lời mời đang gửi và 3 đang chờ; lời mời sống 30 giây; từ chối hoặc hết hạn thì **cả hai chiều** của cặp nghỉ 60 giây; mời lẫn nhau coi như nhận lời (người mời trước làm chỗ 1); vào phòng thì rút các lời mời đã gửi và trả lời "busy" các lời mời đang chờ; phòng còn khi một người rời, mất khi người cuối rời. Mọi thứ cần báo cho người chơi đi ra qua `deps.emit` dưới dạng sự kiện có địa chỉ (`invited`, `result`, `room`) và sự kiện cho service khác (`formed`, `memberLeft`, `closed`). `remove` (người chơi rời server) dọn sạch mọi bảng, có test `footprint() == 0`.
+- **`RoomService`** nối `Rooms` với remote và `Players`: giới hạn tần suất (mời 1 lần mỗi 2 giây), kiểm kiểu từng tham số (UserId là số nguyên trong ±2^53, vì người chơi thử nhiều client trong Studio có thể mang UserId âm), tìm người bằng `GetPlayerByUserId`, quét lời mời hết hạn mỗi giây. Công bố trên mỗi `Player` hai attribute: `CoopBusy` (`"room"`, `"tutorial"`, `"loading"` hoặc nil khi rảnh) và `Level`, nên màn Co-op không cần remote riêng để liệt kê. Có `onRoomFormed`, `onMemberLeft`, `onRoomClosed` cho CoopService ở M21. Gửi `StartGame` thì rời phòng (một người chỉ ở trong một thứ).
+- **Remote** (trong `Net`): `CoopInvite`, `CoopInviteReply`, `CoopCancelInvite`, `CoopLeave` (client gửi số), `CoopInvited`, `CoopInviteResult`, `CoopRoom` (server gửi).
+- **Client:** nút **Co-op** trên menu, `CoopView` (màn Co-op: danh sách người trong server kèm level, nút Invite/Cancel, thẻ phòng với nút Leave, "No one else is here yet" + Invite friends), `CoopInviteView` (thẻ mời có Accept/Decline và thanh đếm), `CoopController` giữ trạng thái. Gray-box theo `Theme`/`Clay`.
+- **Khác plan:**
+  - `CoopInviteResult(otherUserId, result)`: tham số đầu là người còn lại của lời mời (không phải luôn là người được mời), và thêm kết quả `cancelled` cho bên được mời (lời mời biến mất khỏi màn hình khi người mời rút lại, rời hoặc vào phòng).
+  - **Thông báo mời nằm trên vùng điểm số, chỉ hiện thẻ cũ nhất kèm "+N" cho các thẻ chờ**, thay vì xếp chồng ở giữa trên. Bản đầu đặt giữa trên và đè lên góc bảng ở màn ngang, trái với AY; đã bỏ. Hệ quả: lời mời hiện ra sẽ che điểm tạm thời, không che bảng hay khay.
+  - Nút Co-op nằm **cùng hàng** với Leaderboard (mỗi nút nửa hàng, chữ tự thu nhỏ cho vừa) thay vì thêm một hàng, để vừa màn điện thoại ngang thấp.
+  - `Config.COOP.ENABLED = false`: client ẩn nút và server bỏ qua remote Coop, **trừ trong Studio** (luôn bật để thử).
+  - `GameService.onTutorialDone` (mới) để `CoopBusy` đổi ngay khi người chơi xong tutorial; lệnh debug `coop` ở server và `coop …` ở client (đưa vào đúng thứ server sẽ gửi, bấm Invite cho người giả).
+  - **Chưa làm (để M21):** vào phòng chưa kết thúc ván solo đang dở, vì chưa có ván Coop để chuyển sang. Nhận lời khi đang chơi solo chỉ lập phòng; ván solo vẫn chạy.
+- **Test:** **224 pass** (thêm 17 trong `Rooms.spec`: mời, nhận, từ chối, hết hạn, nghỉ 60 giây hai chiều, trả lời sau hạn, các lời từ chối vô nghĩa, mời lẫn nhau, giới hạn 1 và 3, chỉ đúng người được mời trả lời và tham số rác, vào phòng thì dọn mọi lời mời, rời phòng, người chơi rời server ở từng trạng thái, mô tả debug, và một bài ngẫu nhiên 300 thao tác của 6 người kiểm bất biến rồi cho cả sáu rời, không sót khóa nào). `stylua` sạch, `selene src` sạch.
+
+| Kiểm tra trong Studio (một client) | Kết quả |
+|---|---|
+| Server khởi động | `RoomService` chạy; Player có `CoopBusy=nil` (rảnh) và `Level=5`; `coop` báo không có lời mời, phòng hay nghỉ |
+| Bấm nút Co-op trên menu bằng chuột thật, rồi nút X | Mở màn Co-op, X đóng và về menu |
+| Server chỉ có một mình | "No one else is here yet." và nút Invite friends |
+| 6 người giả đủ trạng thái | Chỉ người rảnh có nút Invite sáng; "In a room", "In tutorial", "Joining…" mờ kèm lý do |
+| Bấm Invite một UserId không có trong server (qua server thật) | Server trả `left`, màn ghi "That player is no longer here.", nút về lại Invite |
+| Lời mời đang chờ | Nút thành Cancel, các nút khác mờ |
+| Kết quả declined, busy, cooldown, expired, left | Mỗi loại một câu riêng, tự xóa sau 6 giây |
+| Ba lời mời liên tiếp giữa ván solo (màn ngang 1276×584) | Chỉ thẻ cũ nhất hiện, kèm "+2", thanh đếm đúng thời gian còn lại, nằm trên vùng điểm số; không đè bảng hay khay |
+| Thẻ mời khi đang ở màn Co-op | Hiện phía trên màn |
+| Thẻ phòng "In a room with …" + Leave; "Your partner left the room."; ghi chú "Finish the tutorial…" khi `CoopBusy` của mình là tutorial | Đúng |
+| Dữ liệu rác (nil, chuỗi, NaN, ±inf, 1e300, bảng, Vector3, 2^60, 1,5, tham số thừa) lên `CoopInvite`, `CoopInviteReply`, `CoopCancelInvite`, `CoopLeave` | Không có lỗi ở Output; server không có lời mời hay phòng nào |
+| Output | Không có lỗi từ game (chỉ cảnh báo `ContentId rbxassetid://203785492` của Studio, đã ghi từ GĐ1) |
+
+- **Chưa kiểm tra được:**
+  - Mọi luồng cần **hai người thật** (nhận, từ chối, hết hạn, rời phòng, người vào server sau): Studio MCP không mở được hai client. Đã phủ bằng test `Rooms` và bằng việc đẩy vào client đúng thứ server sẽ gửi; chưa chạy thật giữa hai client.
+  - `SocialService:PromptGameInvite`: docs ghi API này không chạy trong Studio. Nút Invite friends hiện được (`CanSendGameInviteAsync` trả true trong Studio) nhưng chưa bấm thử; chỉ kiểm được sau khi publish.
+  - Phím Escape và Backspace đóng màn, tay cầm, màn dọc và iPhone: phím do MCP gửi không tới `InputBegan` (màn Support cũ cũng không đóng bằng cách thử này), và không đổi được cỡ cửa sổ qua MCP. Mã đóng màn giống `SupportView`. Thẻ mời bám vào vùng điểm số nên theo bố cục dọc, nhưng chưa nhìn thấy.
+  - Kiểm kiểu `--!strict` (không có luau-lsp/analyze trong repo); Rojo đã sync và chạy không lỗi ở Output.
+- **Giới hạn đã biết:** remote chỉ gửi một lần: lời mời đến đúng lúc client chưa nghe được thì mất và hết hạn sau 30 giây (chưa có cách xin lại trạng thái, M21 thêm nếu cần). Người chơi ngoài Studio chỉ thấy danh sách người trong cùng server, không có bạn bè ở server khác.
+- **Test thủ công:** để sau khi xong cả giai đoạn và publish, chạy một lượt với hai tài khoản thật. Phần của M19: mời, nhận, từ chối, rút lời mời, để lời mời hết hạn, mời lại trong 60 giây, rời phòng, đóng một client giữa chừng, người vào server sau có hiện trong danh sách không, nút Invite friends, và các phím Escape/Backspace, tay cầm, màn dọc. Cả hai tài khoản phải xong tutorial.
 
 ## M20: Luật Coop
 

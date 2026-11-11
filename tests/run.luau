@@ -28,6 +28,7 @@ local specs = {
 	require("./SetSize.spec"),
 	require("./CoopSession.spec"),
 	require("./CoopSimulation.spec"),
+	require("./Rooms.spec"),
 }
 
 for _, spec in specs do

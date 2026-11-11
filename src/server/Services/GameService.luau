@@ -62,6 +62,7 @@ local readyLimiter = RateLimiter.new(1, 5, os.clock)
 local skipLimiter = RateLimiter.new(1, 2, os.clock)
 local runProgress: { [Player]: RunProgress } = {}
 local gameOverListeners: { (player: Player, runId: number) -> () } = {}
+local tutorialDoneListeners: { (player: Player) -> () } = {}
 local recentEvents: { string } = {}
 
 local function remember(line: string)
@@ -156,6 +157,12 @@ local function notifyGameOver(player: Player, runId: number)
 	end
 end
 
+local function notifyTutorialDone(player: Player)
+	for _, listener in tutorialDoneListeners do
+		task.spawn(listener, player)
+	end
+end
+
 function GameService.init(_self: any)
 	local Shared = ReplicatedStorage.Shared
 	runs = GameRuns.new({
@@ -191,6 +198,7 @@ function GameService.start(_self: any)
 		if data and PlayerData.markTutorialDone(data) then
 			telemetry:tutorialSkipped(player)
 			Net.Profile:FireClient(player, profileOf(player, data))
+			notifyTutorialDone(player)
 		end
 	end)
 
@@ -239,6 +247,7 @@ function GameService.start(_self: any)
 					-- The tutorial counts as done once its first move lands.
 					if outcome.mode == "tutorial" and PlayerData.markTutorialDone(data) then
 						Net.Profile:FireClient(player, profileOf(player, data))
+						notifyTutorialDone(player)
 					end
 					creditProgress(player, data, outcome.score)
 					telemetry:moveAccepted(player, data, outcome.linesCleared)
@@ -321,6 +330,11 @@ end
 -- Called with the player and the run's id every time a run ends in game over (again after each revive).
 function GameService.onGameOver(callback: (player: Player, runId: number) -> ())
 	table.insert(gameOverListeners, callback)
+end
+
+-- Called with the player once they have finished the tutorial (or skipped it).
+function GameService.onTutorialDone(callback: (player: Player) -> ())
+	table.insert(tutorialDoneListeners, callback)
 end
 
 -- One step of the revive funnel for the player's current offer.

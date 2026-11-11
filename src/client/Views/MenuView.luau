@@ -1,7 +1,7 @@
 --!strict
 -- Main menu, as in the mockups: the two-line logo and the mascot, a Best pill and a level pill, Play and
--- Leaderboard, a "?" button for How to play, a small Support us button in the other top corner, and blocks
--- floating on the sky behind. Landscape puts the logo
+-- Leaderboard (with Co-op beside it when that is on), a "?" button for How to play, a small Support us button in
+-- the other top corner, and blocks floating on the sky behind. Landscape puts the logo
 -- and mascot beside the buttons; portrait stacks them.
 -- Play works by click/tap, Enter or Space, and the gamepad A button (Play is selected for gamepads).
 local GuiService = game:GetService("GuiService")
@@ -53,6 +53,9 @@ export type MenuView = typeof(setmetatable(
 		levelPill: Frame,
 		playButton: TextButton,
 		leaderboardButton: TextButton,
+		coopButton: TextButton,
+		leaderboardRoot: Frame,
+		coopRoot: Frame,
 		helpButton: TextButton,
 		supportButton: TextButton,
 		floaters: { Tween },
@@ -101,7 +104,8 @@ function MenuView.new(
 	onPlay: () -> (),
 	onLeaderboard: () -> (),
 	onHowToPlay: () -> (),
-	onSupport: () -> ()
+	onSupport: () -> (),
+	onCoop: () -> ()
 ): MenuView
 	local colors, fonts = Theme.Colors, Theme.Fonts
 	local lip = Theme.Spacing.ButtonLip
@@ -188,12 +192,36 @@ function MenuView.new(
 		size = UDim2.new(1, 0, 0, 72 + lip),
 		textSize = 30,
 	})
-	local leaderboardRoot = Clay.button({
-		name = "Leaderboard",
-		text = "Leaderboard",
-		style = "secondary",
-		order = 3,
-		size = UDim2.new(1, 0, 0, 60 + lip),
+	-- Leaderboard, and Co-op beside it once that is on (see setCoopVisible). The text shrinks to fit a half-width button.
+	local function secondaryButton(name: string, label: string, order: number): Frame
+		local root = Clay.button({
+			name = name,
+			text = label,
+			style = "secondary",
+			order = order,
+			size = UDim2.fromScale(1, 1),
+		})
+		local face = Clay.face(root)
+		face.TextScaled = true
+		create("UITextSizeConstraint", { MaxTextSize = Theme.TextSize.Button, MinTextSize = 12, Parent = face })
+		return root
+	end
+	local leaderboardRoot = secondaryButton("Leaderboard", "Leaderboard", 1)
+	local coopRoot = secondaryButton("Coop", "Co-op", 2)
+	coopRoot.Visible = false
+	local secondaryRow = create("Frame", {
+		Name = "SecondaryRow",
+		LayoutOrder = 3,
+		Size = UDim2.new(1, 0, 0, 60 + lip),
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 10),
+		}),
+		leaderboardRoot,
+		coopRoot,
 	})
 	local tagline = create("TextLabel", {
 		Name = "Tagline",
@@ -221,7 +249,7 @@ function MenuView.new(
 		}),
 		pills,
 		playRoot,
-		leaderboardRoot,
+		secondaryRow,
 		tagline,
 	})
 
@@ -273,6 +301,7 @@ function MenuView.new(
 	}, { content })
 
 	local playButton, leaderboardButton = Clay.face(playRoot), Clay.face(leaderboardRoot)
+	local coopButton = Clay.face(coopRoot)
 	local supportButton = Clay.face(supportRoot)
 	local self = setmetatable({
 		backdrop = backdrop,
@@ -290,6 +319,9 @@ function MenuView.new(
 		levelPill = levelPill,
 		playButton = playButton,
 		leaderboardButton = leaderboardButton,
+		coopButton = coopButton,
+		leaderboardRoot = leaderboardRoot,
+		coopRoot = coopRoot,
 		helpButton = helpButton,
 		supportButton = supportButton,
 		floaters = floaters,
@@ -311,6 +343,14 @@ function MenuView.new(
 		leaderboardButton.Activated:Connect(function()
 			if self.ready then
 				onLeaderboard()
+			end
+		end)
+	)
+	table.insert(
+		self.connections,
+		coopButton.Activated:Connect(function()
+			if self.ready then
+				onCoop()
 			end
 		end)
 	)
@@ -373,6 +413,13 @@ function MenuView.setReady(self: MenuView, best: number, level: number, title: s
 	Clay.pillLabel(self.levelPill).Text = if title then `Lv {level} · {title}` else `Lv {level}`
 end
 
+-- Shows the Co-op button beside Leaderboard (each takes half the row), or hides it so Leaderboard fills the row.
+function MenuView.setCoopVisible(self: MenuView, visible: boolean)
+	self.coopRoot.Visible = visible
+	self.leaderboardRoot.Size = if visible then UDim2.new(0.5, -5, 1, 0) else UDim2.fromScale(1, 1)
+	self.coopRoot.Size = UDim2.new(0.5, -5, 1, 0)
+end
+
 function MenuView.show(self: MenuView)
 	self.backdrop.Enabled = true
 	self.gui.Enabled = true
@@ -402,6 +449,7 @@ function MenuView.hide(self: MenuView)
 	if
 		selected == self.playButton
 		or selected == self.leaderboardButton
+		or selected == self.coopButton
 		or selected == self.helpButton
 		or selected == self.supportButton
 	then

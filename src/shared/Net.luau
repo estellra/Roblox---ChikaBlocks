@@ -13,6 +13,10 @@
 --   RequestDonate(tier)                          a donation tier chosen on the Support screen (1 = smallest)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
+--   CoopInvite(targetUserId)                     invite a player in this server to a Co-op room
+--   CoopInviteReply(inviteId, accept)            answer an invitation (only its target can)
+--   CoopCancelInvite()                           take back the invitation the player has out
+--   CoopLeave()                                  leave the Co-op room
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
@@ -26,6 +30,14 @@
 --   Donated(amount, total)                       a donation was granted: its Robux, and the player's total
 --   Leaderboard(snapshot)                        top entries of every board and the player's own values
 --                                                (see LeaderboardService.Snapshot)
+--   CoopInvited(inviteId, fromUserId, expiresAt) someone invited the player; expiresAt is in workspace:GetServerTimeNow()
+--   CoopInviteResult(otherUserId, result)        how an invitation with that player stands. The inviter hears sent,
+--                                                declined, expired, busy, cooldown or left; the invited player hears
+--                                                expired or cancelled (the invitation is gone)
+--   CoopRoom(room)                               { id, mode, you, present, userIds } where you is the player's seat (1 or 2),
+--                                                present and userIds go by seat; nil when the player has no room
+-- Who is free to be invited is published on each Player as attributes: CoopBusy ("room", "tutorial", "loading" or
+-- nil when free) and Level.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -67,6 +79,13 @@ return {
 	RequestRotations = remoteEvent("RequestRotations"),
 	RotatePiece = remoteEvent("RotatePiece"),
 	RequestDonate = remoteEvent("RequestDonate"),
+	CoopInvite = remoteEvent("CoopInvite"),
+	CoopInviteReply = remoteEvent("CoopInviteReply"),
+	CoopCancelInvite = remoteEvent("CoopCancelInvite"),
+	CoopLeave = remoteEvent("CoopLeave"),
+	CoopInvited = remoteEvent("CoopInvited"),
+	CoopInviteResult = remoteEvent("CoopInviteResult"),
+	CoopRoom = remoteEvent("CoopRoom"),
 	Donated = remoteEvent("Donated"),
 	GameState = remoteEvent("GameState"),
 	MoveResult = remoteEvent("MoveResult"),
