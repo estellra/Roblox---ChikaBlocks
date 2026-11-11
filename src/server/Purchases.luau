@@ -36,7 +36,18 @@ export type Deps = {
 	warn: (message: string) -> (),
 }
 
+-- The run a player is in when a revive is asked for or arrives: a solo run or a Co-op one. The two number their runs
+-- separately, so an id means nothing without the kind.
+export type RunContext = { kind: "solo" | "coop", runId: number, isOver: boolean, revives: number }
+
 local Purchases = {}
+
+-- Whether a revive asked for (or bought) for run `runId` of `kind` can be used on the run the player is in now:
+-- it must be that very run, and it must be over. (A Co-op revive another player paid for first leaves the run not
+-- over, so a purchase that arrives after it is not used and stays in the buyer's data.)
+function Purchases.reviveApplies(context: RunContext?, kind: "solo" | "coop", runId: unknown): boolean
+	return context ~= nil and context.kind == kind and context.runId == runId and context.isOver
+end
 
 -- The price tier of the player's next revive: one per revive already used in the run, the last from then on.
 function Purchases.reviveTier(revivesUsed: number, tiers: number): number

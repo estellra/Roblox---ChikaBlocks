@@ -1,13 +1,14 @@
 --!strict
 -- The client's copy of a Co-op run, as pure logic so Lune can test it. Two layers:
 --   confirmed  what the server has told us, applied move by move in the server's order (`seq`)
---   pending    this player's own moves that were sent and not confirmed yet (usually none or one)
--- What is shown is the confirmed layer with the pending moves played on top, so the player's own pieces land
--- at once. When a move of the partner's arrives it goes into the confirmed layer and the pending moves are
+--   pending    this player's own moves and turns that were sent and not confirmed yet (usually none or one)
+-- What is shown is the confirmed layer with the pending ones played on top, so the player's own pieces land and
+-- turn at once. When an event of the partner's arrives it goes into the confirmed layer and the pending ones are
 -- played again on top; any that no longer fit (the partner got there first) are dropped at once, which sends the
 -- piece back to its tray without waiting for the server's CoopReject. The server decides the score and the sets;
--- a gap in `seq`, a move that doesn't fit our copy or a score that differs means we are out of step, and the
--- caller asks for the full state.
+-- a gap in `seq`, a move or turn that doesn't fit our copy or a score that differs means we are out of step, and
+-- the caller asks for the full state. A move and a turn both take a `seq`: a turn changes the piece in a tray slot,
+-- which the partner's copy needs to know before the move that places it.
 -- The shared modules are passed in because shared and client code sit in different places on disk and in the
 -- DataModel.
 
@@ -37,7 +38,18 @@ export type Move = {
 	takeOverAt: number?,
 }
 
-export type Pending = { moveId: number, slot: number, x: number, y: number }
+-- A piece turned, as the server announces it (see CoopRuns.Turn).
+export type Turn = {
+	runId: number,
+	seq: number,
+	seat: number,
+	moveId: number,
+	slot: number,
+	charged: ("free" | "paid")?,
+}
+
+-- An own event not confirmed yet: a move (x and y), or a turn of the piece in `slot`.
+export type Pending = { moveId: number, slot: number, x: number?, y: number?, turn: boolean? }
 
 export type Applied =
 	{ kind: "applied", mine: boolean, result: any?, dropped: { Pending } } -- result: the move's effect, for the partner's
@@ -52,7 +64,7 @@ export type CoopSync = typeof(setmetatable(
 		deps: Deps,
 		runId: number,
 		seat: number,
-		seq: number, -- the last confirmed move
+		seq: number, -- the last confirmed event (a move or a turn)
 		confirmed: any, -- CoopSession
 		pending: { Pending },
 		shown: any?, -- confirmed + pending; nil until it has to be built again
@@ -93,15 +105,19 @@ function CoopSync.reset(self: CoopSync, state: State)
 	self.takeOverAt = state.takeOverAt
 end
 
--- Builds the shown layer: the confirmed one with the pending moves played again. Moves that no longer fit are
--- taken out of `pending` and returned.
+-- Builds the shown layer: the confirmed one with the pending moves and turns played again, in the order they were
+-- made. Ones that no longer fit are taken out of `pending` and returned. A turn is replayed with every rotation
+-- paid for: it was only made because the player could pay, and which wallet it came out of comes out the same.
 local function rebuild(self: CoopSync): { Pending }
 	local CoopSession = self.deps.CoopSession
 	local shown = CoopSession.fromSnapshot(self.confirmed:snapshot(), noSet)
 	local dropped: { Pending } = {}
 	local kept: { Pending } = {}
 	for _, move in self.pending do
-		if shown:place(self.seat, move.slot, move.x, move.y) then
+		local fits = if move.turn
+			then shown:rotate(self.seat, move.slot, math.huge) ~= nil
+			else shown:place(self.seat, move.slot, move.x, move.y) ~= nil
+		if fits then
 			table.insert(kept, move)
 		else
 			table.insert(dropped, move)
@@ -137,6 +153,53 @@ function CoopSync.place(self: CoopSync, slot: unknown, x: unknown, y: unknown): 
 	self.nextMoveId += 1
 	table.insert(self.pending, { moveId = self.nextMoveId, slot = result.slot, x = result.x, y = result.y })
 	return result, self.nextMoveId
+end
+
+-- Turns the piece in `slot` on the shown layer and keeps it as pending. `paidAvailable` is how many rotations the
+-- player has bought and not used (the first turn of a piece takes the free one, else a bought one). Returns the
+-- turn's effect (what it cost, in `charged`) and its id (to send), or nil when it isn't possible (nothing changes).
+function CoopSync.rotate(self: CoopSync, slot: unknown, paidAvailable: unknown): (any?, number?)
+	local shown = self:session()
+	local result = shown:rotate(self.seat, slot, paidAvailable)
+	if not result then
+		return nil, nil
+	end
+	self.nextMoveId += 1
+	table.insert(self.pending, { moveId = self.nextMoveId, slot = result.slot, turn = true })
+	return result, self.nextMoveId
+end
+
+-- The free rotations this player has left, counting the ones they have turned and not heard back about.
+function CoopSync.freeRotations(self: CoopSync): number
+	return self:session():freeRotationsOf(self.seat)
+end
+
+-- A piece turned, from the server. It has to be the next event: anything else means we missed one. Like a move it
+-- goes into the confirmed layer and the player's own pending events are played again on top.
+function CoopSync.applyTurn(self: CoopSync, turn: Turn): Applied
+	if turn.runId ~= self.runId or turn.seq <= self.seq then
+		return { kind = "ignored" }
+	elseif turn.seq ~= self.seq + 1 then
+		return { kind = "resync", reason = `expected move {self.seq + 1}, got {turn.seq}` }
+	end
+	-- The wallet the server charged is not ours to know (a bought rotation is in the partner's saved data), so the
+	-- turn is made with just enough to pay in the way it says, and has to cost what the server says it cost.
+	local result = self.confirmed:rotate(turn.seat, turn.slot, if turn.charged == "paid" then 1 else 0)
+	if not result or result.charged ~= turn.charged then
+		return { kind = "resync", reason = "the turn does not fit the confirmed state" }
+	end
+
+	self.seq = turn.seq
+	local mine = turn.seat == self.seat
+	if mine then
+		for index, pending in self.pending do
+			if pending.moveId == turn.moveId then
+				table.remove(self.pending, index)
+				break
+			end
+		end
+	end
+	return { kind = "applied", mine = mine, result = if mine then nil else result, dropped = rebuild(self) }
 end
 
 -- An accepted move from the server. It has to be the next one: anything else means we missed one.

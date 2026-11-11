@@ -84,6 +84,12 @@ function Telemetry.reviveStep(self: Telemetry, player: any, attempt: string, ste
 	self.sink.funnel(player, "ReviveOffer", attempt, step, REVIVE_STEPS[step])
 end
 
+-- One step of the revive funnel for a Co-op run, kept apart from the solo one: both players are offered it and
+-- either may pay, which is a different decision. `attempt` identifies the offer (the run and its revives so far).
+function Telemetry.coopReviveStep(self: Telemetry, player: any, attempt: string, step: number)
+	self.sink.funnel(player, "CoopReviveOffer", attempt, step, REVIVE_STEPS[step])
+end
+
 -- One step of the rotation funnel; `attempt` identifies the run it happened in.
 function Telemetry.rotationStep(self: Telemetry, player: any, attempt: string, step: number)
 	self.sink.funnel(player, "RotationOffer", attempt, step, ROTATION_STEPS[step])
@@ -109,9 +115,10 @@ function Telemetry.donated(self: Telemetry, player: any, robux: number, tier: nu
 	self.sink.custom(player, "Donated", robux, { tostring(tier) })
 end
 
--- A piece was unlocked for turning; `how` is what it cost: "free" or "paid" (a bought rotation).
-function Telemetry.rotationUsed(self: Telemetry, player: any, how: string)
-	self.sink.custom(player, "RotationUsed", 1, { how })
+-- A piece was unlocked for turning; `how` is what it cost: "free" or "paid" (a bought rotation). A Co-op turn adds
+-- "coop" as the second field, so the two can be told apart.
+function Telemetry.rotationUsed(self: Telemetry, player: any, how: string, coop: boolean?)
+	self.sink.custom(player, "RotationUsed", 1, if coop then { how, "coop" } else { how })
 end
 
 function Telemetry.runStarted(self: Telemetry, player: any, data: Progress)

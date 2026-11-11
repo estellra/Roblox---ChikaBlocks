@@ -8,6 +8,11 @@
 --
 -- For the Studio debug bridge it can also pair a player with a practice partner that plays on the server (see
 -- bot()), so one Studio window is enough to play a whole Co-op game.
+--
+-- A player can turn their pieces (Net.CoopRotate): the first turn of a piece costs their run's free rotation, then
+-- one they bought (from their saved data, spent here before anything else can use it). Revives are paid for in
+-- PurchaseService, which asks for the revive through revive() below; either player may pay, and it revives the run
+-- for both.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -20,6 +25,7 @@ local DataService = require("./DataService")
 local GameService = require("./GameService")
 local LeaderboardService = require("./LeaderboardService")
 local Net = require(ReplicatedStorage.Shared.Net)
+local PlayerData = require("../PlayerData")
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local Rng = require(ReplicatedStorage.Shared.Rng)
 local RewardService = require("./RewardService")
@@ -40,6 +46,7 @@ local bots: { [any]: Bot } = {}
 local botCount = 0
 local progressOf: { [any]: CoopProgress.Progress } = {} -- each player's progress through the run they are in
 local inviteOf: { [number]: number } = {} -- the invitation that made each room, for the funnel
+local gameOverListeners: { (player: Player, runId: number) -> () } = {}
 
 local function isPlayer(who: any): boolean
 	return typeof(who) == "Instance"
@@ -130,9 +137,11 @@ local function recordPair(players: { any }, countedScore: number, writeNow: bool
 	end
 end
 
--- The team has no moves left: the players still in the run are paid what it earned, it counts as a game played,
--- and the pair's score is written.
-local function finishRun(summary: CoopRuns.Summary, players: { any })
+-- The team has no moves left: the players still in the run are paid what it earned (what it has earned so far, if
+-- it was revived and ended again), it counts as a game played once, and the pair's score is written. `first` is
+-- the first time this run ends: only then is it logged, and only then does it close the "run finished" funnel step.
+-- Then the players still in the run are offered a revive (PurchaseService listens).
+local function finishRun(summary: CoopRuns.Summary, players: { any }, first: boolean)
 	local both = summary.present[1] and summary.present[2]
 	for seat, member in players do
 		if summary.present[seat] and isPlayer(member) then
@@ -140,19 +149,28 @@ local function finishRun(summary: CoopRuns.Summary, players: { any })
 			local progress = progressOf[member]
 			if data and progress then
 				if summary.moves > 0 then
-					CoopProgress.countGame(progress, data)
+					CoopProgress.countGame(progress, data) -- once per run: the progress remembers it did
 				end
 				Net.CoopRewards:FireClient(member :: Player, summary.runId, CoopProgress.rewards(progress, data))
 				GameService.sendProfile(member :: Player)
 				LeaderboardService.flush(member :: Player, data, PAIR_FLUSH_GAP_SECONDS)
 			end
-			GameService.logCoopRunEnded(member :: Player, summary, if both then "gameover" else "partner_left")
+			if first then
+				GameService.logCoopRunEnded(member :: Player, summary, if both then "gameover" else "partner_left")
+			end
 		end
 	end
 	recordPair(players, summary.countedScore, true)
 	local invite = inviteOf[summary.roomId]
-	if invite then
+	if invite and first then
 		GameService.logCoopInvite(players[1], invite, 4) -- RunFinished
+	end
+	for seat, member in players do
+		if summary.present[seat] and isPlayer(member) then
+			for _, listener in gameOverListeners do
+				task.spawn(listener, member :: Player, summary.runId)
+			end
+		end
 	end
 end
 
@@ -197,7 +215,8 @@ function CoopService.place(player: any, runId: unknown, moveId: unknown, slot: u
 			local wait = outcome.takeOverIn[seat]
 			fire(
 				member,
-				Net.CoopMove,
+				Net.CoopEvent,
+				"move",
 				move.runId,
 				move.seq,
 				move.seat,
@@ -213,16 +232,87 @@ function CoopService.place(player: any, runId: unknown, moveId: unknown, slot: u
 		end
 		creditMove(outcome.players, outcome.present, move.score, outcome.countedScore)
 		recordPair(outcome.players, outcome.countedScore, false) -- written within a minute, or at the end
-		if outcome.endsRun then
+		-- Every time the team runs out of moves, not just the first: a revived run ends again with more to pay out.
+		if move.isOver then
 			local summary = runs:summary(player)
 			if summary then
-				finishRun(summary, outcome.players)
+				finishRun(summary, outcome.players, outcome.endsRun)
 			end
 		end
 	elseif outcome.kind == "rejected" then
 		fire(player, Net.CoopReject, outcome.runId, outcome.moveId)
 		GameService.logCoopConflict(player)
 	end
+end
+
+-- Turns a piece for `player` (a client, or the practice partner) and tells the players still in the run. A turn paid
+-- for with a bought rotation spends it from the player's data right here, before anything can use it twice, and
+-- sends the new count. A turn that does not work goes back to the sender, with their profile, since the client
+-- may have been wrong about how many rotations it had.
+function CoopService.rotate(player: any, runId: unknown, moveId: unknown, slot: unknown)
+	local data = dataOf(player)
+	local outcome = runs:rotate(player, runId, moveId, slot, if data then data.rotations else 0)
+	if outcome.kind == "accepted" then
+		local turn = outcome.turn
+		if turn.charged == "paid" and data then
+			PlayerData.useRotation(data) -- the turn was only paid because data.rotations was above zero
+		end
+		for seat, member in outcome.players do
+			if outcome.present[seat] then
+				fire(
+					member,
+					Net.CoopEvent,
+					"turn",
+					turn.runId,
+					turn.seq,
+					turn.seat,
+					turn.moveId,
+					turn.slot,
+					turn.charged
+				)
+			end
+		end
+		if turn.charged and isPlayer(player) then
+			GameService.logCoopRotationUsed(player :: Player, turn.charged)
+			if turn.charged == "paid" then
+				GameService.sendProfile(player :: Player)
+			end
+		end
+	elseif outcome.kind == "rejected" then
+		fire(player, Net.CoopReject, outcome.runId, outcome.moveId)
+		if isPlayer(player) then
+			GameService.sendProfile(player :: Player)
+		end
+	end
+end
+
+-- Revives the finished run for both players, on behalf of `player`, who has paid (or used a revive they bought
+-- earlier). Tells the players still in the run. False when it can't be revived (nothing has been spent yet): the run
+-- isn't over, is not this player's, or the partner revived it first.
+function CoopService.revive(player: Player, runId: number): boolean
+	local before = runs:summary(player)
+	local outcome = runs:revive(player, runId)
+	if not before or not outcome then
+		return false
+	end
+	for seat, member in outcome.players do
+		if outcome.present[seat] then
+			fire(member, Net.CoopState, wireState(outcome.states[seat]), "revive")
+		end
+	end
+	GameService.logCoopRevive(player, `c{before.runId}.{before.revives}`, 4)
+	return true
+end
+
+-- The player's Co-op run in a few numbers, or nil when they are not in one (for PurchaseService).
+function CoopService.summaryOf(player: Player): CoopRuns.Summary?
+	return runs:summary(player)
+end
+
+-- Called with a player and the run's id every time a Co-op run ends in game over, for each player still in it
+-- (again after each revive).
+function CoopService.onGameOver(callback: (player: Player, runId: number) -> ())
+	table.insert(gameOverListeners, callback)
 end
 
 -- "Play again": both players have to ask.
@@ -308,10 +398,19 @@ function CoopService.start(_self: any)
 		end
 	)
 
+	Net.CoopRotate.OnServerEvent:Connect(function(player: Player, runId: unknown, moveId: unknown, slot: unknown)
+		CoopService.rotate(player, runId, moveId, slot)
+	end)
+
 	Net.CoopRequestState.OnServerEvent:Connect(function(player: Player)
 		local state = runs:state(player)
 		if state then
 			fire(player, Net.CoopState, wireState(state), "resync")
+			if state.session.game.isOver then
+				for _, listener in gameOverListeners do
+					task.spawn(listener, player, state.runId) -- the client may have missed the revive offer
+				end
+			end
 		end
 	end)
 
@@ -443,7 +542,10 @@ function CoopService.describe(player: Player): string
 	local view = runs:peek(player)
 	local stuck = ""
 	if view then
-		stuck = ` hasMove={view.coop:hasMove(view.seat)} partnerHasMove={view.coop:hasMove(3 - view.seat)}`
+		stuck =
+			` seq={view.seq} revives={summary.revives} free={table.concat(view.coop.freeRotations, "/")} hasMove={view.coop:hasMove(
+				view.seat
+			)} partnerHasMove={view.coop:hasMove(3 - view.seat)}`
 	end
 	return `run={summary.runId} room={summary.roomId} score={summary.score} counted={summary.countedScore} moves={summary.moves} over={summary.isOver} present={table.concat(
 		{ tostring(summary.present[1]), tostring(summary.present[2]) },

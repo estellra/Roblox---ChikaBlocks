@@ -1,5 +1,5 @@
 --!strict
--- The client side of a Co-op run: it listens to the server (CoopState, CoopMove, CoopReject, CoopRematchVotes),
+-- The client side of a Co-op run: it listens to the server (CoopState, CoopEvent, CoopReject, CoopRematchVotes),
 -- keeps the run in a CoopSync (the confirmed state plus this player's unconfirmed moves) and hands GameController
 -- what it needs to draw and play it, as a Source. GameController does the drawing, the drag and drop and the
 -- panels exactly as for a solo run; what differs lives here: which pieces are the player's, sending moves and
@@ -251,8 +251,21 @@ local source: GameController.Source = {
 		GameController.sourceChanged(result, true)
 		return result
 	end,
-	tryRotate = function(_slot: unknown): boolean
-		return false -- turning pieces in Co-op comes later
+	rotate = function(slot: unknown, bought: number)
+		local run = sync
+		if not run then
+			return nil
+		end
+		local result, moveId = run:rotate(slot, bought)
+		if not result or not moveId then
+			return nil
+		end
+		Net.CoopRotate:FireServer(run.runId, moveId, result.slot)
+		watch(run, moveId)
+		return result
+	end,
+	freeRotations = function(): number
+		return if sync then sync:freeRotations() else 0
 	end,
 	statusText = statusText,
 	gameOver = function()
@@ -323,6 +336,9 @@ local function onState(state: any, reason: unknown)
 	if not run then
 		return -- not in a run (any more): a late answer
 	end
+	if reason == "revive" then
+		rewards = nil -- the run goes on; its next game over brings what it has earned by then
+	end
 	userIds = state.userIds
 	votes = { false, false }
 	run:reset(state)
@@ -373,6 +389,44 @@ local function onMove(
 	end
 end
 
+-- A piece was turned, by the player (the server confirms it) or by the partner (their tray shows it from now on).
+local function onTurn(
+	runId: number,
+	seq: number,
+	seat: number,
+	moveId: number,
+	slot: number,
+	charged: ("free" | "paid")?
+)
+	local run = sync
+	if not run then
+		return
+	end
+	local applied = run:applyTurn({
+		runId = runId,
+		seq = seq,
+		seat = seat,
+		moveId = moveId,
+		slot = slot,
+		charged = charged,
+	})
+	if applied.kind == "resync" then
+		requestState(applied.reason)
+	elseif applied.kind == "applied" then
+		GameController.sourceChanged(nil, applied.mine) -- draws the partner's turned piece
+		refreshTakeOver()
+	end
+end
+
+-- Everything that happens in the run, in the order the server took it (one remote, so the order is kept).
+local function onEvent(kind: unknown, ...: any)
+	if kind == "move" then
+		onMove(...)
+	elseif kind == "turn" then
+		onTurn(...)
+	end
+end
+
 local function onReject(runId: number, moveId: number)
 	local run = sync
 	if run then
@@ -418,14 +472,15 @@ function CoopRunController.describe(): string
 		return "no Co-op run"
 	end
 	local shown = run:session()
-	return `run={run.runId} seat={run.seat} seq={run.seq} pending={run:pendingCount()} partner="{partnerName()}" left={partnerLeft()} score={shown.session.score} counted={shown.countedScore} over={shown.session.isOver} votes={tostring(
-		votes[1]
-	)}/{tostring(votes[2])} takeOverAt={run.takeOverAt} status="{statusText()}"`
+	return `run={run.runId} seat={run.seat} seq={run.seq} pending={run:pendingCount()} partner="{partnerName()}" left={partnerLeft()} score={shown.session.score} counted={shown.countedScore} over={shown.session.isOver} revives={shown.session.revivesUsed} free={table.concat(
+		shown.freeRotations,
+		"/"
+	)} votes={tostring(votes[1])}/{tostring(votes[2])} takeOverAt={run.takeOverAt} status="{statusText()}"`
 end
 
 function CoopRunController.start(_self: any)
 	Net.CoopState.OnClientEvent:Connect(onState)
-	Net.CoopMove.OnClientEvent:Connect(onMove)
+	Net.CoopEvent.OnClientEvent:Connect(onEvent)
 	Net.CoopReject.OnClientEvent:Connect(onReject)
 	Net.CoopRematchVotes.OnClientEvent:Connect(onVotes)
 	Net.CoopRewards.OnClientEvent:Connect(onRewards)

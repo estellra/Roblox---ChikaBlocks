@@ -304,11 +304,13 @@ function GameSession.place(self: GameSession, slot: unknown, x: unknown, y: unkn
 	}
 end
 
--- Turns the piece in `slot` a quarter clockwise. The first turn of a piece costs a rotation: a free one if
--- the run has any left, else one of the `paidAvailable` the player bought earlier (the caller spends it when the
--- result says "paid"). After that the piece turns freely until it is placed. Nil, and nothing changes, when the
--- piece looks the same turned, the run is over, or the player can't pay.
-function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unknown): RotateResult?
+-- Turns the piece in `slot` a quarter clockwise, paying from the wallet the caller passes in: `free` rotations the
+-- player has left and `paid` ones they bought earlier. The first turn of a piece costs a rotation, a free one if
+-- there is any, else a bought one; after that the piece turns freely until it is placed. This only turns the piece
+-- and says what it cost ("free" or "paid"); taking that from the wallet is up to the caller (a Co-op run has one
+-- wallet per player, so the session can't keep it). Nil, and nothing changes, when the piece looks the same
+-- turned, the run is over, or the wallet can't pay.
+function GameSession.rotateWith(self: GameSession, slot: unknown, free: unknown, paid: unknown): RotateResult?
 	if self.isOver or self.awaitingSet or not isSlot(self, slot) then
 		return nil
 	end
@@ -320,10 +322,9 @@ function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unk
 
 	local charged: ("free" | "paid")? = nil
 	if not self.unlocked[slotIndex] then
-		if self.freeRotations > 0 then
+		if typeof(free) == "number" and free > 0 then
 			charged = "free"
-			self.freeRotations -= 1
-		elseif typeof(paidAvailable) == "number" and paidAvailable > 0 then
+		elseif typeof(paid) == "number" and paid > 0 then
 			charged = "paid"
 		else
 			return nil
@@ -334,6 +335,16 @@ function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unk
 	local turned = Pieces.rotateCW(piece)
 	self.tray[slotIndex] = turned
 	return { slot = slotIndex, piece = turned, charged = charged }
+end
+
+-- A solo turn: the run's own free rotations first, then one of the `paidAvailable` the player bought earlier (the
+-- caller spends that one when the result says "paid"). See rotateWith.
+function GameSession.rotate(self: GameSession, slot: unknown, paidAvailable: unknown): RotateResult?
+	local result = GameSession.rotateWith(self, slot, self.freeRotations, paidAvailable)
+	if result and result.charged == "free" then
+		self.freeRotations -= 1
+	end
+	return result
 end
 
 -- Clears the middle of the board, resets the combo and deals a set that can all be placed.

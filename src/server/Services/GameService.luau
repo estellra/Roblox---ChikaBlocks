@@ -357,12 +357,27 @@ function GameService.logRevive(player: Player, step: number)
 	end
 end
 
+-- One step of the revive funnel for a Co-op run's offer (`attempt` names the run and its revives so far).
+function GameService.logCoopRevive(player: Player, attempt: string, step: number)
+	telemetry:coopReviveStep(player, attempt, step)
+end
+
 -- One step of the rotation funnel for the player's current run.
 function GameService.logRotation(player: Player, step: number)
 	local summary = runs:summary(player)
 	if summary then
 		telemetry:rotationStep(player, tostring(summary.runId), step)
 	end
+end
+
+-- One step of the rotation funnel for a player's Co-op run.
+function GameService.logCoopRotation(player: Player, runId: number, step: number)
+	telemetry:rotationStep(player, `c{runId}`, step)
+end
+
+-- A piece was unlocked for turning in a Co-op run; `how` is "free" or "paid".
+function GameService.logCoopRotationUsed(player: Player, how: string)
+	telemetry:rotationUsed(player, how, true)
 end
 
 -- One step of the donation funnel; `attempt` tells the purchase prompts apart.

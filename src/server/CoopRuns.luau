@@ -5,9 +5,12 @@
 -- server and shared code sit in different places on disk and in the DataModel.
 --
 -- Both players place at once, so two moves can clash. The server takes them in the order they arrive: the first
--- is accepted and numbered (`seq`, counting every accepted move of the run), the second no longer fits and is
+-- is accepted and numbered (`seq`, counting every accepted event of the run), the second no longer fits and is
 -- rejected, which sends the piece back to its tray. `moveId` is the sending client's own counter and only lets
 -- it recognise its own moves.
+-- Turning a piece changes what the partner's copy has to know too, so an accepted turn is an event like a move:
+-- it takes the next `seq` and goes to both players. (Until somebody turns a piece `seq` is the number of moves.)
+-- A revive replaces the whole state instead, so it is simply sent to both.
 -- Everything a client sends is untrusted: requests are rate limited and arguments validated.
 local RateLimiter = require("./Util/RateLimiter")
 local Validate = require("./Util/Validate")
@@ -20,7 +23,7 @@ export type Deps = {
 	clock: () -> number,
 	newSeed: () -> number,
 	afkSeconds: number, -- how long nobody may move before a stuck player can take over from their partner
-	limits: { place: Limit, state: Limit, takeOver: Limit, rematch: Limit, hover: Limit? }?,
+	limits: { place: Limit, state: Limit, takeOver: Limit, rematch: Limit, hover: Limit?, rotate: Limit? }?,
 }
 
 -- The two players of a run by seat, as Rooms hands them out (seat 1 invited).
@@ -29,7 +32,7 @@ export type Room = { id: number, players: { any }, present: { boolean }? }
 -- What a client needs to (re)build its copy of the run.
 export type State = {
 	runId: number,
-	seq: number, -- accepted moves so far; the next move will be seq + 1
+	seq: number, -- accepted moves and turns so far; the next one will be seq + 1
 	seat: number, -- the receiving player's seat
 	players: { any }, -- both players by seat
 	session: any, -- CoopSession.Snapshot
@@ -64,6 +67,36 @@ export type PlaceOutcome =
 	| { kind: "rejected", runId: number, moveId: number } -- clashed or no longer valid; tell only the sender
 	| { kind: "ignored", reason: string }
 
+-- A piece turned, as both clients hear of it. `charged` is what it cost the player: "free" (their run's free
+-- rotation), "paid" (one they bought, which the caller takes from their data) or nil (the piece was turned already).
+export type Turn = {
+	runId: number,
+	seq: number,
+	seat: number,
+	moveId: number,
+	slot: number,
+	charged: ("free" | "paid")?,
+}
+
+export type RotateOutcome =
+	{
+		kind: "accepted",
+		turn: Turn,
+		players: { any }, -- by seat; tell the ones that are still present
+		present: { boolean },
+	}
+	| { kind: "rejected", runId: number, moveId: number } -- not the player's piece, nothing to turn, can't pay
+	| { kind: "ignored", reason: string }
+
+-- A revived run: every seat's new state, and who is still in the run to be sent it.
+export type ReviveOutcome = {
+	runId: number,
+	players: { any }, -- by seat
+	present: { boolean },
+	states: { State }, -- by seat
+	revives: number, -- how many times the run has been revived, this one included
+}
+
 -- Where a player is aiming a piece, to be passed on to their partner: slot, x and y are nil when the aim is gone.
 export type HoverOutcome = { to: any, slot: number?, x: number?, y: number? }
 
@@ -95,6 +128,7 @@ export type Summary = {
 	maxCombo: number,
 	isOver: boolean,
 	present: { boolean },
+	revives: number, -- how many times the run has been revived
 }
 
 type Run = {
@@ -102,7 +136,8 @@ type Run = {
 	roomId: number,
 	players: { any }, -- by seat
 	coop: any, -- CoopSession
-	lastMoveAt: number, -- when the run started or a move was last accepted
+	seq: number, -- accepted moves and turns so far
+	lastMoveAt: number, -- when the run started, was revived or a move was last accepted (a turn does not count)
 	maxCombo: number,
 	endCounted: boolean,
 	rematch: { boolean }, -- by seat: pressed Play again
@@ -114,6 +149,7 @@ local DEFAULT_LIMITS = {
 	takeOver = { capacity = 1, windowSeconds = 2 },
 	rematch = { capacity = 2, windowSeconds = 2 },
 	hover = { capacity = 12, windowSeconds = 1 }, -- clients send at most 10 a second
+	rotate = { capacity = 12, windowSeconds = 1 }, -- tapping to look at each turn of a piece
 }
 local MAX_RUN_ID = 2 ^ 31
 local MAX_MOVE_ID = 1e9
@@ -133,6 +169,7 @@ export type CoopRuns = typeof(setmetatable(
 		takeOverLimiter: RateLimiter.RateLimiter,
 		rematchLimiter: RateLimiter.RateLimiter,
 		hoverLimiter: RateLimiter.RateLimiter,
+		rotateLimiter: RateLimiter.RateLimiter,
 	},
 	CoopRuns
 ))
@@ -156,6 +193,7 @@ function CoopRuns.new(deps: Deps): CoopRuns
 		takeOverLimiter = limiter(limits.takeOver),
 		rematchLimiter = limiter(limits.rematch),
 		hoverLimiter = limiter(limits.hover or DEFAULT_LIMITS.hover),
+		rotateLimiter = limiter(limits.rotate or DEFAULT_LIMITS.rotate),
 	}, CoopRuns)
 end
 
@@ -175,7 +213,7 @@ end
 local function stateFor(self: CoopRuns, run: Run, seat: number): State
 	return {
 		runId = run.id,
-		seq = run.coop.session.moveCount,
+		seq = run.seq,
 		seat = seat,
 		players = run.players,
 		session = run.coop:snapshot(),
@@ -195,6 +233,7 @@ local function summaryOf(run: Run): Summary
 		maxCombo = run.maxCombo,
 		isOver = coop.session.isOver,
 		present = table.clone(coop.present),
+		revives = coop.session.revivesUsed,
 	}
 end
 
@@ -211,6 +250,7 @@ local function forgetPlayer(self: CoopRuns, player: any, run: Run)
 	self.takeOverLimiter:forget(player)
 	self.rematchLimiter:forget(player)
 	self.hoverLimiter:forget(player)
+	self.rotateLimiter:forget(player)
 end
 
 -- Starts a run for the room (its players are both in), replacing the room's last one. Returns each seat's state.
@@ -235,6 +275,7 @@ function CoopRuns.start(self: CoopRuns, room: Room): { State }?
 		roomId = room.id,
 		players = table.clone(room.players),
 		coop = CoopSession.new(CoopSession.newSource(deps.Rng.new(deps.newSeed()))),
+		seq = 0,
 		lastMoveAt = deps.clock(),
 		maxCombo = 0,
 		endCounted = false,
@@ -289,6 +330,7 @@ function CoopRuns.place(
 		return { kind = "rejected", runId = run.id, moveId = id }
 	end
 
+	run.seq += 1
 	run.lastMoveAt = self.deps.clock()
 	run.maxCombo = math.max(run.maxCombo, result.combo)
 	local session = coop.session
@@ -315,7 +357,7 @@ function CoopRuns.place(
 		kind = "accepted",
 		move = {
 			runId = run.id,
-			seq = session.moveCount,
+			seq = run.seq,
 			seat = seat,
 			moveId = id,
 			slot = result.slot,
@@ -331,6 +373,81 @@ function CoopRuns.place(
 		takeOverIn = wait,
 		present = table.clone(coop.present),
 		countedScore = coop.countedScore,
+	}
+end
+
+-- Turns a piece for `player`, a quarter clockwise. `paidAvailable` is how many rotations the player has bought and
+-- not used: when the turn says "paid" the caller takes one from their data (before anything else can use it). A turn
+-- that can't be made (not the player's piece, nothing to turn, the run is over, can't pay) is rejected rather than
+-- ignored, so the client can put the piece back as it was. A turn is an event like a move (it takes the next `seq`),
+-- but it does not count as the player being active: only placing a piece holds back the partner's Take over.
+function CoopRuns.rotate(
+	self: CoopRuns,
+	player: any,
+	runId: unknown,
+	moveId: unknown,
+	slot: unknown,
+	paidAvailable: number
+): RotateOutcome
+	if not self.rotateLimiter:allow(player) then
+		return ignored("rate limited")
+	end
+	local run = self.runOf[player]
+	if not run then
+		return ignored("no run")
+	end
+	if Validate.integer(runId, 1, MAX_RUN_ID) ~= run.id then
+		return ignored("stale or malformed run id")
+	end
+	local id = Validate.integer(moveId, 0, MAX_MOVE_ID)
+	if id == nil then
+		return ignored("malformed move id")
+	end
+	if self.deps.CoopSession.seatOf(slot) == nil then
+		return ignored("malformed slot")
+	end
+
+	local coop = run.coop
+	local seat = seatOf(run, player)
+	local result = coop:rotate(seat, slot, paidAvailable)
+	if not result then
+		return { kind = "rejected", runId = run.id, moveId = id }
+	end
+	run.seq += 1
+	return {
+		kind = "accepted",
+		turn = {
+			runId = run.id,
+			seq = run.seq,
+			seat = seat,
+			moveId = id,
+			slot = result.slot,
+			charged = result.charged,
+		},
+		players = run.players,
+		present = table.clone(coop.present),
+	}
+end
+
+-- Revives the player's finished run for both of them: the middle of the board is cleared and a new set dealt. Nil
+-- when `player` isn't in a run, the id is not the run's, or the run isn't over. Paying for it is the caller's
+-- business (PurchaseService), and so is telling the players still present (the outcome says who and what).
+function CoopRuns.revive(self: CoopRuns, player: any, runId: unknown): ReviveOutcome?
+	local run = self.runOf[player]
+	if not run or Validate.integer(runId, 1, MAX_RUN_ID) ~= run.id then
+		return nil
+	end
+	if not run.coop:revive() then
+		return nil
+	end
+	run.lastMoveAt = self.deps.clock() -- the idle clock starts again with the new set
+	run.rematch = { false, false }
+	return {
+		runId = run.id,
+		players = run.players,
+		present = table.clone(run.coop.present),
+		states = { stateFor(self, run, 1), stateFor(self, run, 2) },
+		revives = run.coop.session.revivesUsed,
 	}
 end
 
@@ -486,6 +603,7 @@ function CoopRuns.remove(self: CoopRuns, player: any)
 		self.takeOverLimiter:forget(player)
 		self.rematchLimiter:forget(player)
 		self.hoverLimiter:forget(player)
+		self.rotateLimiter:forget(player)
 	end
 end
 
@@ -499,13 +617,13 @@ function CoopRuns.summary(self: CoopRuns, player: any): Summary?
 end
 
 -- Read-only access to the player's run for the Studio debug bridge and the practice partner: the run's id, the
--- player's seat and the live CoopSession (do not change it). No rate limit.
-function CoopRuns.peek(self: CoopRuns, player: any): { runId: number, seat: number, coop: any }?
+-- player's seat, how many events it has had and the live CoopSession (do not change it). No rate limit.
+function CoopRuns.peek(self: CoopRuns, player: any): { runId: number, seat: number, seq: number, coop: any }?
 	local run = self.runOf[player]
 	if not run then
 		return nil
 	end
-	return { runId = run.id, seat = seatOf(run, player), coop = run.coop }
+	return { runId = run.id, seat = seatOf(run, player), seq = run.seq, coop = run.coop }
 end
 
 -- How many entries every table holds; zero once every room is closed and every player gone.
@@ -524,6 +642,7 @@ function CoopRuns.footprint(self: CoopRuns): number
 			self.takeOverLimiter,
 			self.rematchLimiter,
 			self.hoverLimiter,
+			self.rotateLimiter,
 		}
 	do
 		for _ in limiter.buckets do

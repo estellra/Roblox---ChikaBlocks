@@ -19,6 +19,9 @@
 --   CoopLeave()                                  leave the Co-op room (and with it the run)
 --   CoopPlace(runId, moveId, slot, x, y)         a Co-op move the client has already shown (predicted); moveId is the
 --                                                client's own counter, only for recognising the move again
+--   CoopRotate(runId, moveId, slot)              turn a Co-op piece (predicted by the client); moveId comes from the same
+--                                                counter as CoopPlace's. Revive and buying rotations reuse RequestRevive and
+--                                                RequestRotations, which the server answers for whichever run the player is in
 --   CoopRequestState()                           the client thinks it is out of step; send the full Co-op state
 --   CoopTakeOver(runId)                          the partner has been idle too long: take their pieces and play on
 --   CoopRematch()                                Play again after a Co-op game over; needs both players
@@ -33,7 +36,7 @@
 --   RunRewards(runId, rewards)                   after a game over: EXP gained, level before and after,
 --                                                titles unlocked during the run (see GameService)
 --   ReviveOffer(runId, offer)                    after a game over: { tokens, price? }, the revives already paid for and
---                                                the Robux price of the next one
+--                                                the Robux price of the next one. A Co-op run offers it to both players
 --   ReviveResult(runId, ok)                      the revive didn't happen (purchase cancelled or not possible)
 --   Donated(amount, total)                       a donation was granted: its Robux, and the player's total
 --   Leaderboard(snapshot)                        top entries of every board (the Co-op board by pair) and the
@@ -45,13 +48,20 @@
 --   CoopRoom(room)                               { id, mode, you, present, userIds } where you is the player's seat (1 or 2),
 --                                                present and userIds go by seat; nil when the player has no room
 --   CoopState(state, reason)                     the full Co-op run: { runId, seq, seat, userIds, session, takeOverAt? } with the
---                                                CoopSession snapshot; reason is "start", "resync" or "takeover" (the
---                                                partner is gone and every piece is the player's now)
---   CoopMove(runId, seq, seat, moveId, slot, x, y, score, set, isOver, takeOverAt)
+--                                                CoopSession snapshot; reason is "start", "resync", "takeover" (the
+--                                                partner is gone and every piece is the player's now) or "revive" (the
+--                                                run was revived: a new set and a cleared middle)
+--   CoopEvent("move", runId, seq, seat, moveId, slot, x, y, score, set, isOver, takeOverAt)
 --                                                an accepted move, in the order the server took them (seq counts the
---                                                run's moves); set = new piece ids when it used the last piece of the set;
---                                                takeOverAt is when this player may take over (server time), or nil
---   CoopReject(runId, moveId)                    that move no longer fits (the partner got there first); only the sender
+--                                                run's moves and turns); set = new piece ids when it used the last piece of
+--                                                the set; takeOverAt is when this player may take over (server time), or nil
+--   CoopEvent("turn", runId, seq, seat, moveId, slot, charged)
+--                                                a piece was turned; charged is "free", "paid" or nil (the piece had been
+--                                                turned already), what it cost the player. Moves and turns share one remote
+--                                                on purpose: only the events of a single RemoteEvent are guaranteed to
+--                                                arrive in the order they were sent, and a turn that overtook the move before
+--                                                it would put the partner's copy out of step
+--   CoopReject(runId, moveId)                    that move or turn doesn't work (a move: the partner got there first); only the sender
 --   CoopRematchVotes(votes)                      who has pressed Play again, by seat
 --   CoopRewards(runId, rewards)                  after a Co-op game over, to each player still in the run: EXP gained,
 --                                                level before and after, titles unlocked (as RunRewards)
@@ -118,11 +128,12 @@ return {
 	CoopInviteResult = remoteEvent("CoopInviteResult"),
 	CoopRoom = remoteEvent("CoopRoom"),
 	CoopPlace = remoteEvent("CoopPlace"),
+	CoopRotate = remoteEvent("CoopRotate"),
 	CoopRequestState = remoteEvent("CoopRequestState"),
 	CoopTakeOver = remoteEvent("CoopTakeOver"),
 	CoopRematch = remoteEvent("CoopRematch"),
 	CoopState = remoteEvent("CoopState"),
-	CoopMove = remoteEvent("CoopMove"),
+	CoopEvent = remoteEvent("CoopEvent"),
 	CoopReject = remoteEvent("CoopReject"),
 	CoopRematchVotes = remoteEvent("CoopRematchVotes"),
 	CoopRewards = remoteEvent("CoopRewards"),

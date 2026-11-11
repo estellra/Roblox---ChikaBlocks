@@ -38,7 +38,8 @@ export type Source = {
 	runId: () -> number,
 	canDrag: (slot: number) -> boolean, -- the player's pieces, or all of them once the partner is gone
 	tryPlace: (slot: unknown, x: unknown, y: unknown) -> GameSession.PlaceResult?,
-	tryRotate: (slot: unknown) -> boolean,
+	rotate: (slot: unknown, bought: number) -> GameSession.RotateResult?, -- turns a piece (`bought`: the player's bought rotations)
+	freeRotations: () -> number, -- the player's own free rotations left in this run
 	statusText: () -> string, -- the line under the tray: who the player waits for, or that the partner left
 	gameOver: () -> Hud.CoopGameOver,
 	leave: () -> (), -- Menu / Leave run
@@ -113,18 +114,19 @@ local function activeRunId(): number
 	return if source then source.runId() else runId
 end
 
--- Tells the tray which pieces can be turned: in a normal run that isn't over, those that look different turned.
--- (A Co-op run has no turning yet.)
+-- Tells the tray which pieces can be turned: in a normal run that isn't over, those that look different turned. In a
+-- Co-op run only the player's own pieces (the partner's can be looked at but not touched).
 local function refreshRotatable()
 	if not views then
 		return
 	end
 	local shown = current()
-	local playing = source == nil and runId > 0 and runMode == "normal" and not shown.isOver
+	local playing = if source then not shown.isOver else runId > 0 and runMode == "normal" and not shown.isOver
 	local rotatable: { boolean } = {}
 	for slot = 1, shown.setSize do
 		local piece = shown.tray[slot]
-		rotatable[slot] = playing and piece and Pieces.canRotate(piece) or false
+		local own = source == nil or source.canDrag(slot)
+		rotatable[slot] = playing and own and piece and Pieces.canRotate(piece) or false
 	end
 	views.tray:setRotatable(rotatable)
 end
@@ -158,17 +160,19 @@ local function applyReviveOffer()
 		return
 	end
 	local offer = reviveOffer
-	if not offer or offer.runId ~= runId or not session.isOver then
+	if not offer or offer.runId ~= activeRunId() or not current().isOver then
 		views.hud:setRevive(nil)
 		return
 	end
+	-- Either Co-op player can pay, and it revives the run for both.
+	local clears = if source then "Clears the center 4×4 for both of you" else "Clears the center 4×4"
 	local text, hint
 	if offer.tokens > 0 then
 		text = "Revive · Free"
-		hint = `You have {offer.tokens} · Clears the center 4×4`
+		hint = `You have {offer.tokens} · {clears}`
 	else
 		text = if offer.price then `Revive · R$ {offer.price}` else "Revive"
-		hint = "Clears the center 4×4"
+		hint = clears
 	end
 	views.hud:setRevive({ text = text, hint = hint })
 end
@@ -187,6 +191,7 @@ local function presentGameOver(delaySeconds: number)
 		end
 		if source then
 			views.hud:showCoopGameOver(source.gameOver())
+			applyReviveOffer() -- either player may pay for it; the offer comes from the server
 			return
 		end
 		local isNewBest = bestBeforeRun > 0 and session.score > bestBeforeRun
@@ -296,7 +301,7 @@ end
 
 -- The server's offer after a game over: how many revives are already paid for, and the price of the next.
 local function onReviveOffer(offerRunId: number, offer: { tokens: number, price: number? })
-	if offerRunId ~= runId then
+	if offerRunId ~= activeRunId() then
 		return
 	end
 	reviveOffer = { runId = offerRunId, tokens = offer.tokens, price = offer.price }
@@ -307,7 +312,7 @@ end
 
 -- The revive did not happen (the purchase was cancelled, or it was not possible): the button is free again.
 local function onReviveResult(resultRunId: number, ok: boolean)
-	if resultRunId == runId and not ok then
+	if resultRunId == activeRunId() and not ok then
 		applyReviveOffer()
 	end
 end
@@ -391,11 +396,11 @@ end
 -- prompt. The server decides the product; nothing happens on screen until it answers.
 function GameController.requestRevive()
 	local offer = reviveOffer
-	if not views or not offer or offer.runId ~= runId or not session.isOver then
+	if not views or not offer or offer.runId ~= activeRunId() or not current().isOver then
 		return
 	end
 	views.hud:setReviveBusy(true)
-	Net.RequestRevive:FireServer(runId)
+	Net.RequestRevive:FireServer(offer.runId)
 	-- The server answers a refused request, but not one that got lost; the button comes back after a while. (If
 	-- the purchase prompt is open, pressing it again is ignored there.)
 	reviveWaitToken += 1
@@ -411,7 +416,8 @@ end
 -- count arrives with the next Profile.
 function GameController.requestRotations()
 	local now = os.clock()
-	if Config.ROTATION_PRODUCT == 0 or runMode ~= "normal" or now - rotationsAskedAt < ROTATIONS_ASK_GAP_SECONDS then
+	local normal = source ~= nil or runMode == "normal" -- a Co-op run is always a normal one
+	if Config.ROTATION_PRODUCT == 0 or not normal or now - rotationsAskedAt < ROTATIONS_ASK_GAP_SECONDS then
 		return
 	end
 	rotationsAskedAt = now
@@ -419,35 +425,36 @@ function GameController.requestRotations()
 end
 
 -- Turns the piece in `slot` a quarter clockwise, on the board right away and on the server by request. The
--- first turn of a piece costs a rotation: the run's free one, else one bought earlier; with none left it
+-- first turn of a piece costs a rotation: the player's free one, else one bought earlier; with none left it
 -- opens the purchase prompt instead (not while a piece is in hand: a purchase window mid-drag would interrupt
 -- it; the line under the tray already says what a pack costs). While a piece is in hand only that piece can be
--- turned. Returns whether the piece turned.
+-- turned. In a Co-op run only the player's own pieces turn, and the Co-op run sends the request itself. Returns
+-- whether the piece turned.
 function GameController.tryRotate(slot: unknown): boolean
-	if source then
-		return source.tryRotate(slot)
-	end
 	local ui = views
-	if not ui or runId == 0 or runMode ~= "normal" then
+	if not ui or activeRunId() == 0 or (source == nil and runMode ~= "normal") then
 		return false
 	end
 	local inHand = ui.tray:heldSlot()
 	if inHand and inHand ~= slot then
 		return false
 	end
+	local shown = current()
 	local bought = if profile then profile.rotations else 0
-	local moveIndex = session.moveCount
-	local result = session:rotate(slot, bought)
+	local free = if source then source.freeRotations() else shown.freeRotations
+	local moveIndex = shown.moveCount
+	local result = if source then source.rotate(slot, bought) else session:rotate(slot, bought)
 	if not result then
-		local piece = if typeof(slot) == "number" then session.tray[slot :: number] else nil
+		local piece = if typeof(slot) == "number" then shown.tray[slot :: number] else nil
 		if
 			not inHand
 			and piece
 			and Pieces.canRotate(piece)
-			and not session.isOver
-			and not session.unlocked[slot :: number]
-			and session.freeRotations == 0
+			and not shown.isOver
+			and not shown.unlocked[slot :: number]
+			and free == 0
 			and bought == 0
+			and (source == nil or source.canDrag(slot :: number))
 		then
 			GameController.requestRotations()
 		end
@@ -458,24 +465,17 @@ function GameController.tryRotate(slot: unknown): boolean
 		updated.rotations -= 1
 		profile = updated
 	end
-	Net.RotatePiece:FireServer(runId, moveIndex, slot)
+	if not source then
+		Net.RotatePiece:FireServer(runId, moveIndex, slot)
+	end
 	ui.tray:markTurned(result.slot)
 	render()
 	notify(pieceTurnedListeners, result.slot)
 	return true
 end
 
--- A line for under the tray: how many rotations the player has, or what a pack costs when none are left.
--- Empty when rotating isn't part of what is on screen (menu, tutorial, game over).
-function GameController.getRotationText(): string
-	if source then
-		return source.statusText()
-	end
-	if runId == 0 or runMode ~= "normal" or session.isOver then
-		return ""
-	end
-	local free = session.freeRotations
-	local bought = if profile then profile.rotations else 0
+-- "Rotate: 1 free · 2 owned", or what a pack costs when none are left.
+local function rotationLine(free: number, bought: number): string
 	if free > 0 and bought > 0 then
 		return `Rotate: {free} free · {bought} owned`
 	elseif free > 0 then
@@ -489,6 +489,25 @@ function GameController.getRotationText(): string
 			else `Rotate: get {Config.ROTATION_PACK}`
 	end
 	return "Rotate: none left"
+end
+
+-- A line for under the tray: how many rotations the player has, or what a pack costs when none are left (in a Co-op
+-- run followed by who the player waits for). Empty when rotating isn't part of what is on screen (menu, tutorial,
+-- game over).
+function GameController.getRotationText(): string
+	local bought = if profile then profile.rotations else 0
+	if source then
+		local status = source.statusText()
+		if source.session().isOver then
+			return status
+		end
+		local line = rotationLine(source.freeRotations(), bought)
+		return if status ~= "" then `{line}  ·  {status}` else line
+	end
+	if runId == 0 or runMode ~= "normal" or session.isOver then
+		return ""
+	end
+	return rotationLine(session.freeRotations, bought)
 end
 
 -- Opens the pause panel while a run is being played. The run has no clock, so nothing else changes.

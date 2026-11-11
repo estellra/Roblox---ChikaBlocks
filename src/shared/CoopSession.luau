@@ -8,6 +8,11 @@
 -- run's score stops counting for records and boards the moment the partner leaves (countedScore), so a second
 -- account can't be used to climb the Co-op board alone.
 --
+-- Turning a piece is the player's own business: each seat has its own free rotation (Config.FREE_ROTATIONS_PER_RUN
+-- a run) and pays for more from what they bought, and only turns their own pieces (or the leaver's, once the
+-- partner has gone). The bought rotations live in the player's saved data, so they are passed in on every turn.
+-- A revive clears the middle of the board for the whole team.
+--
 -- Shared by both sides like GameSession: the server's source deals right away, the client's returns nil and waits
 -- for receiveSet(). This module only holds the rules; who is in which seat, timers and remotes live elsewhere.
 
@@ -33,6 +38,7 @@ export type Snapshot = {
 	present: { boolean }, -- by seat: the player is still in the run
 	countedScore: number,
 	contribution: { number }, -- by seat: points the player's own placements earned
+	freeRotations: { number }, -- by seat: free rotations left in this run
 }
 
 local CoopSession = {}
@@ -44,6 +50,7 @@ export type CoopSession = typeof(setmetatable(
 		present: { boolean },
 		countedScore: number, -- the score that counts for records: follows `score` while both are in, then stops
 		contribution: { number }, -- sums to session.score, so the Game Over screen can split the team's points
+		freeRotations: { number }, -- each player's own; the GameSession's counter stays 0 in a Co-op run
 	},
 	CoopSession
 ))
@@ -76,11 +83,14 @@ function CoopSession.slotsOf(seat: number): { number }
 end
 
 function CoopSession.new(setSource: SetSource, initialBoard: Board?): CoopSession
+	local session = GameSession.new(setSource, initialBoard, SET_SIZE)
+	session.freeRotations = 0 -- the wallets below are the players'; GameSession.rotate must never spend from here
 	return setmetatable({
-		session = GameSession.new(setSource, initialBoard, SET_SIZE),
+		session = session,
 		present = table.create(SEATS, true),
 		countedScore = 0,
 		contribution = table.create(SEATS, 0),
+		freeRotations = table.create(SEATS, Config.FREE_ROTATIONS_PER_RUN),
 	}, CoopSession)
 end
 
@@ -96,19 +106,28 @@ function CoopSession.fromSnapshot(snapshot: Snapshot, setSource: SetSource): Coo
 	if typeof(snapshot.countedScore) ~= "number" then
 		error("snapshot has no counted score")
 	end
-	local present, contribution = table.create(SEATS, false), table.create(SEATS, 0)
+	if typeof(snapshot.freeRotations) ~= "table" or #snapshot.freeRotations ~= SEATS then
+		error("snapshot has no free rotations for every seat")
+	end
+	local present, contribution, freeRotations =
+		table.create(SEATS, false), table.create(SEATS, 0), table.create(SEATS, 0)
 	for seat = 1, SEATS do
 		present[seat] = snapshot.present[seat] == true
 		if typeof(snapshot.contribution[seat]) ~= "number" then
 			error(`snapshot has no contribution for seat {seat}`)
 		end
 		contribution[seat] = snapshot.contribution[seat]
+		if typeof(snapshot.freeRotations[seat]) ~= "number" then
+			error(`snapshot has no free rotations for seat {seat}`)
+		end
+		freeRotations[seat] = snapshot.freeRotations[seat]
 	end
 	return setmetatable({
 		session = session,
 		present = present,
 		countedScore = snapshot.countedScore,
 		contribution = contribution,
+		freeRotations = freeRotations,
 	}, CoopSession)
 end
 
@@ -118,6 +137,7 @@ function CoopSession.snapshot(self: CoopSession): Snapshot
 		present = table.clone(self.present),
 		countedScore = self.countedScore,
 		contribution = table.clone(self.contribution),
+		freeRotations = table.clone(self.freeRotations),
 	}
 end
 
@@ -161,6 +181,41 @@ function CoopSession.place(
 		self.countedScore = self.session.score
 	end
 	return result
+end
+
+-- Turns the piece in `slot` a quarter clockwise for `seat`: the seat may place that slot, and pays for the first
+-- turn of a piece with their own free rotation, else one of the `paidAvailable` they bought (the caller spends it
+-- when the result says "paid"). Nil, and nothing changes, when the seat or slot is wrong, the piece looks the same
+-- turned, the run is over, or the player can't pay.
+function CoopSession.rotate(
+	self: CoopSession,
+	seat: unknown,
+	slot: unknown,
+	paidAvailable: unknown
+): GameSession.RotateResult?
+	if not CoopSession.mayPlace(self, seat, slot) then
+		return nil
+	end
+	local seatIndex = seat :: number
+	local result = self.session:rotateWith(slot, self.freeRotations[seatIndex], paidAvailable)
+	if result and result.charged == "free" then
+		self.freeRotations[seatIndex] -= 1
+	end
+	return result
+end
+
+-- The free rotations `seat` has left in this run (0 for a seat that doesn't exist).
+function CoopSession.freeRotationsOf(self: CoopSession, seat: unknown): number
+	if typeof(seat) ~= "number" then
+		return 0
+	end
+	return self.freeRotations[seat :: number] or 0
+end
+
+-- Revives a finished run for both players: the middle of the board is cleared and a fresh set dealt. Free rotations
+-- already used stay used. False, and nothing changes, when the run isn't over. Paying for it is the caller's business.
+function CoopSession.revive(self: CoopSession): boolean
+	return self.session:revive()
 end
 
 -- Whether `seat` has a piece they may place that fits somewhere right now.

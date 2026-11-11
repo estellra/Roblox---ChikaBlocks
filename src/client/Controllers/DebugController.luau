@@ -14,7 +14,7 @@
 --           coop [open|close|people <n>|invite [id] [seconds]|result <result> [userId]|room [left]|noroom|busy <reason|none>|press <userId> [result...]|cancel]
 --           (opens the Co-op screen and lists it; the rest feed it what the server would send, with the player
 --           themselves as the other party, or press Invite for a made-up person)
---           coop run | coop play [moves] | coop again | coop leave | coop takeover
+--           coop run | coop play [moves] | coop again | coop leave | coop takeover | coop rotate [slot] | coop revive
 --           (the Co-op run on this screen: its state, play random moves of the player's own, Play again, Menu / Leave
 --           run, Take over. Pair with the practice partner first: ServerStorage.ChikaServerDebug "coopbot")
 -- Screen positions are in GUI space (as AbsolutePosition); `inset` is GuiService:GetGuiInset().
@@ -363,6 +363,14 @@ local function handle(rng: Random, command: string, ...: any): string
 			GameController.requestMenu()
 		elseif action == "takeover" then
 			CoopRunController.takeOver()
+		elseif action == "rotate" then
+			local turned = GameController.tryRotate(tonumber(first) or 1)
+			task.wait(0.1)
+			return `{if turned then "rotated" else "not rotated"} | {GameController.getRotationText()}\n{CoopRunController.describe()}`
+		elseif action == "revive" then
+			GameController.requestRevive()
+			task.wait(0.3)
+			return `{CoopRunController.describe()}\n{describeState()}`
 		elseif action == "run" then
 			return `{CoopRunController.describe()}\n{describeState()}`
 		end

@@ -6,6 +6,11 @@
 -- the connection dropped) stays in their data for the next game over. Everything about money is decided
 -- here: the client only asks, and never picks a product. The same goes for the pack of rotations the player
 -- can buy when they have none left, and for donations: the Support screen sends only which tier was chosen.
+--
+-- A revive is for whichever run the player is in, a solo run or a Co-op one (contextOf). In a Co-op run both players
+-- are offered it and either can pay; it revives the run for both. The one whose purchase is granted first uses it. A
+-- revive that arrives after the partner's has already revived the run is not used and stays in the buyer's data for
+-- the next game over, as one that arrives with nothing to revive always has.
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -14,7 +19,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local DataService = require("./DataService")
-local GameRuns = require("../GameRuns")
+local CoopService = require("./CoopService")
 local GameService = require("./GameService")
 local LeaderboardService = require("./LeaderboardService")
 local PlayerData = require("../PlayerData")
@@ -25,8 +30,9 @@ local IS_STUDIO = RunService:IsStudio()
 local DATA_WAIT_SECONDS = 20 -- how long a receipt waits for the player's data
 local PROMPT_TIMEOUT_SECONDS = 180 -- a prompt nobody answered stops blocking new requests after this
 
--- What the player is buying right now: for which run, and which product.
-type Pending = { runId: number, productId: number, token: number }
+-- What the player is buying right now: for which run (a solo or a Co-op run, which number their runs separately),
+-- and which product.
+type Pending = { kind: "solo" | "coop", runId: number, productId: number, token: number }
 
 local PurchaseService = {}
 
@@ -53,9 +59,45 @@ local function productOf(productId: number): Purchases.Product?
 	return nil
 end
 
+-- The run the player is in: a Co-op run first (a player in a Co-op room has no solo run), else a solo run that is
+-- not the tutorial. Nil when they have none.
+local function contextOf(player: Player): Purchases.RunContext?
+	local coop = CoopService.summaryOf(player)
+	if coop then
+		return { kind = "coop", runId = coop.runId, isOver = coop.isOver, revives = coop.revives }
+	end
+	local solo = GameService.getRuns():summary(player)
+	if solo and solo.mode == "normal" then
+		return { kind = "solo", runId = solo.runId, isOver = solo.isOver, revives = solo.revives }
+	end
+	return nil
+end
+
 -- The price tier of the run's next revive.
-local function nextTier(summary: GameRuns.RunSummary): number
-	return Purchases.reviveTier(summary.revives, #Config.REVIVE_PRODUCTS)
+local function nextTier(context: Purchases.RunContext): number
+	return Purchases.reviveTier(context.revives, #Config.REVIVE_PRODUCTS)
+end
+
+-- One step of the revive funnel; a Co-op run has a funnel of its own.
+local function logRevive(player: Player, context: Purchases.RunContext?, step: number)
+	if not context then
+		return
+	elseif context.kind == "coop" then
+		GameService.logCoopRevive(player, `c{context.runId}.{context.revives}`, step)
+	else
+		GameService.logRevive(player, step)
+	end
+end
+
+-- One step of the rotation funnel.
+local function logRotation(player: Player, context: Purchases.RunContext?, step: number)
+	if not context then
+		return
+	elseif context.kind == "coop" then
+		GameService.logCoopRotation(player, context.runId, step)
+	else
+		GameService.logRotation(player, step)
+	end
 end
 
 -- Reads the prices once (cached for the server's lifetime); a failed read just means no price is shown. The
@@ -98,28 +140,39 @@ function PurchaseService.priceOf(productId: number): number?
 	return prices[productId]
 end
 
--- Offers a revive on the game over panel: the price of the next one, or that one is already paid for.
+-- Offers a revive on the game over panel: the price of the next one, or that one is already paid for. In a Co-op run
+-- this goes to each player still in it.
 function PurchaseService.sendOffer(player: Player, runId: number)
 	local data = DataService.get(player)
-	local summary = GameService.getRuns():summary(player)
-	if not data or not summary or not summary.isOver or summary.mode ~= "normal" or summary.runId ~= runId then
+	local context = contextOf(player)
+	if not data or not context or not context.isOver or context.runId ~= runId then
 		return
 	end
-	local productId = Purchases.reviveProduct(Config.REVIVE_PRODUCTS, summary.revives)
-	local tokens = PlayerData.reviveTokenCount(data, nextTier(summary))
+	local productId = Purchases.reviveProduct(Config.REVIVE_PRODUCTS, context.revives)
+	local tokens = PlayerData.reviveTokenCount(data, nextTier(context))
 	Net.ReviveOffer:FireClient(player, runId, { tokens = tokens, price = prices[productId] })
-	GameService.logRevive(player, 1)
+	logRevive(player, context, 1)
 end
 
--- Uses a paid revive on the run, one bought at the price of this revive or a higher one. False (and nothing
--- spent) when there is none or the run can't be revived right now.
-local function reviveWithToken(player: Player, data: PlayerData.PlayerData, runId: number): boolean
-	local summary = GameService.getRuns():summary(player)
-	if not summary then
+-- Uses a paid revive on the run (of that kind: a solo and a Co-op run may share an id), one bought at the price of
+-- this revive or a higher one. False (and nothing spent) when there is none, or the run can't be revived right now:
+-- it is not the player's run any more, or not over (a Co-op partner revived it first).
+local function reviveWithToken(
+	player: Player,
+	data: PlayerData.PlayerData,
+	kind: "solo" | "coop",
+	runId: number
+): boolean
+	local context = contextOf(player)
+	if not context or not Purchases.reviveApplies(context, kind, runId) then
 		return false
 	end
-	local tier = nextTier(summary)
-	if PlayerData.reviveTokenCount(data, tier) <= 0 or not GameService.revive(player, runId) then
+	local tier = nextTier(context)
+	if PlayerData.reviveTokenCount(data, tier) <= 0 then
+		return false
+	end
+	local revived = if kind == "coop" then CoopService.revive(player, runId) else GameService.revive(player, runId)
+	if not revived then
 		return false
 	end
 	PlayerData.useReviveToken(data, tier)
@@ -138,27 +191,27 @@ local function onRequestRevive(player: Player, runId: unknown)
 		return
 	end
 	local data = DataService.get(player)
-	local summary = GameService.getRuns():summary(player)
-	if not data or not summary or not summary.isOver or summary.mode ~= "normal" or summary.runId ~= runId then
+	local context = contextOf(player)
+	if not data or not context or not context.isOver or context.runId ~= runId then
 		Net.ReviveResult:FireClient(player, runId, false)
 		return
 	end
 	if pending[player] then
 		return -- the purchase prompt is open already
 	end
-	GameService.logRevive(player, 2)
+	logRevive(player, context, 2)
 
-	if PlayerData.reviveTokenCount(data, nextTier(summary)) > 0 then
-		if not reviveWithToken(player, data, runId) then
+	if PlayerData.reviveTokenCount(data, nextTier(context)) > 0 then
+		if not reviveWithToken(player, data, context.kind, runId) then
 			Net.ReviveResult:FireClient(player, runId, false)
 		end
 		return
 	end
 
-	local productId = Purchases.reviveProduct(Config.REVIVE_PRODUCTS, summary.revives)
+	local productId = Purchases.reviveProduct(Config.REVIVE_PRODUCTS, context.revives)
 	pendingCounter += 1
 	local token = pendingCounter
-	pending[player] = { runId = runId, productId = productId, token = token }
+	pending[player] = { kind = context.kind, runId = runId, productId = productId, token = token }
 	local ok, err = pcall(function()
 		MarketplaceService:PromptProductPurchase(player, productId)
 	end)
@@ -199,17 +252,17 @@ local function openPrompt(player: Player, productId: number): number?
 	return token
 end
 
--- The player is out of rotations and pressed rotate during a run: open the prompt for the pack. The granted
--- purchase comes back through ProcessReceipt, which adds the rotations and sends the profile.
+-- The player is out of rotations and pressed rotate during a run (solo or Co-op): open the prompt for the pack. The
+-- granted purchase comes back through ProcessReceipt, which adds the rotations and sends the profile.
 local function onRequestRotations(player: Player)
 	if not promptLimiter:allow(player) or Config.ROTATION_PRODUCT == 0 or promptPending[player] then
 		return
 	end
-	local summary = GameService.getRuns():summary(player)
-	if not summary or summary.isOver or summary.mode ~= "normal" then
+	local context = contextOf(player)
+	if not context or context.isOver then
 		return
 	end
-	GameService.logRotation(player, 1)
+	logRotation(player, context, 1)
 	openPrompt(player, Config.ROTATION_PRODUCT)
 end
 
@@ -238,7 +291,7 @@ local function afterGrant(playerId: number, data: PlayerData.PlayerData, product
 	end
 	if product.kind == "rotation" then
 		promptPending[player] = nil
-		GameService.logRotation(player, 2)
+		logRotation(player, contextOf(player), 2)
 		GameService.sendProfile(player) -- the new count
 		return
 	end
@@ -252,16 +305,17 @@ local function afterGrant(playerId: number, data: PlayerData.PlayerData, product
 		Net.Donated:FireClient(player, donated, data.robuxDonated)
 		return
 	end
-	GameService.logRevive(player, 3)
+	logRevive(player, contextOf(player), 3)
 	local entry = pending[player]
 	pending[player] = nil
-	if entry and reviveWithToken(player, data, entry.runId) then
+	if entry and reviveWithToken(player, data, entry.kind, entry.runId) then
 		return
 	end
-	-- Nothing to revive right now: the revive stays in the data. Show the player they have it.
-	local summary = GameService.getRuns():summary(player)
-	if summary and summary.isOver then
-		PurchaseService.sendOffer(player, summary.runId)
+	-- Nothing to revive right now (or the partner revived first): the revive stays in the data. Show the player they
+	-- have it if there is a finished run to use it on.
+	local context = contextOf(player)
+	if context and context.isOver then
+		PurchaseService.sendOffer(player, context.runId)
 	end
 end
 
@@ -295,6 +349,9 @@ function PurchaseService.start(_self: any)
 	task.spawn(fetchPrices)
 
 	GameService.onGameOver(function(player: Player, runId: number)
+		PurchaseService.sendOffer(player, runId)
+	end)
+	CoopService.onGameOver(function(player: Player, runId: number)
 		PurchaseService.sendOffer(player, runId)
 	end)
 	Net.RequestRevive.OnServerEvent:Connect(onRequestRevive)
