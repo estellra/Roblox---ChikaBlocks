@@ -18,6 +18,9 @@ export type PlayerData = {
 	rotations: number, -- bought rotations not used yet
 	robuxDonated: number, -- Robux given through donation products, for the Supporters board
 	purchaseIds: { string }, -- receipts already handled, the latest 100, newest last
+	-- Co-op (see CoopProgress). Never the partner's id: the pair's board row is the only place two players meet.
+	coopBest: number, -- the highest score that counted for Co-op, with any partner
+	coopGamesPlayed: number, -- Co-op runs that ended in game over or had their score fixed by a partner leaving
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
@@ -67,6 +70,8 @@ PlayerData.TEMPLATE = table.freeze({
 	rotations = 0,
 	robuxDonated = 0,
 	purchaseIds = table.freeze({}),
+	coopBest = 0,
+	coopGamesPlayed = 0,
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.
@@ -92,6 +97,20 @@ end
 function PlayerData.recordRunEnd(data: PlayerData, finalScore: number)
 	PlayerData.recordScore(data, finalScore)
 	data.gamesPlayed += 1
+end
+
+-- Keeps the higher of the saved Co-op best and the score that counts for Co-op. Returns whether it went up.
+function PlayerData.recordCoopScore(data: PlayerData, countedScore: number): boolean
+	if countedScore > data.coopBest then
+		data.coopBest = countedScore
+		return true
+	end
+	return false
+end
+
+-- A Co-op run has ended for this player (game over, or a partner leaving fixed its score).
+function PlayerData.recordCoopGame(data: PlayerData)
+	data.coopGamesPlayed += 1
 end
 
 -- Returns whether this changed anything (false when the tutorial was already done).

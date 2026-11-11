@@ -31,7 +31,7 @@ local inviteLimiter = RateLimiter.new(1, 2, os.clock) -- one invitation every tw
 local replyLimiter = RateLimiter.new(4, 2, os.clock)
 local cancelLimiter = RateLimiter.new(1, 1, os.clock)
 local leaveLimiter = RateLimiter.new(1, 1, os.clock)
-local formedListeners: { (room: Rooms.Room) -> () } = {}
+local formedListeners: { (room: Rooms.Room, inviteId: number) -> () } = {}
 local leftListeners: { (room: Rooms.Room, player: Player, seat: number) -> () } = {}
 local closedListeners: { (room: Rooms.Room) -> () } = {}
 
@@ -81,6 +81,7 @@ end
 
 local function emit(event: Rooms.Event)
 	if event.kind == "invited" then
+		GameService.logCoopInvite(event.from, event.inviteId, 1) -- Sent
 		local to = event.to :: Player
 		if isHere(to) then
 			-- Rooms counts in os.clock(); the client needs a time it shares with the server.
@@ -99,8 +100,9 @@ local function emit(event: Rooms.Event)
 			refreshStatus(to)
 		end
 	elseif event.kind == "formed" then
+		GameService.logCoopInvite(event.room.players[1], event.inviteId, 2) -- Accepted
 		for _, listener in formedListeners do
-			task.spawn(listener, event.room)
+			task.spawn(listener, event.room, event.inviteId)
 		end
 	elseif event.kind == "memberLeft" then
 		for _, listener in leftListeners do
@@ -200,8 +202,9 @@ function RoomService.start(_self: any)
 	end
 end
 
--- Called with the room when two players have formed one (players are Player instances, seat 1 invited).
-function RoomService.onRoomFormed(callback: (room: Rooms.Room) -> ())
+-- Called with the room when two players have formed one (players are Player instances, seat 1 invited) and the id of
+-- the invitation that made it.
+function RoomService.onRoomFormed(callback: (room: Rooms.Room, inviteId: number) -> ())
 	table.insert(formedListeners, callback)
 end
 

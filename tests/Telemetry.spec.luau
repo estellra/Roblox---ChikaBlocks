@@ -148,6 +148,49 @@ return function(t: TestKit.TestKit)
 			})
 		end)
 
+		t.it("reports a Co-op run as its own mode, with how it ended for the player", function()
+			local coopRun: Telemetry.RunSummary =
+				{ mode = "coop", score = 1795, moves = 94, maxCombo = 4, isOver = true }
+			for _, how in { "gameover", "partner_left", "takeover", "left" } do
+				local telemetry, logged = newTelemetry()
+				telemetry:runEnded(PLAYER, nil, coopRun, how :: any)
+				t.expect(logged).toEqual({
+					{ kind = "custom", name = "RunScore", value = 1795, fields = { "coop", how } },
+					{ kind = "custom", name = "RunMoves", value = 94, fields = { "coop", how } },
+					{ kind = "custom", name = "RunMaxCombo", value = 4, fields = { "coop", how } },
+				})
+			end
+		end)
+
+		t.it("does not take a Co-op game over for the onboarding one", function()
+			local telemetry, logged = newTelemetry()
+			local data = { onboardingStep = 4 }
+			local coopRun: Telemetry.RunSummary =
+				{ mode = "coop", score = 900, moves = 50, maxCombo = 2, isOver = true }
+			telemetry:runEnded(PLAYER, data, coopRun, "gameover")
+			t.expect(data.onboardingStep).toBe(4)
+			t.expect(steps(logged)).toEqual({})
+		end)
+
+		t.it("logs the Co-op invitation funnel with one session id per invitation", function()
+			local telemetry, logged = newTelemetry()
+			for step = 1, 4 do
+				telemetry:coopInviteStep(PLAYER, "17", step)
+			end
+			t.expect(logged).toEqual({
+				{ kind = "funnel", name = "Sent", step = 1, session = "17", fields = { "CoopInvite" } },
+				{ kind = "funnel", name = "Accepted", step = 2, session = "17", fields = { "CoopInvite" } },
+				{ kind = "funnel", name = "RunStarted", step = 3, session = "17", fields = { "CoopInvite" } },
+				{ kind = "funnel", name = "RunFinished", step = 4, session = "17", fields = { "CoopInvite" } },
+			})
+		end)
+
+		t.it("logs a clash of Co-op moves as one event", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:coopConflict(PLAYER)
+			t.expect(logged).toEqual({ { kind = "custom", name = "CoopConflict", value = 1, fields = {} } })
+		end)
+
 		t.it("logs the rotation funnel per run and how each rotation was paid", function()
 			local telemetry, logged = newTelemetry()
 			telemetry:rotationStep(PLAYER, "4", 1)

@@ -15,7 +15,10 @@ export type Sink = {
 	funnel: (player: any, funnel: string, session: string, step: number, name: string) -> (),
 }
 
-export type RunEnd = "gameover" | "left" | "restart" | "coop" -- "coop": the player left their solo run to join a Co-op room
+-- How a run ended for a player. "coop": they left their solo run to join a Co-op room. For a Co-op run: "gameover"
+-- with the partner still in it, "partner_left" for game over after the partner had left (the score no longer
+-- counted), "left" when the player left it, "takeover" when the partner put them out for being idle.
+export type RunEnd = "gameover" | "left" | "restart" | "coop" | "partner_left" | "takeover"
 
 export type RunSummary = { mode: string, score: number, moves: number, maxCombo: number, isOver: boolean }
 
@@ -40,6 +43,10 @@ local ROTATION_STEPS = table.freeze({ "Requested", "Paid" })
 -- Funnel "DonateOffer": a tier chosen on the Support screen, the donation granted.
 local DONATE_STEPS = table.freeze({ "Requested", "Paid" })
 
+-- Funnel "CoopInvite": an invitation sent, accepted, the Co-op run started, and the run finished (the session is
+-- the invitation's id; each step is logged for the player who invited).
+local COOP_INVITE_STEPS = table.freeze({ "Sent", "Accepted", "RunStarted", "RunFinished" })
+
 local Telemetry = {}
 Telemetry.__index = Telemetry
 
@@ -47,6 +54,7 @@ Telemetry.STEPS = STEPS
 Telemetry.REVIVE_STEPS = REVIVE_STEPS
 Telemetry.ROTATION_STEPS = ROTATION_STEPS
 Telemetry.DONATE_STEPS = DONATE_STEPS
+Telemetry.COOP_INVITE_STEPS = COOP_INVITE_STEPS
 
 export type Telemetry = typeof(setmetatable({} :: { sink: Sink }, Telemetry))
 
@@ -86,6 +94,16 @@ function Telemetry.donateStep(self: Telemetry, player: any, attempt: string, ste
 	self.sink.funnel(player, "DonateOffer", attempt, step, DONATE_STEPS[step])
 end
 
+-- One step of the Co-op invitation funnel; `invite` is the invitation's id.
+function Telemetry.coopInviteStep(self: Telemetry, player: any, invite: string, step: number)
+	self.sink.funnel(player, "CoopInvite", invite, step, COOP_INVITE_STEPS[step])
+end
+
+-- A Co-op move was turned down because the partner's move got there first (how often players clash).
+function Telemetry.coopConflict(self: Telemetry, player: any)
+	self.sink.custom(player, "CoopConflict", 1, {})
+end
+
 -- A donation was granted: the Robux it counts for, split by the tier of the product.
 function Telemetry.donated(self: Telemetry, player: any, robux: number, tier: number)
 	self.sink.custom(player, "Donated", robux, { tostring(tier) })
@@ -110,7 +128,8 @@ end
 
 -- `data` may be nil when the player is leaving and their data is already gone; only game over needs it.
 function Telemetry.runEnded(self: Telemetry, player: any, data: Progress?, summary: RunSummary, how: RunEnd)
-	if how == "gameover" and data then
+	-- A Co-op game over is not the onboarding one: the step is about a solo run.
+	if how == "gameover" and data and summary.mode ~= "coop" then
 		advance(self, player, data, 5)
 	end
 	local fields = { summary.mode, how }

@@ -58,6 +58,8 @@ export type PlaceOutcome =
 		linesCleared: number,
 		endsRun: boolean, -- game over, the first time for this run
 		takeOverIn: { [number]: number }, -- by seat: when that player may take over, for those who may
+		present: { boolean }, -- by seat: still in the run, so the ones to credit
+		countedScore: number, -- the score that counts for records and the Co-op board
 	}
 	| { kind: "rejected", runId: number, moveId: number } -- clashed or no longer valid; tell only the sender
 	| { kind: "ignored", reason: string }
@@ -70,10 +72,11 @@ export type LeaveOutcome = {
 	seat: number,
 	stayer: any?, -- the player left in the run
 	state: State?, -- what the stayer needs to carry on (every piece is theirs now)
+	summary: Summary, -- the run as it stands as they go
 }
 
 export type TakeOverOutcome =
-	{ kind: "tookOver", runId: number, evicted: any, state: State }
+	{ kind: "tookOver", runId: number, evicted: any, state: State, summary: Summary }
 	| { kind: "ignored", reason: string }
 
 export type RematchOutcome =
@@ -177,6 +180,21 @@ local function stateFor(self: CoopRuns, run: Run, seat: number): State
 		players = run.players,
 		session = run.coop:snapshot(),
 		takeOverIn = takeOverIn(self, run, seat),
+	}
+end
+
+local function summaryOf(run: Run): Summary
+	local coop = run.coop
+	return {
+		runId = run.id,
+		roomId = run.roomId,
+		score = coop.session.score,
+		countedScore = coop.countedScore,
+		contribution = table.clone(coop.contribution),
+		moves = coop.session.moveCount,
+		maxCombo = run.maxCombo,
+		isOver = coop.session.isOver,
+		present = table.clone(coop.present),
 	}
 end
 
@@ -311,6 +329,8 @@ function CoopRuns.place(
 		linesCleared = #result.clearedRows + #result.clearedCols,
 		endsRun = endsRun,
 		takeOverIn = wait,
+		present = table.clone(coop.present),
+		countedScore = coop.countedScore,
 	}
 end
 
@@ -381,6 +401,7 @@ function CoopRuns.leave(self: CoopRuns, player: any): LeaveOutcome?
 		seat = seat,
 		stayer = stayer,
 		state = if stayer then stateFor(self, run, stayerSeat) else nil,
+		summary = summaryOf(run),
 	}
 end
 
@@ -407,7 +428,13 @@ function CoopRuns.takeOver(self: CoopRuns, player: any, runId: unknown): TakeOve
 	local evicted = run.players[3 - seat]
 	run.coop:release(3 - seat)
 	forgetPlayer(self, evicted, run)
-	return { kind = "tookOver", runId = run.id, evicted = evicted, state = stateFor(self, run, seat) }
+	return {
+		kind = "tookOver",
+		runId = run.id,
+		evicted = evicted,
+		state = stateFor(self, run, seat),
+		summary = summaryOf(run),
+	}
 end
 
 -- "Play again" from `player`. The run restarts once both have asked, after it is over, and both are still in it.
@@ -468,18 +495,7 @@ function CoopRuns.summary(self: CoopRuns, player: any): Summary?
 	if not run then
 		return nil
 	end
-	local coop = run.coop
-	return {
-		runId = run.id,
-		roomId = run.roomId,
-		score = coop.session.score,
-		countedScore = coop.countedScore,
-		contribution = table.clone(coop.contribution),
-		moves = coop.session.moveCount,
-		maxCombo = run.maxCombo,
-		isOver = coop.session.isOver,
-		present = table.clone(coop.present),
-	}
+	return summaryOf(run)
 end
 
 -- Read-only access to the player's run for the Studio debug bridge and the practice partner: the run's id, the

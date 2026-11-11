@@ -33,6 +33,7 @@ local userIds: { number } = {} -- by seat
 local votes: { boolean } = { false, false } -- by seat: pressed Play again
 local stateAskedAt = -math.huge
 local clockToken = 0
+local rewards: GameController.RunRewards? = nil -- what the run earned the player, once the server has said
 local aimWanted: { slot: number, x: number, y: number }? = nil -- where the player is aiming a piece now
 local aimSent: { slot: number, x: number, y: number }? = nil -- what the server was last told
 local aimSentAt = -math.huge
@@ -265,6 +266,7 @@ local source: GameController.Source = {
 			shares = `You {Format.withCommas(mine)}  ·  {name} {Format.withCommas(theirs)}`,
 			note = if left then `{name} left: {Format.withCommas(shown.countedScore)} counts for Co-op` else nil,
 			canPlayAgain = not left,
+			rewards = rewards,
 		}
 	end,
 	leave = function()
@@ -294,6 +296,7 @@ local function enter(state: CoopSync.State, players: { number })
 	sync = run
 	userIds = players
 	votes = { false, false }
+	rewards = nil
 	MenuController.leaveForGame()
 	GameController.attachSource(source, { own = CoopSession.slotsOf(run.seat), partnerName = partnerName() })
 	GameController.sourceReplaced()
@@ -378,6 +381,19 @@ local function onReject(runId: number, moveId: number)
 	end
 end
 
+-- What the finished run earned: shown on the Game Over panel, which may open a moment later.
+local function onRewards(runId: number, earned: GameController.RunRewards)
+	local run = sync
+	if not run or runId ~= run.runId then
+		return
+	end
+	rewards = earned
+	local views = GameController.getViews()
+	if views and views.hud:isGameOverOpen() then
+		views.hud:showRewards(earned)
+	end
+end
+
 local function onVotes(newVotes: { boolean })
 	if sync and typeof(newVotes) == "table" then
 		votes = { newVotes[1] == true, newVotes[2] == true }
@@ -412,6 +428,7 @@ function CoopRunController.start(_self: any)
 	Net.CoopMove.OnClientEvent:Connect(onMove)
 	Net.CoopReject.OnClientEvent:Connect(onReject)
 	Net.CoopRematchVotes.OnClientEvent:Connect(onVotes)
+	Net.CoopRewards.OnClientEvent:Connect(onRewards)
 	Net.CoopPartnerHover.OnClientEvent:Connect(onPartnerAim)
 	DragController.onAim(onAim)
 	-- Leaving the room (or being put out of it) ends the run on this screen; the menu comes back.

@@ -32,6 +32,11 @@ function Progression.expForScore(score: number): number
 	return math.floor(math.max(score, 0) / Config.EXP_SCORE_DIVISOR)
 end
 
+-- EXP each player of a Co-op run has earned once the team's score reaches `score` (a share of a solo run's).
+function Progression.expForCoopScore(score: number): number
+	return math.floor(math.max(score, 0) * Config.COOP.EXP_SHARE / Config.EXP_SCORE_DIVISOR)
+end
+
 -- EXP needed to go from `level` to the next one.
 function Progression.expToNext(level: number): number
 	return Config.LEVEL_EXP_BASE + Config.LEVEL_EXP_STEP * (level - 1)

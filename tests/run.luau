@@ -32,6 +32,7 @@ local specs = {
 	require("./CoopRuns.spec"),
 	require("./CoopSync.spec"),
 	require("./CoopLockstep.spec"),
+	require("./CoopProgress.spec"),
 }
 
 for _, spec in specs do

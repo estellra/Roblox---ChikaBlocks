@@ -31,7 +31,7 @@ export type Event =
 	{ kind: "invited", to: any, from: any, inviteId: number, expiresAt: number } -- expiresAt is on deps.clock
 	| { kind: "result", to: any, other: any, result: Result } -- tell `to` how its invitation with `other` stands
 	| { kind: "room", to: any, room: Room? } -- tell `to` its room is this one now, or that it has none
-	| { kind: "formed", room: Room } -- for other services: a room was formed
+	| { kind: "formed", room: Room, inviteId: number } -- for other services: a room was formed, from this invitation
 	| { kind: "memberLeft", room: Room, player: any, seat: number } -- room is as it is after they left
 	| { kind: "closed", room: Room } -- the last member left; room is as it was just before
 
@@ -237,7 +237,7 @@ local function formRoom(self: Rooms, invite: Invite): Room
 	end
 
 	local snapshot = snapshotOf(room)
-	emit(self, { kind = "formed", room = snapshot })
+	emit(self, { kind = "formed", room = snapshot, inviteId = invite.id })
 	emit(self, { kind = "room", to = host, room = snapshot })
 	emit(self, { kind = "room", to = guest, room = snapshot })
 	return snapshot

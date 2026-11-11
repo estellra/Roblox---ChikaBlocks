@@ -2,6 +2,8 @@
 -- Global leaderboards on OrderedDataStores (rules in Leaderboards). Each server:
 -- - writes a player's values when they change: after a game over, every refresh while they play, and as
 --   they leave (the last one may be skipped if their data is already gone; the next session catches up);
+-- - writes the score of each Co-op pair it has seen: a row for the pair, kept at the higher of what is stored and
+--   what this server has (UpdateAsync), so a pair's old record is never lowered by a server that doesn't know it;
 -- - reads the top of every board once a minute, resolves display names in one batch, and keeps the result
 --   for clients, who ask with RequestLeaderboard. Clients never touch the DataStores.
 local DataStoreService = game:GetService("DataStoreService")
@@ -21,14 +23,25 @@ local IS_STUDIO = RunService:IsStudio()
 local REFRESH_SECONDS = 60
 local REFRESH_SOON_SECONDS = 3 -- how long refreshSoon() waits, for a write to show up in the sorted read
 local SHUTDOWN_WAIT_SECONDS = 20 -- how long a closing server waits for leaderboard writes (the limit is 30)
+local PAIR_WRITE_GAP_SECONDS = 20 -- a pair's row is written at most this often after a run or a leave
 
-export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
+-- A Co-op board entry is a pair: `name` reads "A & B", `userId` is the smaller id and `userIds` has both.
+export type Entry = { rank: number, userId: number, userIds: { number }?, name: string, title: string?, value: number }
 
--- What a client receives: the boards by key ("Highscore_all", ...) and the player's own values.
+-- What a client receives: the boards by key ("Highscore_all", ..., "Coop_all") and the player's own values.
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number, -- os.time() of the last read
-	you: { best: number, level: number, weekBest: number, weekExp: number, donated: number },
+	you: { best: number, level: number, weekBest: number, weekExp: number, donated: number, coopBest: number },
+}
+
+-- What this server knows of one pair's score on the Co-op board.
+type Pair = {
+	ids: { number }, -- the two user ids
+	score: number, -- the highest score that counted for them seen here
+	written: number, -- the highest score known to be in the store
+	lastWrite: number, -- when a write was last started (os.clock)
+	inFlight: boolean,
 }
 
 local LeaderboardService = {}
@@ -41,6 +54,7 @@ local requestLimiter = RateLimiter.new(1, 2, os.clock)
 local refreshQueued = false -- a refreshSoon() is waiting to run
 local writesInFlight = 0 -- DataStore writes started and not finished, so shutdown can wait for them
 local lastFlush: { [Player]: number } = {} -- when each player's boards were last written
+local coopPairs: { [string]: Pair } = {} -- the Co-op pairs this server has a score for, by row key
 
 local function storeFor(key: string, time: number): OrderedDataStore
 	return DataStoreService:GetOrderedDataStore(Leaderboards.storeName(key, time, IS_STUDIO))
@@ -90,6 +104,80 @@ function LeaderboardService.recordRun(data: PlayerData.PlayerData, score: number
 	Leaderboards.recordRun(data.weekly, os.time(), score, expGained)
 end
 
+-- Writes the pair's score if it is higher than what this server knows is stored. UpdateAsync keeps the higher of that
+-- and what is in the store, so a pair's record from another server or an earlier session is never lowered; and the
+-- one row is shared by both players, so it is written once for the pair. With `minGap`, a pair written less than
+-- that many seconds ago waits for the next refresh. A failed write is tried again then.
+local function flushPair(key: string, pair: Pair, minGap: number?)
+	if pair.inFlight or pair.score <= pair.written then
+		return
+	end
+	local clock = os.clock()
+	if minGap and clock - pair.lastWrite < minGap then
+		return
+	end
+	pair.lastWrite = clock
+	pair.inFlight = true
+	writesInFlight += 1
+	local score = pair.score
+	task.spawn(function()
+		local ok, err = pcall(function()
+			storeFor(Leaderboards.COOP_KEY, os.time()):UpdateAsync(key, function(stored: number?): number?
+				if stored ~= nil and stored >= score then
+					return nil -- the store already has a better one
+				end
+				return score
+			end)
+		end)
+		writesInFlight -= 1
+		pair.inFlight = false
+		if ok then
+			pair.written = math.max(pair.written, score)
+		elseif IS_STUDIO then
+			warn(`[ChikaBlock] co-op board write {key} failed: {err}`)
+		end
+	end)
+end
+
+-- A Co-op pair's score that counts is now `countedScore` (it only ever grows while both are in the run, and stops when
+-- one leaves). Remembered here and written by the next refresh; `writeNow` writes it at once, as long as the pair
+-- wasn't written within the last 20 seconds (a game over, a player leaving).
+function LeaderboardService.recordCoop(a: number, b: number, countedScore: number, writeNow: boolean)
+	if countedScore <= 0 then
+		return
+	end
+	local key = Leaderboards.pairKey(a, b)
+	local pair = coopPairs[key]
+	if not pair then
+		pair = {
+			ids = { math.min(a, b), math.max(a, b) },
+			score = 0,
+			written = 0,
+			lastWrite = -math.huge,
+			inFlight = false,
+		}
+		coopPairs[key] = pair
+	end
+	pair.score = math.max(pair.score, math.floor(countedScore))
+	if writeNow then
+		flushPair(key, pair, PAIR_WRITE_GAP_SECONDS)
+	end
+end
+
+-- Writes every pair whose score isn't stored yet, and forgets the ones that are stored and gone from this server.
+local function flushPairs()
+	for key, pair in coopPairs do
+		flushPair(key, pair, nil)
+		local here = false
+		for _, userId in pair.ids do
+			here = here or Players:GetPlayerByUserId(userId) ~= nil
+		end
+		if not here and not pair.inFlight and pair.written >= pair.score then
+			coopPairs[key] = nil
+		end
+	end
+end
+
 local function resolveNames(userIds: { number })
 	local missing = {}
 	for _, userId in userIds do
@@ -117,8 +205,10 @@ local function resolveNames(userIds: { number })
 	end
 end
 
--- Reads the top of every board: the competitive ones, then the Supporters board (a shorter list of plain Robux
--- totals). A board that fails to load keeps its last good copy.
+type RawItem = { userId: number, partnerId: number?, value: number }
+
+-- Reads the top of every board: the competitive ones, the Co-op board (rows by pair), then the Supporters board (a
+-- shorter list of plain Robux totals). A board that fails to load keeps its last good copy.
 function LeaderboardService.refresh()
 	for _, player in Players:GetPlayers() do
 		local data = DataService.get(player)
@@ -126,6 +216,7 @@ function LeaderboardService.refresh()
 			LeaderboardService.flush(player, data)
 		end
 	end
+	flushPairs()
 
 	local now = os.time()
 	local reads: { { key: string, top: number } } = {}
@@ -134,9 +225,10 @@ function LeaderboardService.refresh()
 			table.insert(reads, { key = `{board}_{period}`, top = Leaderboards.TOP })
 		end
 	end
+	table.insert(reads, { key = Leaderboards.COOP_KEY, top = Leaderboards.COOP_TOP })
 	table.insert(reads, { key = Leaderboards.SUPPORTERS_KEY, top = Leaderboards.SUPPORTERS_TOP })
 
-	local raw: { [string]: { { userId: number, value: number } } } = {}
+	local raw: { [string]: { RawItem } } = {}
 	local userIds: { number } = {}
 	for _, read in reads do
 		local key = read.key
@@ -144,12 +236,21 @@ function LeaderboardService.refresh()
 			return storeFor(key, now):GetSortedAsync(false, read.top):GetCurrentPage()
 		end)
 		if ok then
-			local items = {}
+			local items: { RawItem } = {}
 			for _, item in page do
-				local userId = tonumber(item.key)
-				if userId then
-					table.insert(items, { userId = userId, value = item.value })
-					table.insert(userIds, userId)
+				if key == Leaderboards.COOP_KEY then
+					local ids = Leaderboards.pairIds(item.key)
+					if ids then
+						table.insert(items, { userId = ids.low, partnerId = ids.high, value = item.value })
+						table.insert(userIds, ids.low)
+						table.insert(userIds, ids.high)
+					end
+				else
+					local userId = tonumber(item.key)
+					if userId then
+						table.insert(items, { userId = userId, value = item.value })
+						table.insert(userIds, userId)
+					end
 				end
 			end
 			raw[key] = items
@@ -160,17 +261,25 @@ function LeaderboardService.refresh()
 
 	resolveNames(userIds)
 	for key, items in raw do
-		local plain = key == Leaderboards.SUPPORTERS_KEY -- Robux as they are, no title mixed in
+		-- Robux and Co-op scores are stored as they are, no title mixed in.
+		local plain = key == Leaderboards.SUPPORTERS_KEY or key == Leaderboards.COOP_KEY
 		local entries = table.create(#items)
 		for rank, item in items do
 			local stat, titleIndex = item.value, 0
 			if not plain then
 				stat, titleIndex = Leaderboards.decode(item.value)
 			end
+			local name = names[item.userId] or "Player"
+			local pairIds: { number }? = nil
+			if item.partnerId then
+				name = `{name} & {names[item.partnerId] or "Player"}`
+				pairIds = { item.userId, item.partnerId }
+			end
 			entries[rank] = {
 				rank = rank,
 				userId = item.userId,
-				name = names[item.userId] or "Player",
+				userIds = pairIds,
+				name = name,
 				title = titleFor(titleIndex),
 				value = stat,
 			}
@@ -207,12 +316,24 @@ function LeaderboardService.describe(): string
 			table.insert(lines, `{key}: {if entries then table.concat(parts, " | ") else "not loaded"}`)
 		end
 	end
+	local coop = boards[Leaderboards.COOP_KEY]
+	local coopParts = {}
+	for _, entry in coop or {} do
+		table.insert(coopParts, `{entry.rank}. {entry.name} {entry.value}`)
+	end
+	table.insert(lines, `Coop: {if coop then table.concat(coopParts, " | ") else "not loaded"}`)
 	local supporters = boards[Leaderboards.SUPPORTERS_KEY]
 	local parts = {}
 	for _, entry in supporters or {} do
 		table.insert(parts, `{entry.rank}. {entry.name} {entry.value}`)
 	end
 	table.insert(lines, `Supporters: {if supporters then table.concat(parts, " | ") else "not loaded"}`)
+	local pending = {}
+	for key, pair in coopPairs do
+		table.insert(pending, `{key}={pair.score} (stored {pair.written})`)
+	end
+	table.sort(pending)
+	table.insert(lines, `pairs here: {if #pending > 0 then table.concat(pending, ", ") else "none"}`)
 	return table.concat(lines, "\n")
 end
 
@@ -227,6 +348,7 @@ local function snapshotFor(data: PlayerData.PlayerData): Snapshot
 			weekBest = data.weekly.bestScore,
 			weekExp = data.weekly.exp,
 			donated = data.robuxDonated,
+			coopBest = data.coopBest,
 		},
 	}
 end
@@ -259,6 +381,9 @@ function LeaderboardService.start(_self: any)
 			if data then
 				LeaderboardService.flush(player, data)
 			end
+		end
+		for key, pair in coopPairs do
+			flushPair(key, pair, nil)
 		end
 		local deadline = os.clock() + SHUTDOWN_WAIT_SECONDS
 		while writesInFlight > 0 and os.clock() < deadline do

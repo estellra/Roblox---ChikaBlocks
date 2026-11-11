@@ -36,8 +36,8 @@
 --                                                the Robux price of the next one
 --   ReviveResult(runId, ok)                      the revive didn't happen (purchase cancelled or not possible)
 --   Donated(amount, total)                       a donation was granted: its Robux, and the player's total
---   Leaderboard(snapshot)                        top entries of every board and the player's own values
---                                                (see LeaderboardService.Snapshot)
+--   Leaderboard(snapshot)                        top entries of every board (the Co-op board by pair) and the
+--                                                player's own values (see LeaderboardService.Snapshot)
 --   CoopInvited(inviteId, fromUserId, expiresAt) someone invited the player; expiresAt is in workspace:GetServerTimeNow()
 --   CoopInviteResult(otherUserId, result)        how an invitation with that player stands. The inviter hears sent,
 --                                                declined, expired, busy, cooldown or left; the invited player hears
@@ -53,6 +53,8 @@
 --                                                takeOverAt is when this player may take over (server time), or nil
 --   CoopReject(runId, moveId)                    that move no longer fits (the partner got there first); only the sender
 --   CoopRematchVotes(votes)                      who has pressed Play again, by seat
+--   CoopRewards(runId, rewards)                  after a Co-op game over, to each player still in the run: EXP gained,
+--                                                level before and after, titles unlocked (as RunRewards)
 --   CoopPartnerHover(slot, x, y)                 (unreliable) the partner's CoopHover, checked; no arguments when they
 --                                                stopped aiming. A lost message must not leave a shadow behind: the client
 --                                                drops one that isn't renewed within a second or so
@@ -123,6 +125,7 @@ return {
 	CoopMove = remoteEvent("CoopMove"),
 	CoopReject = remoteEvent("CoopReject"),
 	CoopRematchVotes = remoteEvent("CoopRematchVotes"),
+	CoopRewards = remoteEvent("CoopRewards"),
 	CoopHover = unreliableEvent("CoopHover"),
 	CoopPartnerHover = unreliableEvent("CoopPartnerHover"),
 	Donated = remoteEvent("Donated"),

@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local CoopRuns = require("../CoopRuns")
 local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
 local LeaderboardService = require("./LeaderboardService")
@@ -367,6 +368,31 @@ end
 -- One step of the donation funnel; `attempt` tells the purchase prompts apart.
 function GameService.logDonate(player: Player, attempt: string, step: number)
 	telemetry:donateStep(player, attempt, step)
+end
+
+-- One step of the Co-op invitation funnel, for the player who invited (the practice partner is not logged).
+function GameService.logCoopInvite(player: any, inviteId: number, step: number)
+	if typeof(player) == "Instance" then
+		telemetry:coopInviteStep(player, tostring(inviteId), step)
+	end
+end
+
+-- A Co-op move was turned down because the partner's got there first.
+function GameService.logCoopConflict(player: any)
+	if typeof(player) == "Instance" then
+		telemetry:coopConflict(player)
+	end
+end
+
+-- A Co-op run ended for this player (see Telemetry.RunEnd for how); the summary is the team's.
+function GameService.logCoopRunEnded(player: Player, summary: CoopRuns.Summary, how: Telemetry.RunEnd)
+	telemetry:runEnded(player, DataService.get(player), {
+		mode = "coop",
+		score = summary.score,
+		moves = summary.moves,
+		maxCombo = summary.maxCombo,
+		isOver = summary.isOver,
+	}, how)
 end
 
 -- A donation was granted: the Robux it counts for and the tier of its product.

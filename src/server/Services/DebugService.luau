@@ -106,7 +106,7 @@ function DebugService.start(_self: any)
 				data.level
 			)} milestones={keys(data.milestonesClaimed)} badges={keys(data.badgesAwarded)} reviveTokens={tokenSummary(
 				data
-			)} rotations={data.rotations} donated={data.robuxDonated} purchases={#data.purchaseIds} title={Progression.title(
+			)} rotations={data.rotations} donated={data.robuxDonated} coopBest={data.coopBest} coopGames={data.coopGamesPlayed} purchases={#data.purchaseIds} title={Progression.title(
 				data.milestonesClaimed
 			)}`
 		elseif command == "resetdata" then
@@ -121,6 +121,7 @@ function DebugService.start(_self: any)
 			data.reviveTokens = { 0, 0, 0 }
 			data.rotations = 0
 			data.robuxDonated = 0
+			data.coopBest, data.coopGamesPlayed = 0, 0
 			table.clear(data.purchaseIds)
 			data.weekly.week, data.weekly.bestScore, data.weekly.exp = "", 0, 0
 			GameService.getRuns():setBest(player, 0)

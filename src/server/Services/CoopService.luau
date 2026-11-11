@@ -2,7 +2,9 @@
 -- Runs the Co-op games. Rooms (RoomService) say who is playing with whom; CoopRuns holds each room's run and
 -- decides every move; this service wires them to the remotes and to the room's life: a run starts when a room is
 -- formed (the players' solo runs end), a player who leaves the room leaves the run (the partner carries on with
--- every piece), and the run is forgotten when the room closes. Data, EXP and leaderboards come with M22.
+-- every piece), and the run is forgotten when the room closes. Each move earns the players EXP and raises their
+-- Co-op best (CoopProgress); a finished run pays out what it earned, counts as a game played and writes its score
+-- to the pair's row on the Co-op board (LeaderboardService); how it all went is logged (GameService).
 --
 -- For the Studio debug bridge it can also pair a player with a practice partner that plays on the server (see
 -- bot()), so one Studio window is enough to play a whole Co-op game.
@@ -11,17 +13,23 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CoopProgress = require("../CoopProgress")
 local CoopRuns = require("../CoopRuns")
 local CoopSession = require(ReplicatedStorage.Shared.CoopSession)
+local DataService = require("./DataService")
 local GameService = require("./GameService")
+local LeaderboardService = require("./LeaderboardService")
 local Net = require(ReplicatedStorage.Shared.Net)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local Rng = require(ReplicatedStorage.Shared.Rng)
+local RewardService = require("./RewardService")
 local RoomService = require("./RoomService")
 local Rooms = require("../Rooms")
 
 local IS_STUDIO = RunService:IsStudio()
 local SIZE = Config.GRID_SIZE
 local BOT_FIRST_USER_ID = -7001
+local PAIR_FLUSH_GAP_SECONDS = 20 -- the pair's row on the Co-op board is written at most this often after a run
 
 type Bot = { rate: number, afk: boolean, nextMoveId: number }
 
@@ -30,6 +38,8 @@ local CoopService = {}
 local runs: CoopRuns.CoopRuns
 local bots: { [any]: Bot } = {}
 local botCount = 0
+local progressOf: { [any]: CoopProgress.Progress } = {} -- each player's progress through the run they are in
+local inviteOf: { [number]: number } = {} -- the invitation that made each room, for the funnel
 
 local function isPlayer(who: any): boolean
 	return typeof(who) == "Instance"
@@ -68,6 +78,115 @@ local function sendStates(players: { any }, states: { CoopRuns.State }, reason: 
 	end
 end
 
+-- The player's saved data, or nil for the practice partner and for a player whose data isn't loaded.
+local function dataOf(member: any): any
+	if isPlayer(member) then
+		return DataService.get(member :: Player)
+	end
+	return nil
+end
+
+-- A run begins (or begins again) for these players: each starts counting what it earns them.
+local function beginRun(players: { any }, roomId: number)
+	for _, member in players do
+		local data = dataOf(member)
+		if data then
+			progressOf[member] = CoopProgress.start(data)
+		end
+	end
+	local invite = inviteOf[roomId]
+	if invite then
+		GameService.logCoopInvite(players[1], invite, 3) -- RunStarted
+	end
+end
+
+-- A move was accepted: every player still in the run earns EXP for the team's score and may raise their Co-op best
+-- with the score that counts.
+local function creditMove(players: { any }, present: { boolean }, teamScore: number, countedScore: number)
+	for seat, member in players do
+		local data = if present[seat] then dataOf(member) else nil
+		if data then
+			local progress = progressOf[member]
+			if not progress then
+				progress = CoopProgress.start(data)
+				progressOf[member] = progress
+			end
+			local gained = CoopProgress.credit(Progression, progress, data, teamScore, countedScore)
+			if gained > 0 then
+				LeaderboardService.recordRun(data, 0, gained) -- the weekly EXP; the score is not a solo score
+			end
+			for _, milestone in RewardService.sync(member :: Player, data) do
+				table.insert(progress.titles, milestone.title)
+			end
+		end
+	end
+end
+
+-- The pair's counted score goes to the Co-op board's row for them (written by LeaderboardService).
+local function recordPair(players: { any }, countedScore: number, writeNow: boolean)
+	local first, second = players[1], players[2]
+	if first and second then
+		LeaderboardService.recordCoop((first :: Player).UserId, (second :: Player).UserId, countedScore, writeNow)
+	end
+end
+
+-- The team has no moves left: the players still in the run are paid what it earned, it counts as a game played,
+-- and the pair's score is written.
+local function finishRun(summary: CoopRuns.Summary, players: { any })
+	local both = summary.present[1] and summary.present[2]
+	for seat, member in players do
+		if summary.present[seat] and isPlayer(member) then
+			local data = dataOf(member)
+			local progress = progressOf[member]
+			if data and progress then
+				if summary.moves > 0 then
+					CoopProgress.countGame(progress, data)
+				end
+				Net.CoopRewards:FireClient(member :: Player, summary.runId, CoopProgress.rewards(progress, data))
+				GameService.sendProfile(member :: Player)
+				LeaderboardService.flush(member :: Player, data, PAIR_FLUSH_GAP_SECONDS)
+			end
+			GameService.logCoopRunEnded(member :: Player, summary, if both then "gameover" else "partner_left")
+		end
+	end
+	recordPair(players, summary.countedScore, true)
+	local invite = inviteOf[summary.roomId]
+	if invite then
+		GameService.logCoopInvite(players[1], invite, 4) -- RunFinished
+	end
+end
+
+-- A player is out of the run (they left, or the partner put them out). The score that counts is fixed from now on,
+-- so for both players the run counts as a game played, and the pair's score is written.
+local function departed(
+	leaver: any,
+	stayer: any?,
+	players: { any },
+	summary: CoopRuns.Summary,
+	how: "left" | "takeover"
+)
+	if isPlayer(leaver) then
+		local data = dataOf(leaver)
+		local progress = progressOf[leaver]
+		if data and progress and summary.moves > 0 then
+			CoopProgress.countGame(progress, data)
+		end
+		GameService.logCoopRunEnded(leaver :: Player, summary, how)
+		if data then
+			LeaderboardService.flush(leaver :: Player, data, PAIR_FLUSH_GAP_SECONDS)
+		end
+	end
+	progressOf[leaver] = nil
+	if stayer then
+		local data = dataOf(stayer)
+		local progress = progressOf[stayer]
+		if data and progress and summary.moves > 0 then
+			CoopProgress.countGame(progress, data)
+		end
+	end
+	recordPair(players, summary.countedScore, true)
+end
+
 -- Applies a move from `player` (a client, or the practice partner) and tells the clients what happened.
 function CoopService.place(player: any, runId: unknown, moveId: unknown, slot: unknown, x: unknown, y: unknown)
 	local outcome = runs:place(player, runId, moveId, slot, x, y)
@@ -92,8 +211,17 @@ function CoopService.place(player: any, runId: unknown, moveId: unknown, slot: u
 				if wait then now + wait else nil
 			)
 		end
+		creditMove(outcome.players, outcome.present, move.score, outcome.countedScore)
+		recordPair(outcome.players, outcome.countedScore, false) -- written within a minute, or at the end
+		if outcome.endsRun then
+			local summary = runs:summary(player)
+			if summary then
+				finishRun(summary, outcome.players)
+			end
+		end
 	elseif outcome.kind == "rejected" then
 		fire(player, Net.CoopReject, outcome.runId, outcome.moveId)
+		GameService.logCoopConflict(player)
 	end
 end
 
@@ -106,16 +234,19 @@ local function rematch(player: any)
 		end
 	elseif outcome.kind == "restarted" then
 		sendStates(outcome.players, outcome.states, "start")
+		local summary = runs:summary(outcome.players[1])
+		beginRun(outcome.players, if summary then summary.roomId else 0)
 		for _, member in outcome.players do
 			fire(member, Net.CoopRematchVotes, { false, false })
 		end
 	end
 end
 
-local function onRoomFormed(room: Rooms.Room)
+local function onRoomFormed(room: Rooms.Room, inviteId: number)
 	if room.mode ~= "coop" then
 		return
 	end
+	inviteOf[room.id] = inviteId
 	for _, member in room.players do
 		if isPlayer(member) then
 			GameService.abandonRun(member :: Player) -- one thing at a time: the solo run is over
@@ -124,13 +255,17 @@ local function onRoomFormed(room: Rooms.Room)
 	local states = runs:start({ id = room.id, players = room.players, present = room.present })
 	if states then
 		sendStates(room.players, states, "start")
+		beginRun(room.players, room.id)
 	end
 end
 
 local function onMemberLeft(room: Rooms.Room, player: Player, _seat: number)
 	local outcome = runs:leave(player)
-	if outcome and outcome.stayer and outcome.state then
-		fire(outcome.stayer, Net.CoopState, wireState(outcome.state), "takeover")
+	if outcome then
+		if outcome.stayer and outcome.state then
+			fire(outcome.stayer, Net.CoopState, wireState(outcome.state), "takeover")
+		end
+		departed(player, outcome.stayer, room.players, outcome.summary, "left")
 	end
 	-- A practice partner has nothing to do alone: it leaves when the player does.
 	for seat, member in room.players do
@@ -143,8 +278,10 @@ end
 
 local function onRoomClosed(room: Rooms.Room)
 	runs:close(room.id)
+	inviteOf[room.id] = nil
 	for _, member in room.players do
 		bots[member] = nil
+		progressOf[member] = nil
 	end
 end
 
@@ -182,6 +319,7 @@ function CoopService.start(_self: any)
 		local outcome = runs:takeOver(player, runId)
 		if outcome.kind == "tookOver" then
 			fire(player, Net.CoopState, wireState(outcome.state), "takeover")
+			departed(outcome.evicted, player, { player, outcome.evicted }, outcome.summary, "takeover")
 			RoomService.leave(outcome.evicted) -- the idle partner goes back to the menu
 		end
 	end)
@@ -198,6 +336,7 @@ function CoopService.start(_self: any)
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		runs:remove(player) -- the room's own events have taken them out of the run already
+		progressOf[player] = nil
 	end)
 end
 

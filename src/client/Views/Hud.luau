@@ -65,6 +65,7 @@ export type CoopGameOver = {
 	shares: string, -- e.g. "You 1,234  ·  Alex 980"
 	note: string?, -- e.g. "Alex left: only 1,100 counts for Co-op"
 	canPlayAgain: boolean, -- the partner is still in the run
+	rewards: RunRewards?, -- what the run earned the player, once the server has said (it may come after the panel opens)
 }
 
 export type Hud = typeof(setmetatable(
@@ -558,6 +559,9 @@ function Hud.showCoopGameOver(self: Hud, info: CoopGameOver)
 	self.restartRoot.Visible = info.canPlayAgain
 	self.restartButton.Text = "Play again"
 	self.restartButton.Active = true
+	if info.rewards then
+		self:showRewards(info.rewards)
+	end
 	self.layoutPanels()
 	openOverlay(self, self.gameOverPanel)
 	if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then

@@ -87,6 +87,39 @@ return function(t: TestKit.TestKit)
 			t.expect(Leaderboards.values(stats(2094, 5, "2026W45", 900, 90, 30), 2, NOV_2_2026).Supporters_all).toBe(30)
 		end)
 
+		t.it("keys a Co-op row by the two user ids, the smaller first, whichever way round", function()
+			t.expect(Leaderboards.pairKey(45, 12)).toBe("12_45")
+			t.expect(Leaderboards.pairKey(12, 45)).toBe("12_45")
+			t.expect(Leaderboards.pairKey(7, 7)).toBe("7_7")
+			-- Studio's test players have negative ids.
+			t.expect(Leaderboards.pairKey(-1, -2)).toBe("-2_-1")
+			-- The biggest ids a player can have make a key well under the 50 characters a key may have.
+			t.expect(#Leaderboards.pairKey(9999999999999, 9999999999998) <= 27).toBe(true)
+		end)
+
+		t.it("splits a Co-op row back into its two ids, and refuses a key that isn't one", function()
+			t.expect(Leaderboards.pairIds("12_45")).toEqual({ low = 12, high = 45 })
+			t.expect(Leaderboards.pairIds("-2_-1")).toEqual({ low = -2, high = -1 })
+			t.expect(Leaderboards.pairIds(Leaderboards.pairKey(11894223600, 5)))
+				.toEqual({ low = 5, high = 11894223600 })
+			for _, bad in { "", "12", "12_", "_45", "12_45_7", "a_b", "12.5_3", "1e5_2", " 1_2" } do
+				t.expect(Leaderboards.pairIds(bad)).toBe(nil)
+			end
+		end)
+
+		t.it(
+			"keeps the Co-op board in its own store, the same in every week, apart from the per-player boards",
+			function()
+				t.expect(Leaderboards.COOP_KEY).toBe("Coop_all")
+				t.expect(Leaderboards.storeName(Leaderboards.COOP_KEY, NOV_2_2026, false)).toBe("Coop")
+				t.expect(Leaderboards.storeName(Leaderboards.COOP_KEY, NOV_1_2026, true)).toBe("Coop_Dev")
+				t.expect(table.find(Leaderboards.BOARDS, "Coop")).toBe(nil)
+				-- A player's own values never include a Co-op row: those are written for the pair.
+				local values = Leaderboards.values(stats(1000, 3, "", 0, 0), 0, NOV_2_2026)
+				t.expect(values[Leaderboards.COOP_KEY]).toBe(nil)
+			end
+		)
+
 		t.it("writes again only what changed", function()
 			local written = { Highscore_all = 100, Level_all = 200 }
 			local changes = Leaderboards.changes({ Highscore_all = 100, Level_all = 300, Level_week = 5 }, written)

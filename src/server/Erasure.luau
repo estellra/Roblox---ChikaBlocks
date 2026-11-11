@@ -8,6 +8,10 @@
 -- - one entry "<id>" in each leaderboard OrderedDataStore. An OrderedDataStore entry cannot carry user ids, so
 --   Roblox cannot link these itself; the weekly boards have a store per week, and this lists every week since
 --   the first publish.
+-- - the Co-op board is the exception: its rows are pairs "<id>_<id>" in the "Coop" store, so a row can't be found by
+--   one id. scripts/erase-user.luau lists the store page by page and deletes the rows pairKeyMatches() accepts. The
+--   profile does not keep who a player played with, so those rows are the only trace of a pairing, and erasing
+--   either player removes the row for both.
 -- Studio's "_Dev" stores are left out: they only ever hold the developer's own test data.
 local Leaderboards = require("./Leaderboards")
 
@@ -22,6 +26,7 @@ Erasure.TOPIC = "EraseUser" -- the MessagingService topic live servers listen on
 Erasure.PROFILE_STORE = "PlayerData"
 -- 2026-10-30 00:00 UTC, the day the project began. No leaderboard store is older than this.
 Erasure.FIRST_WEEK_TIME = 1793318400
+Erasure.COOP_STORE = "Coop" -- the Co-op board's OrderedDataStore, kept apart from orderedStoreNames() (see above)
 Erasure.MAX_USER_ID = 1e13 -- far above today's ids; also keeps tostring() from switching to exponent notation
 
 function Erasure.profileKey(userId: number): string
@@ -69,7 +74,25 @@ function Erasure.orderedStoreNames(now: number): { string }
 	return names
 end
 
--- Everything to delete for `userId`, as (store, key) pairs.
+-- Whether a row of the Co-op store has `userId` as one of its two players. The ids are compared whole, so
+-- user 12 owns "12_45" and "45_12" but not "123_45" or "45_312".
+function Erasure.pairKeyMatches(key: string, userId: number): boolean
+	local ids = Leaderboards.pairIds(key)
+	return ids ~= nil and (ids.low == userId or ids.high == userId)
+end
+
+-- The rows among `keys` to delete when erasing `userId`.
+function Erasure.pairKeysFor(keys: { string }, userId: number): { string }
+	local matching: { string } = {}
+	for _, key in keys do
+		if Erasure.pairKeyMatches(key, userId) then
+			table.insert(matching, key)
+		end
+	end
+	return matching
+end
+
+-- Everything to delete for `userId`, as (store, key) pairs (the Co-op rows aside; see above).
 function Erasure.plan(userId: number, now: number): Plan
 	local ordered: { Target } = {}
 	for _, store in Erasure.orderedStoreNames(now) do

@@ -101,6 +101,10 @@ local Config = {
 		INVITE_COOLDOWN_SECONDS = 60,
 		MAX_PENDING_INVITES = 3,
 
+		-- Each player of a Co-op run earns this share of the EXP a solo run with the same score would earn, so the two
+		-- of them together earn what one solo run would (a share of 1 would make Co-op a way to level twice as fast).
+		EXP_SHARE = 0.5,
+
 		-- A player who has no move while the partner has one may take over the partner's pieces once nobody has
 		-- moved for this long (the partner is put out of the run).
 		AFK_SECONDS = 45,

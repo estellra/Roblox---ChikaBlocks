@@ -1,7 +1,8 @@
 --!strict
 -- Leaderboard screen over the menu, in the same style as the other screens: a cream card on the sky with the
--- trophy, the All time / This week and Highscore / Level tabs, the top entries (medals for the first three,
--- each player's title, the player's own row picked out in gold) and the player's own value. It only draws
+-- trophy, the All time / This week and Highscore / Level / Co-op tabs, the top entries (medals for the first
+-- three, each player's title, the player's own row picked out in gold) and the player's own value. The Co-op board
+-- ranks pairs ("A & B") and only has an all time version. It only draws
 -- what LeaderboardController hands it.
 -- Closing works by the X button, Escape or Backspace, and the gamepad B button.
 local GuiService = game:GetService("GuiService")
@@ -26,12 +27,12 @@ local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 }
 
 export type Period = "all" | "week"
-export type Board = "Highscore" | "Level"
-export type Entry = { rank: number, userId: number, name: string, title: string?, value: number }
+export type Board = "Highscore" | "Level" | "Coop"
+export type Entry = { rank: number, userId: number, userIds: { number }?, name: string, title: string?, value: number }
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number,
-	you: { best: number, level: number, weekBest: number, weekExp: number },
+	you: { best: number, level: number, weekBest: number, weekExp: number, coopBest: number },
 }
 
 type Row = { frame: Frame, medal: Frame, rank: TextLabel, name: TextLabel, title: TextLabel, value: TextLabel }
@@ -185,6 +186,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		week = tabButton("ThisWeek", "This week", 2),
 		Highscore = tabButton("Highscore", "Highscore", 3),
 		Level = tabButton("Level", "Level", 4),
+		Coop = tabButton("Coop", "Co-op", 5),
 	}
 	-- Two rows of two tabs, or one row of four on short screens (see layout()).
 	local tabArea = create("Frame", {
@@ -206,6 +208,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		tabs.week,
 		tabs.Highscore,
 		tabs.Level,
+		tabs.Coop,
 	})
 
 	local header = create("Frame", {
@@ -349,8 +352,14 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	}, LeaderboardView)
 
 	local function choose(period: Period?, board: Board?)
+		if period == "week" and self.board == "Coop" then
+			return -- the Co-op board has no weekly version
+		end
 		self.period = period or self.period
 		self.board = board or self.board
+		if self.board == "Coop" then
+			self.period = "all"
+		end
 		self.list.CanvasPosition = Vector2.zero
 		self:render()
 	end
@@ -378,6 +387,12 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 			choose(nil, "Level")
 		end)
 	)
+	table.insert(
+		self.connections,
+		Clay.face(tabs.Coop).Activated:Connect(function()
+			choose(nil, "Coop")
+		end)
+	)
 	table.insert(self.connections, closeButton.Activated:Connect(onClose))
 	table.insert(
 		self.connections,
@@ -393,16 +408,17 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	return self
 end
 
--- Fits the screen: on short screens the heading goes and the four tabs share one row beside the close button,
--- so more of the list shows.
+-- Fits the screen: the two periods share a row and the three boards the next; on short screens the heading goes
+-- and the five tabs share one row beside the close button, so more of the list shows.
 function LeaderboardView.layout(self: LeaderboardView)
 	local compact = self.gui.AbsoluteSize.Y > 0 and self.gui.AbsoluteSize.Y < COMPACT_HEIGHT
 	self.header.Visible = not compact
 	local padding = self.tabArea:FindFirstChildOfClass("UIPadding") :: UIPadding
 	padding.PaddingRight = UDim.new(0, if compact then CLOSE_SIZE + 10 else 0)
-	local size = if compact then UDim2.new(0.25, -6, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
-	for _, button in self.tabs do
-		button.Size = size
+	local period = if compact then UDim2.new(0.2, -7, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
+	local board = if compact then period else UDim2.new(1 / 3, -6, 0, TAB_HEIGHT)
+	for key, button in self.tabs do
+		button.Size = if key == "all" or key == "week" then period else board
 	end
 end
 
@@ -415,13 +431,18 @@ end
 
 -- Draws the chosen board from the last snapshot (or "Loading…" before one arrives).
 function LeaderboardView.render(self: LeaderboardView)
+	local coop = self.board == "Coop" -- ranked by pair, all time only
 	for key, button in self.tabs do
-		local selected = key == self.period or key == self.board
+		local selected = key == self.board or key == (if coop then "all" else self.period)
 		Clay.setStyle(button, if selected then "primary" else "secondary")
 	end
+	local weekFace = Clay.face(self.tabs.week)
+	weekFace.Active = not coop
+	weekFace.BackgroundTransparency = if coop then 0.55 else 0
+	weekFace.TextTransparency = if coop then 0.45 else 0
 
 	local snapshot = self.snapshot
-	local entries = if snapshot then snapshot.boards[`{self.board}_{self.period}`] else nil
+	local entries = if snapshot then snapshot.boards[if coop then "Coop_all" else `{self.board}_{self.period}`] else nil
 	local me = Players.LocalPlayer.UserId
 	for i, row in self.rows do
 		local entry = entries and entries[i]
@@ -438,7 +459,7 @@ function LeaderboardView.render(self: LeaderboardView)
 			row.title.Text = entry.title or ""
 			row.value.Text = formatValue(self.board, self.period, entry.value)
 			-- The player's own row stands out in gold; the others alternate pale stripes.
-			local isMe = entry.userId == me
+			local isMe = entry.userId == me or (entry.userIds ~= nil and table.find(entry.userIds, me) ~= nil)
 			row.frame.BackgroundColor3 = if isMe then Theme.Colors.Reward else Theme.Colors.CellEmpty
 			row.frame.BackgroundTransparency = if isMe then 0.35 elseif i % 2 == 0 then 1 else 0
 		end
@@ -453,10 +474,15 @@ function LeaderboardView.render(self: LeaderboardView)
 	end
 	-- The status line only takes room when the list has nothing to show.
 	local empty = not entries or #entries == 0
-	self.status.Text = if empty then "No scores yet. Play a run to get on the board!" else ""
+	self.status.Text = if not empty
+		then ""
+		elseif coop then "No co-op scores yet. Play a run with a friend to get on the board!"
+		else "No scores yet. Play a run to get on the board!"
 	self.status.Visible = empty
 	local you = snapshot.you
-	if self.board == "Highscore" then
+	if coop then
+		youLabel.Text = `Your co-op best: {Format.withCommas(you.coopBest)}`
+	elseif self.board == "Highscore" then
 		youLabel.Text = if self.period == "week"
 			then `Your best this week: {Format.withCommas(you.weekBest)}`
 			else `Your best: {Format.withCommas(you.best)}`

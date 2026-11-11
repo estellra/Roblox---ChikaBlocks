@@ -10,6 +10,10 @@
 -- The Supporters board ("Supporters_all", store "RobuxDonated") is separate from these: its values are the Robux
 -- a player has donated, as they are, without a title.
 --
+-- The Co-op board ("Coop_all", store "Coop") is by pair: a row is "<smaller id>_<larger id>" and its value is the
+-- highest score that counted for that pair, as it is (no title). Both players of a pair are one row whichever of
+-- them writes it.
+--
 -- A stored value is stat * TITLE_SLOTS + title index (0 = no title; see Progression.titleIndex): the title
 -- shows next to the name without reading every player's profile, and the order is still by stat.
 
@@ -29,6 +33,8 @@ Leaderboards.PERIODS = table.freeze({ "all", "week" })
 Leaderboards.TOP = 50 -- entries shown per board
 Leaderboards.SUPPORTERS_KEY = "Supporters_all"
 Leaderboards.SUPPORTERS_TOP = 10 -- entries on the Supporters board
+Leaderboards.COOP_KEY = "Coop_all"
+Leaderboards.COOP_TOP = 50 -- entries on the Co-op board
 Leaderboards.TITLE_SLOTS = TITLE_SLOTS
 
 -- ISO 8601 week of a UTC time, like "2026W45". Weeks start on Monday; week 1 holds the year's first Thursday.
@@ -37,6 +43,21 @@ function Leaderboards.weekKey(time: number): string
 	local weekday = (date.wday + 5) % 7 + 1 -- 1 = Monday ... 7 = Sunday
 	local thursday = os.date("!*t", time + (4 - weekday) * DAY) :: any
 	return string.format("%dW%02d", thursday.year, math.floor((thursday.yday - 1) / 7) + 1)
+end
+
+-- The row of a Co-op pair: both user ids, the smaller first (at most 27 characters; a key can have 50).
+function Leaderboards.pairKey(a: number, b: number): string
+	return string.format("%d_%d", math.min(a, b), math.max(a, b))
+end
+
+-- The two user ids of a Co-op row, smaller first, or nil when the key isn't a pair of whole numbers.
+function Leaderboards.pairIds(key: string): { low: number, high: number }?
+	local first, second = string.match(key, "^(%-?%d+)_(%-?%d+)$")
+	local low, high = tonumber(first), tonumber(second)
+	if low == nil or high == nil then
+		return nil
+	end
+	return { low = math.min(low, high), high = math.max(low, high) }
 end
 
 -- The store behind a board key at `time`. Studio uses separate stores so tests never reach live boards.

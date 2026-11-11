@@ -65,6 +65,16 @@ local function lines(events: { Rooms.Event }): { string }
 	return out
 end
 
+-- The id of the invitation a "formed" event came from, if one was emitted.
+local function formedInvite(events: { Rooms.Event }): number?
+	for _, event in events do
+		if event.kind == "formed" then
+			return event.inviteId
+		end
+	end
+	return nil
+end
+
 -- Invites and returns the invitation's id (it has to be sent).
 local function send(h: Harness, from: string, to: string): number
 	local outcome = h.rooms:invite(from, to)
@@ -337,6 +347,19 @@ return function(t: TestKit.TestKit)
 			h.clock.now = START + 60
 			h.rooms:sweep()
 			t.expect(h.rooms:footprint()).toBe(0)
+		end)
+
+		t.it("names the invitation that formed a room, also when it was answered by inviting back", function()
+			local h = harness({ "A", "B", "C", "D" })
+			local id = send(h, "A", "B")
+			table.clear(h.events)
+			h.rooms:reply("B", id, true)
+			t.expect(formedInvite(h.events)).toBe(id)
+
+			local first = send(h, "C", "D")
+			table.clear(h.events)
+			h.rooms:invite("D", "C") -- takes C's invitation as a yes
+			t.expect(formedInvite(h.events)).toBe(first)
 		end)
 
 		t.it("describes what it holds for the debug bridge", function()

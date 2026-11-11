@@ -1,20 +1,29 @@
 --!strict
--- Erases one player's data from ChikaBlocks (right to erasure): their profile, and their entry in every leaderboard
--- store. It talks to Open Cloud, so it works for players who are offline.
+-- Erases one player's data from ChikaBlocks (right to erasure): their profile, their entry in every leaderboard
+-- store, and the Co-op rows they are in. It talks to Open Cloud, so it works for players who are offline.
 --
 --   lune run scripts/erase-user.luau <userId> [--dry-run] [--no-kick]
 --
 -- Needs two environment variables:
 --   ROBLOX_UNIVERSE_ID   the experience's universe id (Creator Hub -> Experience -> ... -> Universe ID)
 --   ROBLOX_API_KEY       an Open Cloud API key for that experience with: DataStore entries (delete),
---                        Ordered DataStore entries (delete) and Messaging Service (publish)
+--                        Ordered DataStore entries (read, to list the Co-op rows; and delete) and Messaging
+--                        Service (publish)
 --
 -- Steps: (1) publish the id on the "EraseUser" topic, so a server that has the player online removes them and
 -- lets their last save land (otherwise that save would bring the profile back); wait for it; (2) delete the
--- profile and the leaderboard entries; (3) print what was deleted and what failed (non-zero exit code).
+-- profile and the leaderboard entries, then lists the whole Co-op store (a page of 100 rows at a time) and deletes
+-- every row that has the id in it (a pair "12_45" is the row of both 12 and 45, so it goes for both); (3) print
+-- what was deleted and what failed (non-zero exit code).
+-- The Co-op rows are pairs, so no key says whose they are: the profile does not remember who a player played with
+-- and the only way to find the rows is to read them all. That costs one request per 100 rows (1,000 pairs, 10
+-- requests) each time somebody is erased; far past tens of thousands of pairs it wants an index of its own.
 -- --dry-run lists the deletes without making any request. --no-kick skips step 1 (the player is known offline).
 -- Studio's "_Dev" stores are not touched.
 --
+-- The Co-op scan reads the list response as documented ("orderedDataStoreEntries" with an "id" each, and a
+-- "nextPageToken"); that shape was not seen live, so the script says how many rows it scanned and warns when a page
+-- has no list.
 -- Not tested against the live API (needs a real key): run it with --dry-run first, then on a throwaway test
 -- account's id (and check that the data is gone) before relying on it for a real request.
 local net = require("@lune/net")
@@ -63,6 +72,7 @@ if dryRun then
 	for _, target in plan.orderedStores do
 		print(`  OrderedDataStore {target.store}  key {target.key}`)
 	end
+	print(`  OrderedDataStore {Erasure.COOP_STORE}  every row with {targetUser} in it (found by listing the store)`)
 	if not noKick then
 		print(`  (first publishing "{targetUser}" on topic {Erasure.TOPIC} and waiting {KICK_WAIT_SECONDS} s)`)
 	end
@@ -136,6 +146,61 @@ for _, target in plan.dataStores do
 end
 for _, target in plan.orderedStores do
 	erase("OrderedDataStore", "ordered-data-stores", target)
+end
+
+-- The Co-op board's rows are pairs "<id>_<id>": list the store, then delete the rows with this user in them (after
+-- listing, so the deletes don't disturb the paging).
+local COOP_PAGE_SIZE = 100
+local coopKeys: { string } = {}
+local coopPages = 0
+local pageToken: string? = nil
+repeat
+	local url = `{API}/{universeId}/ordered-data-stores/{net.urlEncode(Erasure.COOP_STORE)}/scopes/global/entries`
+		.. `?maxPageSize={COOP_PAGE_SIZE}`
+	if pageToken then
+		url ..= `&pageToken={net.urlEncode(pageToken)}`
+	end
+	local status, text = send("GET", url, nil)
+	if status == 404 then
+		break -- no Co-op store yet: nobody has a pair row
+	elseif status < 200 or status >= 300 then
+		failed += 1
+		print(`FAILED   listing the {Erasure.COOP_STORE} store: status {status} {text}`)
+		break
+	end
+	local ok, body = pcall(net.jsonDecode, text)
+	if not ok or type(body) ~= "table" then
+		failed += 1
+		print(`FAILED   the {Erasure.COOP_STORE} store's list was not JSON: {string.sub(text, 1, 200)}`)
+		break
+	end
+	coopPages += 1
+	if body.orderedDataStoreEntries == nil then
+		-- An empty store, or a response shaped differently from the documented one: say so, so an empty scan is not trusted blindly.
+		print(
+			`note: page {coopPages} of the {Erasure.COOP_STORE} store has no "orderedDataStoreEntries" list: {string.sub(
+				text,
+				1,
+				120
+			)}`
+		)
+	end
+	for _, entry in body.orderedDataStoreEntries or {} do
+		-- The row's key is its id (or the end of its path, ".../entries/<key>").
+		local key = entry.id
+		if type(key) ~= "string" and type(entry.path) == "string" then
+			key = string.match(entry.path, "/entries/([^/]+)$")
+		end
+		if type(key) == "string" then
+			table.insert(coopKeys, key)
+		end
+	end
+	local nextToken = body.nextPageToken
+	pageToken = if type(nextToken) == "string" and nextToken ~= "" then nextToken else nil
+until pageToken == nil
+print(`scanned the {Erasure.COOP_STORE} store: {#coopKeys} rows in {coopPages} page(s)`)
+for _, key in Erasure.pairKeysFor(coopKeys, targetUser) do
+	erase("OrderedDataStore", "ordered-data-stores", { store = Erasure.COOP_STORE, key = key })
 end
 
 print(`done: {deleted} deleted, {missing} had nothing, {failed} failed`)

@@ -65,6 +65,34 @@ return function(t: TestKit.TestKit)
 			end
 		end)
 
+		t.it("finds the Co-op rows of a user by whole ids, never by a prefix or a suffix", function()
+			t.expect(Erasure.pairKeyMatches("12_45", 12)).toBe(true)
+			t.expect(Erasure.pairKeyMatches("12_45", 45)).toBe(true)
+			t.expect(Erasure.pairKeyMatches("5_12", 12)).toBe(true)
+			t.expect(Erasure.pairKeyMatches("123_45", 12)).toBe(false)
+			t.expect(Erasure.pairKeyMatches("45_312", 12)).toBe(false)
+			t.expect(Erasure.pairKeyMatches("112_12345", 12)).toBe(false)
+			t.expect(Erasure.pairKeyMatches("12", 12)).toBe(false) -- not a pair
+			t.expect(Erasure.pairKeyMatches("12_45_7", 12)).toBe(false)
+			t.expect(Erasure.pairKeyMatches("Highscore", 12)).toBe(false)
+			t.expect(Erasure.pairKeyMatches("", 12)).toBe(false)
+		end)
+
+		t.it("picks the Co-op rows to delete out of a page of the store", function()
+			local keys = { "12_45", "123_45", "45_312", "7_12", "100_200", "bad" }
+			t.expect(Erasure.pairKeysFor(keys, 12)).toEqual({ "12_45", "7_12" })
+			t.expect(Erasure.pairKeysFor(keys, 45)).toEqual({ "12_45", "123_45", "45_312" })
+			t.expect(Erasure.pairKeysFor(keys, 999)).toEqual({})
+			t.expect(Erasure.pairKeysFor({}, 12)).toEqual({})
+		end)
+
+		t.it("leaves the Co-op store out of the per-id plan, which the script scans instead", function()
+			t.expect(Erasure.COOP_STORE).toBe("Coop")
+			t.expect(has(Erasure.orderedStoreNames(NOV_10_2026), Erasure.COOP_STORE)).toBe(false)
+			t.expect(Erasure.COOP_STORE).toBe(Leaderboards.storeName(Leaderboards.COOP_KEY, NOV_10_2026, false))
+			t.expect(Erasure.plan(12, NOV_10_2026).orderedStores[1].store ~= Erasure.COOP_STORE).toBe(true)
+		end)
+
 		t.it("plans the profile and one entry per leaderboard store for the user", function()
 			local plan = Erasure.plan(555, NOV_10_2026)
 			t.expect(plan.dataStores).toEqual({ { store = "PlayerData", key = "User_555" } })

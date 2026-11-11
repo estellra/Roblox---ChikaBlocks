@@ -33,6 +33,8 @@ return function(t: TestKit.TestKit)
 				rotations = 0,
 				robuxDonated = 0,
 				purchaseIds = {},
+				coopBest = 0,
+				coopGamesPlayed = 0,
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
 			-- Nested defaults are frozen too, so no code can change the template through a shallow copy.
@@ -41,6 +43,31 @@ return function(t: TestKit.TestKit)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.weekly)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.purchaseIds)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.reviveTokens)).toBe(true)
+		end)
+
+		t.it("keeps the highest Co-op score that counted, and counts Co-op games apart from solo ones", function()
+			local data = fresh()
+			t.expect(PlayerData.recordCoopScore(data, 400)).toBe(true)
+			t.expect(PlayerData.recordCoopScore(data, 300)).toBe(false)
+			t.expect(PlayerData.recordCoopScore(data, 400)).toBe(false)
+			t.expect(PlayerData.recordCoopScore(data, 900)).toBe(true)
+			t.expect(data.coopBest).toBe(900)
+			PlayerData.recordCoopGame(data)
+			PlayerData.recordCoopGame(data)
+			t.expect(data.coopGamesPlayed).toBe(2)
+			-- Nothing of it reaches the solo record, the games played, or the weekly boards' numbers.
+			t.expect(data.bestScore).toBe(0)
+			t.expect(data.gamesPlayed).toBe(0)
+			t.expect(data.weekly.bestScore).toBe(0)
+		end)
+
+		t.it("gives profiles from before Co-op zero Co-op fields without a migration", function()
+			-- ProfileStore's Reconcile copies the template's new fields in, so the version stays as it was.
+			local old = PlayerData.migrate({ version = PlayerData.VERSION, bestScore = 120, gamesPlayed = 4 })
+			t.expect(old.version).toBe(PlayerData.VERSION)
+			t.expect(PlayerData.TEMPLATE.coopBest).toBe(0)
+			t.expect(PlayerData.TEMPLATE.coopGamesPlayed).toBe(0)
+			t.expect(PlayerData.VERSION).toBe(3)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()
