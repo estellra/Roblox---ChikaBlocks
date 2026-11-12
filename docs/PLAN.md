@@ -141,7 +141,9 @@ Kế hoạch chi tiết (đã duyệt): [PHASE5.md](PHASE5.md)
 - [ ] Leaderboard riêng cho Coop, xếp theo cặp.
 
 ### Giai đoạn 6: PVP Ranked
-- [ ] Chốt luật PVP (xem câu hỏi mở).
+Kế hoạch chi tiết (đã duyệt): [PHASE6.md](PHASE6.md)
+
+- [x] Chốt luật PVP: đua điểm 3 phút, cùng nguồn khối, kèm hàng rác đẩy từ đáy, trái hoặc phải (quyết định BB đến BF trong [PHASE6.md](PHASE6.md)).
 - [ ] Hệ thống ELO, matchmaking (trong server, hoặc liên server bằng MemoryStore và reserved server).
 - [ ] Leaderboard rank và quà theo mùa.
 
@@ -163,5 +165,5 @@ Các câu hỏi này không chặn Giai đoạn 0–1, nhưng cần trả lời 
 3. **Giá Robux** (trước GĐ2–3): hồi sinh lần 1 và lần 2, xoay khối, các mức donate.
 4. **Publish dưới tài khoản cá nhân hay Group?** (trước GĐ2): nếu 2 người chia doanh thu thì nên dùng Group.
 5. **Quà theo mốc:** đã chốt. Mốc highscore và mốc level đều tặng danh hiệu kèm badge; thêm cosmetic từ GĐ4 (xem quyết định W trong [PHASE3.md](PHASE3.md)).
-6. **Luật PVP** (trước GĐ6): cùng seed và đua điểm trong 2–3 phút, hay xóa hàng để "tấn công" đẩy khối rác sang bảng đối thủ? Vẫn chưa chốt khi lên plan GĐ5, nên GĐ5 chỉ dựng phần dùng chung chắc chắn (lời mời và phòng 2 người).
+6. **Luật PVP:** đã chốt khi lên plan GĐ6. Lai giữa hai hướng: đua điểm 3 phút với cùng nguồn khối, xóa nhiều hàng thì đẩy hàng rác sang bảng đối thủ (xem [PHASE6.md](PHASE6.md)). GĐ5 đã dựng sẵn phần dùng chung (lời mời và phòng 2 người).
 7. **Lore** (tùy chọn): viết một câu chuyện ngắn cho linh vật mới.
