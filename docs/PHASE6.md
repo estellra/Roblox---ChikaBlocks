@@ -1,6 +1,6 @@
 # Giai đoạn 6: PVP Ranked
 
-> Plan đã duyệt. Mọi điểm BB đến BZ đã chốt, xem [cuối file](#quyết-định-đã-chốt). Các số cần mô phỏng (bảng đòn, số giây khóa khay, điểm khi xóa hàng rác) chốt lại ở M24. Những gì còn chờ bạn trả lời nằm ở [Câu hỏi mở](#câu-hỏi-mở). Chưa có dòng code nào.
+> Plan đã duyệt. Mọi điểm BB đến CB đã chốt, xem [cuối file](#quyết-định-đã-chốt). Các số cần mô phỏng (bảng đòn, số giây khóa khay, điểm khi xóa hàng rác) chốt lại ở M24. Những gì còn chờ bạn trả lời nằm ở [Câu hỏi mở](#câu-hỏi-mở). Mockup PC đã có (14 màn, xem [Mockup giao diện](#mockup-giao-diện-pc)). Chưa có dòng code nào.
 
 ## Bối cảnh
 
@@ -40,8 +40,9 @@
 | Nước có xóa hàng khi combo ≥ 3 | +1 |
 | Dọn sạch bảng | +2 |
 
-- **Triệt tiêu (BF):** đòn của mình trừ vào rác đang chờ của mình trước; phần dư mới sang hàng chờ rác của đối thủ. Hàng chờ tối đa `PVP.GARBAGE_QUEUE_MAX` (4), dư thì bỏ.
+- **Triệt tiêu (BF):** đòn của mình trừ vào rác đang chờ của mình trước, bắt đầu từ hàng **sắp vào nhất**; phần dư mới sang hàng chờ rác của đối thủ. Hàng chờ tối đa `PVP.GARBAGE_QUEUE_MAX` (4), dư thì bỏ hàng mới nhất.
 - **Dạng rác (BC):** một **hàng rác** gồm 7 ô xám và 1 lỗ, đẩy vào từ **đáy, trái hoặc phải**; hướng và vị trí lỗ do server rút ngẫu nhiên (1 trong 3 hướng, lỗ 1 trong 8 ô).
+- **Báo trước hướng (CB):** hướng được rút **ngay lúc hàng rác vào hàng chờ** và gửi cho nạn nhân, nên người chơi thấy trước từng hàng rác đang chờ sẽ vào từ phía nào và kịp dọn mép đó. Vị trí lỗ vẫn rút lúc rác vào bảng, không báo trước.
   - Từ đáy: mọi hàng dịch lên một hàng, hàng rác thành hàng dưới cùng.
   - Từ trái: mọi cột dịch sang phải, hàng rác thành cột ngoài cùng bên trái. Từ phải thì ngược lại.
 - **Áp rác ở ranh giới bộ khối (BH):** rác chỉ vào bảng lúc nạn nhân đặt xong khối thứ 3 và sắp nhận bộ mới, tối đa `PVP.GARBAGE_PER_SET` (1) hàng mỗi lần. Lúc đó client vốn đang chờ server trả bộ khối, nên không có nước dự đoán nào bị lật lại, và ping cao không bị thiệt. Bộ khối mới được kiểm công bằng trên bảng **sau khi** rác vào, nên cam kết "bộ mới luôn có khối đặt được" giữ nguyên.
@@ -134,6 +135,49 @@ Một người chỉ ở trong **một** thứ tại một thời điểm: ván 
 
 **Không dùng:** `CoopSession`, `CoopRuns`, `CoopSync` (bảng chung, chỗ ngồi, hai lớp). **Làm mới:** mọi file "Mới" ở bảng trên.
 
+## Mockup giao diện (PC)
+
+Bạn gửi 14 mockup màn ngang cho PC; file nằm trong [`docs/mockups/phase6/`](mockups/phase6/). Giao diện PVP làm theo các mockup này (BX). Màn chưa có mockup thì dựng cùng phong cách bằng `Theme`/`Clay`.
+
+| File | Màn | Mốc | Điều rút ra cho việc cài |
+|---|---|---|---|
+| `01-coop-screen-duel` | Màn Co-op có nút Duel | M26 | Mỗi người rảnh có hai nút **Duel** (xanh) và **Invite** (hồng); người bận chỉ có một nút mờ ghi lý do (In tutorial, In a room, Joining...). Tiêu đề và dòng mô tả vẫn là Co-op |
+| `02-match-countdown` | Đếm ngược 3-2-1 | M26 | Số to giữa bảng kèm "Get ready!", cả màn mờ đi. Khay và bảng đối thủ đã hiện, đồng hồ đứng ở 3:00 |
+| `03-duel-invite-card` | Thẻ mời Duel khi đang chơi solo | M26 | "Mia invites you to a Duel", "+2", thanh đếm, Decline và Accept; nằm trên vùng điểm số như thẻ mời Co-op của M19 |
+| `07-match-playing` | Trong trận | M26 | Bố cục chuẩn: xem [M26, Client](#client) |
+| `04-match-garbage-arrives` | Rác vừa vào | M26 | Hàng xám 7 ô + 1 lỗ; mũi tên ở mép bảng chỉ hướng rác vào; dòng dưới khay ghi "+1 garbage from Mia"; cột IN bớt một nấc |
+| `12-match-stuck-locked` | Hết nước | M26 | Thẻ "Stuck! Board cleared" giữa bảng, vùng 4×4 giữa đã trống, khay mờ kèm vòng đếm số giây, dòng "Tray unlocks in 5"; rác chờ vẫn còn trong cột IN |
+| `13-vs-practice-bot`, `14-vs-ranked` | Màn VS | M26, M27 | Nhãn trên cùng ("Ranked match" hoặc "Practice match · no rank change"); hai thẻ có vòng tròn chữ cái đầu, tên, hạng và điểm rank; bot ghi "Practice bot"; "Starting..." |
+| `10-result-friendly-loss` | Kết quả giao hữu | M26 | Linh vật buồn, "Mia wins", "Time's up · friendly duel, no rank change", điểm hai bên, "Garbage sent 2 · blocked 4", "Mia wants a rematch", Play again và Menu |
+| `11-result-ranked-win` | Kết quả ranked | M27 | Linh vật vui, "You win!", "Time's up · higher score wins", ô "Gold 1,320 → 1,338 +18", Queue again và Menu |
+| `06-menu-ranked-button` | Menu | M27 | Nút **Ranked** (vàng) cùng hàng với Co-op; Leaderboard có hàng riêng bên dưới |
+| `08-queue-searching` | Hàng chờ | M27 | Hạng và điểm, "14W 9L · Season 2026M12", ba chấm động, "Finding an opponent...", "Waited 0:12 · 3 other players can be matched here", Cancel |
+| `09-queue-empty-options` | Hàng chờ vắng | M27 | Thêm dòng "Nobody to play right now. You can keep waiting, or:" và ba nút Keep waiting, Practice vs bot, Invite friends |
+| `05-leaderboard-rank-tab` | Tab Rank | M28 | Dòng "Season 2026M12 · ends Dec 31"; bốn tab một hàng; top 3 có huy hiệu vàng, bạc, đồng; mỗi dòng có biểu tượng hạng, tên, tên hạng bên dưới, điểm; ô "You: Gold · 1,320 · 14W 9L" |
+
+### Mockup trả lời hoặc đổi điều gì trong plan
+
+- **Bảng nhỏ của đối thủ có màu khối** (plan cũ chỉ gửi ô có/không). Đổi BW: gửi màu từng ô. Màu gắn với họ khối, nên việc suy ra khối của đối thủ dễ hơn một chút (liên quan câu hỏi mở 2).
+- **Cột IN của đối thủ** hiện trên thẻ đối thủ: plan đã gửi số rác chờ của đối thủ, khớp.
+- **Tab Rank hiện tên hạng dưới tên người chơi**, không hiện danh hiệu mốc: trả lời câu hỏi mở 5 (quyết định CA).
+- **Vòng tròn chữ cái đầu** thay cho ảnh đại diện Roblox: không phải tải thumbnail.
+- **Khay hiện trong lúc đếm ngược:** hai bên có 3 giây nhìn bộ đầu tiên, như nhau.
+- **Kết quả ghi "blocked N":** là số hàng rác đã triệt tiêu (`cancelled`).
+
+### Mockup khác plan hoặc chưa rõ
+
+Các điểm này nằm ở câu hỏi mở 8 đến 11; mình không tự chọn.
+
+- `04` vẽ hàng rác **thay** hàng đáy (7 hàng trên giữ nguyên chỗ), còn BC đã chốt là **đẩy** cả bảng lên và hàng trên cùng mất. Bạn đã xác nhận: theo BC, mockup chỉ minh họa.
+- Mũi tên hướng rác: mockup cho thấy nó lúc rác đã vào, còn plan cũ rút hướng lúc áp rác nên không báo trước được. Bạn đã chọn **có báo trước** (CB): hướng rút lúc rác vào hàng chờ. Mockup chưa vẽ mũi tên trong các nấc IN; mình dựng theo phong cách hiện có.
+- Nút Pause có trong HUD của trận, nhưng trận có đồng hồ thì không dừng được.
+- Menu thêm một hàng nút so với hiện tại (M19 đã phải gộp Co-op với Leaderboard cho vừa điện thoại ngang thấp).
+
+### Chưa có mockup
+
+- **Mọi màn trên điện thoại** (dọc và ngang): 14 mockup đều là PC.
+- Rác vào từ trái và phải; bảng Pause hoặc bỏ cuộc; kết quả ranked thua, hòa, đối thủ rời; trận "Unrated" vì cặp đã đủ 2 trận trong ngày; nút Ranked khi bị khóa (chưa đủ level, private server); thông báo chuyển mùa và huy chương; chỗ hiện huy chương các mùa trước.
+
 ## M24: Luật PVP
 
 ### `Board.pushLine`
@@ -148,7 +192,7 @@ Một người chỉ ở trong **một** thứ tại một thời điểm: ván 
   - Độ khó theo **số thứ tự bộ**, không theo điểm: truyền "điểm ảo" `k × PVP.DIFFICULTY_SCORE_PER_SET` vào `nextSet`, nên tỉ lệ nhóm khối và mức công bằng giống nhau cho hai bên.
   - Bỏ mercy trong PVP (`MERCY_SMALL_MULTIPLIER = 1`), vì nó phụ thuộc độ đầy bảng của từng người.
   - Bộ chia sau khi hết nước rút từ luồng riêng `mix(seed, "revive", chỗ, j)`, không làm lệch số thứ tự bộ thường.
-  - Hướng và lỗ của hàng rác rút từ luồng riêng theo nạn nhân.
+  - Hướng và lỗ của hàng rác rút từ luồng riêng theo nạn nhân: hướng lúc vào hàng chờ (CB), lỗ lúc vào bảng.
 - **Hệ quả cần biết:** hai bảng khác nhau nhiều thì ứng viên đầu có thể không vừa bảng của một bên, bên đó nhận ứng viên kế. "Cùng nguồn khối" nghĩa là cùng dãy ứng viên, không phải lúc nào cũng cùng bộ. M24 đo tỉ lệ bộ trùng nhau giữa hai bot.
 - **Rò thông tin:** người đi chậm hơn nhìn bảng đối thủ có thể suy ra khối sắp tới của mình. Xem câu hỏi mở số 2.
 
@@ -156,11 +200,12 @@ Một người chỉ ở trong **một** thứ tại một thời điểm: ván 
 
 - Giữ một `GameSession` với nguồn khối trả `nil` (bảng luôn "chờ bộ khối" sau khối thứ 3), rồi tự giao bộ bằng `receiveSet`. Server và client chạy cùng một đường: `deliver(garbage, set)` áp các hàng rác rồi giao bộ.
 - `place(slot, x, y, now)`: từ chối khi đang khóa khay hoặc ngoài giờ; còn lại giao cho `GameSession.place`. Trả thêm `attack` (đòn của nước này), `cancelled` (đã trừ vào rác chờ), `sent` (phần sang đối thủ).
-- `receiveAttack(lines)`: thêm vào hàng chờ rác, cắt ở trần.
-- `refill(rng)` (chỉ server): lấy tối đa 1 hàng rác khỏi hàng chờ, rút hướng và lỗ, áp, xóa hàng đầy không điểm, rút bộ thứ *k*, trả `{ garbage, set }` để gửi client.
+- `receiveAttack(lines, rng)` (chỉ server): rút hướng cho từng hàng rác rồi thêm vào cuối hàng chờ, cắt ở trần. Hàng chờ là danh sách hướng theo thứ tự sẽ vào bảng; client nhận nguyên danh sách.
+- Triệt tiêu lấy khỏi **đầu** hàng chờ (hàng sắp vào nhất).
+- `refill(rng)` (chỉ server): lấy tối đa 1 hàng rác khỏi đầu hàng chờ (hướng đã có), rút lỗ, áp, xóa hàng đầy không điểm, rút bộ thứ *k*, trả `{ garbage, set }` để gửi client.
 - `unstick(now)`: khi `isOver`, gọi `GameSession.revive`, giao bộ từ luồng revive, đặt `lockedUntil`.
 - `rotate(slot)`: `GameSession.rotateWith(slot, free, 0)` với ví miễn phí của ván; không có lượt mua.
-- Snapshot = snapshot `GameSession` + `setIndex`, `pending` (rác chờ), `lockedUntil`, `freeRotations`, `sentTotal`, `takenTotal`, `stuckCount`.
+- Snapshot = snapshot `GameSession` + `setIndex`, `pending` (danh sách hướng của rác chờ), `lockedUntil`, `freeRotations`, `sentTotal`, `takenTotal`, `stuckCount`.
 
 ### Mô phỏng (chốt số)
 
@@ -180,7 +225,7 @@ Một người chỉ ở trong **một** thứ tại một thời điểm: ván 
 - **Lune:**
   - `Board.pushLine`: ba hướng, bảng dịch đúng, hàng bị đẩy ra mất, vị trí lỗ, màu rác, hàng đầy sau khi đẩy, tham số sai.
   - `Generator`: ghi đè mercy; mặc định cùng seed vẫn ra đúng bộ cũ.
-  - `PvpSession`: cùng seed và cùng nước đi cho cùng bộ khối; bảng khác nhau vẫn nhận cùng ứng viên đầu khi nó vừa; lần chia sau hết nước không làm lệch số thứ tự bộ; bảng đòn; triệt tiêu; trần hàng chờ; rác chỉ vào ở lần chia thường và tối đa 1 hàng; bộ mới luôn qua kiểm công bằng trên bảng đã có rác; hết nước thì dọn bảng và khóa khay (đồng hồ giả), nước trong lúc khóa bị từ chối; ví xoay chỉ có lượt miễn phí; snapshot đi và về.
+  - `PvpSession`: cùng seed và cùng nước đi cho cùng bộ khối; bảng khác nhau vẫn nhận cùng ứng viên đầu khi nó vừa; lần chia sau hết nước không làm lệch số thứ tự bộ; bảng đòn; triệt tiêu lấy hàng sắp vào nhất; trần hàng chờ bỏ hàng mới nhất; hướng rút lúc vào hàng chờ và không đổi tới lúc vào bảng; rác vào bảng đúng hướng đã báo; rác chỉ vào ở lần chia thường và tối đa 1 hàng; bộ mới luôn qua kiểm công bằng trên bảng đã có rác; hết nước thì dọn bảng và khóa khay (đồng hồ giả), nước trong lúc khóa bị từ chối; ví xoay chỉ có lượt miễn phí; snapshot đi và về.
   - `PvpSimulation`: 200 trận bot, kiểm bất biến sau mỗi nước (không còn hàng đầy, điểm không giảm, rác chờ không âm và không quá trần), cộng một client giả dựng lại từng sự kiện của server và phải khớp từng ô.
   - 309 test cũ pass không sửa.
 - **Studio:** không có gì, đúng như mốc.
@@ -262,9 +307,10 @@ Client A                                Server (PvpService → PvpMatches)      
 ```
 
 - **Client chỉ gửi ý định** (ô nào, khối nào). Điểm, đòn, rác, bộ khối, giờ, kết quả đều do server tính. Client so điểm của bản mình với `score` trong `result`; lệch thì xin lại trạng thái, như solo.
+- **`pending` là danh sách hướng** (1 đáy, 2 trái, 3 phải), hàng sắp vào nhất đứng đầu, tối đa 4 phần tử. Nó đi trong `result` và `incoming` của chính nạn nhân. Bảng của đối thủ (`PvpOpponentBoard`) chỉ mang **số** rác chờ, không mang hướng.
 - **`moveIndex` như solo** (số nước của chính người đó): nước cũ bị bỏ, nước nhảy cóc thì trả trạng thái đầy đủ.
 - **Một remote cho mọi tin có thứ tự** (`PvpEvent`), theo bài học M23.
-- **Bảng của đối thủ (BW):** `PvpOpponentBoard` là `UnreliableRemoteEvent` mang một `buffer` 23 byte: 8 byte ô có khối, 8 byte ô rác, điểm, rác chờ, số thứ tự. Gửi sau mỗi nước được nhận của đối thủ và nhắc lại mỗi giây để tin rơi tự lành; client chỉ giữ tin có số thứ tự mới nhất. **Không gửi khay và mã khối của đối thủ.**
+- **Bảng của đối thủ (BW):** `PvpOpponentBoard` là `UnreliableRemoteEvent` mang một `buffer` 39 byte: 32 byte màu của 64 ô (4 bit mỗi ô: trống, 8 màu khối, rác), điểm, rác chờ, số thứ tự. Gửi sau mỗi nước được nhận của đối thủ và nhắc lại mỗi giây để tin rơi tự lành; client chỉ giữ tin có số thứ tự mới nhất. **Không gửi khay và mã khối của đối thủ.**
 - **Giới hạn tần suất** theo từng người: đặt 8 lần/giây, xoay 12 lần/giây, xin trạng thái 2 lần/giây, bỏ cuộc 1 lần/2 giây.
 - **Đồng hồ:** `PvpMatches.sweep(now)` chạy mỗi 0,1 giây, kết thúc các trận quá `endAt + grace`. Đồng hồ nội bộ là `os.clock`, đổi sang giờ server khi gửi client (như `RoomService` làm với hạn lời mời).
 
@@ -278,11 +324,12 @@ Client A                                Server (PvpService → PvpMatches)      
 ### Client
 
 - `PvpRunController` là một `Source`: `session()`, `canDrag` (sai khi khóa khay, trước `startAt`, sau `endAt`), `tryPlace`, `tryRotate`, `statusText`, `gameOver`, `leave`.
-- **Bố cục:** bảng của mình giữ nguyên chỗ; bảng nhỏ của đối thủ kèm tên và điểm nằm ở vùng HUD phía trên (dọc) hoặc bên cạnh (ngang); đồng hồ lớn; thanh "rác sắp tới" cạnh bảng (0–4 nấc).
-- **Hiệu ứng:** hàng rác trượt vào từ đúng hướng và cả bảng trượt theo (khoảng 0,25 giây, trong lúc chờ bộ mới); ô rác màu xám; khay mờ kèm vòng đếm khi bị khóa; "Stuck! Board cleared".
-- Màn VS 3 giây (tên, hạng của hai bên), màn kết quả.
+- **Bố cục màn ngang (theo `07-match-playing`):** bảng của mình bên trái. Cột phải từ trên xuống: thẻ HUD (nút Pause, SCORE, TIME), thẻ đối thủ (vòng tròn màu, tên, biểu tượng hạng, điểm trận, bảng nhỏ có màu, cột IN của đối thủ), khay 3 ô nằm ngang, dòng trạng thái ("Rotate: 1 free (this match)", "+1 garbage from Mia", "Tray unlocks in 5"). Cột **IN** của mình (4 nấc, đầy từ dưới lên, nấc dưới cùng là hàng sắp vào nhất) nằm sát mép trái dưới của bảng; **mỗi nấc có mũi tên nhỏ chỉ hướng** của hàng rác đó (CB). Cột IN trên thẻ đối thủ chỉ là ô xám, không có hướng.
+- **Màn dọc và điện thoại ngang thấp:** chưa có mockup; dựng cùng thành phần, bố cục chốt khi có mockup hoặc sau lượt thử đầu.
+- **Hiệu ứng:** hàng rác trượt vào từ đúng hướng và cả bảng trượt theo (khoảng 0,25 giây, trong lúc chờ bộ mới); **mũi tên ở mép bảng** hiện ngay khi có rác chờ, đứng ở phía mà hàng sắp vào nhất sẽ vào, và nháy lúc rác vào; ô rác màu xám; khay mờ kèm vòng đếm khi bị khóa; thẻ "Stuck! Board cleared".
+- Đếm ngược 3-2-1 "Get ready!" trên bảng; màn VS 3 giây; màn kết quả. Chi tiết theo bảng mockup.
 - Màn Co-op có thêm nút **Duel** cạnh **Invite** (lời mời giao hữu); thẻ mời ghi "invites you to a Duel".
-- Gray-box theo `Theme`/`Clay` (BX).
+- Theo mockup PC (BX); phần chưa có mockup dựng cùng phong cách bằng `Theme`/`Clay`.
 
 ### Debug (chỉ Studio)
 
@@ -308,6 +355,7 @@ Client A                                Server (PvpService → PvpMatches)      
 - **Cửa sổ điểm nới dần:** mỗi người chấp nhận chênh lệch `100 + 20 × số giây đã chờ`, tối đa **400**. Hai người ghép được khi chênh lệch nằm trong cửa sổ của **cả hai**. Ưu tiên cặp chưa gặp nhau gần đây, rồi tới người chờ lâu nhất.
 - Ghép xong: `Rooms.form(a, b, "pvp")`, trận loại `ranked` bắt đầu sau màn VS 3 giây. Không có bước "Accept" trong bản đầu.
 - **Remote:** `PvpQueue(join: boolean)` (1 lần/giây), `PvpQueueState(state)` server gửi: đang chờ từ lúc nào, bao nhiêu người đủ điều kiện trong server, đã ghép.
+- **Giao diện:** nút **Ranked** trên menu (`06`), màn hàng chờ (`08`, `09`), màn VS (`14`), kết quả có ô đổi điểm rank (`11`).
 
 ### Điều kiện vào hàng chờ và chống cày điểm (BO, BP)
 
@@ -344,7 +392,7 @@ Client A                                Server (PvpService → PvpMatches)      
 - `OrderedDataStore` **`Rank_<mùa>`** (`Rank_2026M12`, thêm `_Dev` trong Studio), khóa là UserId, giá trị `Leaderboards.encode(rating, titleIndex)` như các bảng khác.
 - **Ghi** sau mỗi trận tính điểm (cách nhau ít nhất 20 giây, và ở vòng đọc mỗi phút nếu còn thay đổi), chỉ khi `seasonGames ≥ PVP.RANK_MIN_GAMES` (5). Điểm có thể giảm nên dùng `SetAsync` như bảng Highscore, không phải `UpdateAsync` lấy giá trị lớn hơn như bảng Coop.
 - **Đọc** top 50 trong vòng đọc mỗi phút hiện có (thêm một lần `GetSortedAsync`).
-- **Giao diện:** tab thứ tư **Rank** trong màn Leaderboard: hạng, tên, điểm, biểu tượng hạng; dòng cuối "You: Gold · 1320 · 14W 9L". Người ngoài top 50 chỉ thấy hạng và điểm của mình (`OrderedDataStore` không tra được thứ hạng của một khóa).
+- **Giao diện (theo `05-leaderboard-rank-tab`):** tab thứ tư **Rank** cùng hàng với Highscore, Level, Co-op. Chọn Rank thì dòng dưới tiêu đề ghi "Season 2026M12 · ends Dec 31" thay cho hai tab thời gian. Mỗi dòng: thứ hạng (top 3 là huy hiệu vàng, bạc, đồng), biểu tượng hạng, tên, **tên hạng bên dưới tên** (CA), điểm. Ô cuối "You: Gold · 1,320 · 14W 9L". Người ngoài top 50 chỉ thấy hạng và điểm của mình (`OrderedDataStore` không tra được thứ hạng của một khóa).
 
 ### Quà theo mùa (BT)
 
@@ -419,7 +467,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 - **Rút dây, cướp phiên:** ghi trước khoản thua (M25).
 - **Cày điểm và nick phụ:** bảng ở M27.
 - **Câu rác:** không đặt khối thứ 3 để hoãn rác thì cũng không ghi được điểm; đo bằng `PvpPendingAtEnd`.
-- **Bảng đối thủ** chỉ có ô và điểm, không có khay. Người chậm hơn vẫn suy ra được khối từ thay đổi trên bảng: câu hỏi mở số 2.
+- **Bảng đối thủ** chỉ có màu ô và điểm, không có khay. Người chậm hơn vẫn suy ra được khối từ thay đổi trên bảng: câu hỏi mở số 2.
 - **M29:** thông tin trận lấy từ MemoryStore theo `PrivateServerId`, không lấy từ `TeleportData`; người lạ vào server trận bị đưa ra.
 - Không tự động cấm; chỉ ghi dấu hiệu.
 
@@ -441,11 +489,11 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 ## Bạn cần làm
 
-1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Câu 1 và 2 chờ số liệu M24; câu 3 và 4 cần trước M27; câu 5 và 7 cần trước M28.
+1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 1 và 2 chờ số liệu M24; câu 10 cần trước M26; câu 3, 4, 6 và 11 cần trước M27; câu 7 cần trước M28.
 2. Trước M26: cùng mình chạy lượt kiểm UI trong Studio (M6 solo, màn hình M19/M21/M22). Nếu Studio MCP kết nối được thì mình tự chạy phần một client.
 3. Cho mình biết **số người tối đa mỗi server** đang đặt trong Creator Hub và số người chơi cùng lúc hiện tại (để ước lượng hàng chờ trong server có đủ người không).
 4. Sau M26 và M27: thử với hai tài khoản thật trên hai thiết bị theo các danh sách "Hai người thật".
-5. Khi có: badge ID cho Gold, Diamond, Master; mockup Figma cho màn hàng chờ, VS, bảng đối thủ, kết quả.
+5. Khi có: badge ID cho Gold, Diamond, Master; mockup cho điện thoại (dọc và ngang) và các màn còn thiếu (xem [Chưa có mockup](#chưa-có-mockup)). Mockup PC đã nhận.
 
 ## Câu hỏi mở
 
@@ -453,9 +501,13 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 2. **Rò khối sắp tới.** Vì hai người nhận cùng dãy khối, người đi chậm hơn có thể suy ra bộ sắp tới từ bảng của đối thủ. Lựa chọn: (a) chấp nhận ở bản đầu và đo; (b) bảng nhỏ chỉ hiện đối thủ "tại cùng số bộ với mình" (server giữ ảnh chụp theo từng bộ); (c) bỏ cùng nguồn khối, mỗi người một seed. Mình nghiêng về (a) rồi (b) nếu thấy bị lợi dụng.
 3. **ConfigService.** Skill analytics-liveops khuyên để cờ bật tắt và số liệu cần chỉnh nhanh trong experience config (đổi không cần publish). Plan hiện để mọi số trong `Config.luau`. Với ranked, một cờ tắt khẩn cấp và các số ELO chỉnh được live có giá trị thật. Bạn muốn dùng ConfigService cho `PVP.RANKED_ENABLED` và nhóm số ELO/hàng chờ ngay từ M27, hay giữ `Config.luau` như các giai đoạn trước?
 4. **Tuổi tài khoản tối thiểu** để vào ranked (`player.AccountAge`)? Chặn nick phụ tốt hơn level 3 nhưng cũng chặn người mới thật.
-5. **Danh hiệu rank cạnh tên.** Bảng xếp hạng hiện gắn danh hiệu mốc (Block Rookie, ...) cạnh tên. Hạng rank có thay danh hiệu đó ở tab Rank không, hay hiện cả hai?
+5. ~~**Danh hiệu rank cạnh tên.**~~ Đã trả lời bằng mockup `05`: tab Rank hiện tên hạng dưới tên người chơi, không hiện danh hiệu mốc (quyết định CA).
 6. **Hàng chờ chạy nền.** Bản đầu người chơi ngồi ở màn hàng chờ. Có muốn cho chơi solo trong lúc chờ (ghép được thì hiện thẻ "Match found" như thẻ mời) không? Tốt cho lúc vắng, nhưng thêm một bước Accept và các ca hết hạn.
 7. **Mùa đầu tiên** bắt đầu từ tháng nào, và có cần một "mùa thử" không tính quà để chỉnh số không?
+8. ~~**Rác đẩy hay thay?**~~ Đã trả lời: **đẩy cả bảng**, đúng như BC. Mockup `04` (hàng rác thay hàng đáy, 7 hàng trên đứng yên) chỉ là minh họa; khi cài, cả bảng dịch một ô và hàng/cột ở mép đối diện mất.
+9. ~~**Báo trước hướng rác?**~~ Đã trả lời: **có** (quyết định CB). Server rút hướng lúc rác vào hàng chờ và gửi cho nạn nhân; vị trí lỗ không báo trước.
+10. **Nút Pause trong trận.** Trận có đồng hồ không dừng được. Đề xuất: bấm Pause mở bảng có **Resume** và **Forfeit** (ranked ghi rõ "counts as a loss"), đồng hồ vẫn chạy. Cần trước M26.
+11. **Menu trên điện thoại ngang thấp.** Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Cần trước M27.
 
 ## Quyết định đã chốt
 
@@ -464,7 +516,7 @@ BB đến BF chốt khi hỏi luật; BG đến BZ là đề xuất của mình,
 | Điểm | Câu hỏi | Quyết định |
 |---|---|---|
 | **BB.** Luật PVP (câu hỏi mở số 6 của PLAN) | Đua điểm, tấn công rác, hay lai? | ✅ **Chốt:** lai. Đua điểm có đồng hồ, cùng nguồn khối, kèm rác nhẹ. |
-| **BC.** Dạng rác | Rác trông thế nào trên bảng không trọng lực? | ✅ **Chốt:** hàng rác đẩy vào từ đáy (kiểu Tetris), từ trái hoặc từ phải; mỗi hàng rác rút ngẫu nhiên 1 trong 3 hướng. |
+| **BC.** Dạng rác | Rác trông thế nào trên bảng không trọng lực? | ✅ **Chốt:** hàng rác đẩy vào từ đáy (kiểu Tetris), từ trái hoặc từ phải; mỗi hàng rác rút ngẫu nhiên 1 trong 3 hướng. Xác nhận lại sau khi có mockup: đẩy cả bảng, không phải thay hàng ở mép. |
 | **BD.** Hết nước trước giờ | Chốt điểm, dọn bảng, hay thua ngay? | ✅ **Chốt:** dọn 4×4 giữa bảng, chia bộ mới, mất combo, khóa khay vài giây. |
 | **BE.** Thời lượng | Một ván dài bao lâu? | ✅ **Chốt:** 3 phút, số nằm trong `Config.PVP`. |
 | **BF.** Triệt tiêu | Đòn của mình có trừ rác đang chờ không? | ✅ **Chốt:** có, trừ rác chờ trước, phần dư mới sang đối thủ. |
@@ -484,7 +536,9 @@ BB đến BF chốt khi hỏi luật; BG đến BZ là đề xuất của mình,
 | **BT.** Hạng và quà | Hạng, phần thưởng, badge | ✅ **Chốt:** 6 hạng Bronze đến Master; huy chương mùa theo hạng cao nhất; huy chương Top 10 và Champion; badge lần đầu đạt Gold, Diamond, Master. |
 | **BU.** Bảng Rank | Lưu ở đâu, ai được lên? | ✅ **Chốt:** `Rank_<mùa>`, top 50, cần ≥ 5 ván trong mùa, tab thứ tư. |
 | **BV.** Dữ liệu | Lưu gì? | ✅ **Chốt:** bảng `pvp` trong profile; không lưu id đối thủ, không lưu lịch sử trận. |
-| **BW.** Bảng của đối thủ | Thấy gì của đối thủ? | ✅ **Chốt:** ô, ô rác, điểm, rác chờ; không thấy khay. Gửi không tin cậy, nhắc lại mỗi giây. |
-| **BX.** Giao diện | Gray-box hay chờ mockup? | ✅ **Chốt:** gray-box theo `Theme`/`Clay`, vẽ lại khi có mockup. |
+| **BW.** Bảng của đối thủ | Thấy gì của đối thủ? | ✅ **Chốt:** màu từng ô (theo mockup), ô rác, điểm, rác chờ; không thấy khay. Gửi không tin cậy, nhắc lại mỗi giây. |
+| **BX.** Giao diện | Gray-box hay chờ mockup? | ✅ **Chốt:** theo 14 mockup PC trong `docs/mockups/phase6/`. Màn chưa có mockup (điện thoại và các màn phụ) dựng cùng phong cách bằng `Theme`/`Clay`, vẽ lại khi có mockup. |
 | **BY.** Cổng kiểm UI | Có cần kiểm UI GĐ5 trước M26 không? | ✅ **Chốt:** có, một lượt Studio (M6 solo và màn hình M19/M21/M22). Test hai người của GĐ5 chạy trước khi bật M27. |
 | **BZ.** Đấu lại | Ranked có đấu lại trực tiếp không? | ✅ **Chốt:** không, chỉ "Queue again". Giao hữu có "Play again" cần cả hai. |
+| **CA.** Danh hiệu ở tab Rank | Hạng rank hay danh hiệu mốc cạnh tên? | ✅ **Chốt (theo mockup `05`):** tab Rank hiện tên hạng dưới tên người chơi; các tab khác giữ danh hiệu mốc. |
+| **CB.** Báo trước hướng rác | Người chơi có thấy trước rác vào từ phía nào không? | ✅ **Chốt:** có. Hướng rút lúc hàng rác vào hàng chờ và hiện ở từng nấc IN cùng mũi tên ở mép bảng; lỗ rút lúc vào bảng, không báo trước. Triệt tiêu lấy hàng sắp vào nhất; quá trần thì bỏ hàng mới nhất (hai chi tiết này là đề xuất của mình). |
