@@ -433,13 +433,11 @@ end
 function LeaderboardView.render(self: LeaderboardView)
 	local coop = self.board == "Coop" -- ranked by pair, all time only
 	for key, button in self.tabs do
-		local selected = key == self.board or key == (if coop then "all" else self.period)
+		-- The Co-op board has one period, so there is nothing to choose between: "All time" is not picked out.
+		local selected = key == self.board or (not coop and key == self.period)
 		Clay.setStyle(button, if selected then "primary" else "secondary")
 	end
-	local weekFace = Clay.face(self.tabs.week)
-	weekFace.Active = not coop
-	weekFace.BackgroundTransparency = if coop then 0.55 else 0
-	weekFace.TextTransparency = if coop then 0.45 else 0
+	Clay.setEnabled(self.tabs.week, not coop) -- there is no weekly Co-op board: the tab goes pale
 
 	local snapshot = self.snapshot
 	local entries = if snapshot then snapshot.boards[if coop then "Coop_all" else `{self.board}_{self.period}`] else nil
@@ -457,6 +455,10 @@ function LeaderboardView.render(self: LeaderboardView)
 			row.rank.Text = tostring(entry.rank)
 			row.name.Text = entry.name
 			row.title.Text = entry.title or ""
+			-- Without a title (a pair has none) the name sits in the middle of the row.
+			local hasTitle = row.title.Text ~= ""
+			row.name.Position = if hasTitle then UDim2.fromOffset(48, 4) else UDim2.fromOffset(48, 0)
+			row.name.Size = UDim2.new(1, -150, if hasTitle then 0.5 else 1, 0)
 			row.value.Text = formatValue(self.board, self.period, entry.value)
 			-- The player's own row stands out in gold; the others alternate pale stripes.
 			local isMe = entry.userId == me or (entry.userIds ~= nil and table.find(entry.userIds, me) ~= nil)

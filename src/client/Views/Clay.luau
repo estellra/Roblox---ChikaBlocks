@@ -92,6 +92,7 @@ function Clay.button(props: ButtonProps): Frame
 			MinSize = Vector2.new(Theme.MinTouchTarget.X, Theme.MinTouchTarget.Y + lip),
 		}),
 	})
+	root:SetAttribute("Style", props.style)
 
 	-- Pressing sinks the face onto its lip (all but two pixels of it); letting go springs it back.
 	local function sink(down: boolean)
@@ -121,14 +122,41 @@ function Clay.face(button: Frame): TextButton
 	return button:FindFirstChild("Face") :: TextButton
 end
 
--- Re-colors a button, e.g. a tab that is now selected.
-function Clay.setStyle(button: Frame, style: ButtonStyle)
-	local colors = colorsOf(style)
+-- Paints a button from its style, or from the disabled look while it can't be pressed.
+local function paint(button: Frame)
+	local disabled = button:GetAttribute("Disabled") == true
+	local theme = Theme.Colors
+	local colors: ButtonColors = if disabled
+		then { face = theme.ButtonDisabled, lip = theme.ButtonDisabledShadow, text = theme.ButtonDisabledText }
+		else colorsOf((button:GetAttribute("Style") :: ButtonStyle?) or "primary")
+	local outlineColor = if disabled then theme.ButtonDisabledOutline else theme.Outline
 	local face = Clay.face(button)
+	local lip = button:FindFirstChild("Lip") :: Frame
 	face.BackgroundColor3 = colors.face
 	face.TextColor3 = colors.text
-	local lip = button:FindFirstChild("Lip") :: Frame
 	lip.BackgroundColor3 = colors.lip
+	for _, part in { face, lip } do
+		local stroke = part:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = outlineColor
+		end
+	end
+end
+
+-- Re-colors a button, e.g. a tab that is now selected.
+function Clay.setStyle(button: Frame, style: ButtonStyle)
+	button:SetAttribute("Style", style)
+	paint(button)
+end
+
+-- A button that can't be pressed right now shows pale with grey text (the mockups' unavailable buttons) and
+-- ignores presses and the gamepad's selection; enabled again it goes back to its style.
+function Clay.setEnabled(button: Frame, enabled: boolean)
+	local face = Clay.face(button)
+	face.Active = enabled
+	face.Selectable = enabled
+	button:SetAttribute("Disabled", not enabled)
+	paint(button)
 end
 
 export type PillProps = {

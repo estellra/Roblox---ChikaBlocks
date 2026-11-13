@@ -1,6 +1,6 @@
 --!strict
--- Invitation notices: a small card for the oldest open invitation, with Accept and Decline and a bar running down
--- to the moment it expires; a "+2" in its corner says others are waiting behind it. The card sits above
+-- Invitation notices: a small card for the oldest open invitation, with a bar running down to the moment it
+-- expires under who is asking, and Accept and Decline below; a "+2" in its corner says others are waiting behind it. The card sits above
 -- everything else, so an invitation shows up on the menu, on the Support screen and in the middle of a solo run
 -- alike, and it is placed over the score area (setAnchor) so it never covers the board or the tray.
 -- CoopController owns what is shown; this only draws.
@@ -15,7 +15,7 @@ local create = require("./Create")
 local MAX_WIDTH = 300
 local MIN_WIDTH = 240
 local TOP_MARGIN = 8 -- below the top of the screen when there is no anchor
-local BUTTON_HEIGHT = 44 + Theme.Spacing.ButtonLip -- the face meets the minimum touch size; the lip comes on top
+local BUTTON_HEIGHT = 52 + Theme.Spacing.ButtonLip -- the face is above the minimum touch size; the lip comes on top
 local BAR_HEIGHT = 6
 local ARRIVE_START_SCALE = 0.9
 
@@ -169,7 +169,7 @@ function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seco
 	})
 	local buttons = create("Frame", {
 		Name = "Buttons",
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 		Size = UDim2.new(1, 0, 0, BUTTON_HEIGHT),
 		BackgroundTransparency = 1,
 	}, {
@@ -184,12 +184,12 @@ function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seco
 	local bar = create("Frame", {
 		Name = "Bar",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = colors.Title,
+		BackgroundColor3 = colors.Reward,
 		BorderSizePixel = 0,
 	}, { create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	local track = create("Frame", {
 		Name = "Track",
-		LayoutOrder = 3,
+		LayoutOrder = 2,
 		Size = UDim2.new(1, 0, 0, BAR_HEIGHT),
 		BackgroundColor3 = colors.ExpTrack,
 		BorderSizePixel = 0,
@@ -215,8 +215,8 @@ function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seco
 		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }),
 		pop,
 		heading,
-		buttons,
 		track,
+		buttons,
 	})
 
 	-- The bar starts at what is left of the invitation's whole length and runs down to nothing.

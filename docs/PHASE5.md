@@ -394,6 +394,20 @@ Hướng đã chốt: AV (xoay) và AW (hồi sinh), xem bảng quyết định.
 - **Giới hạn đã biết:** hộp thoại mua đã mở không đóng được khi bạn chơi hồi sinh trước, người đó vẫn có thể trả Robux và lượt nằm lại trong dữ liệu cho lần sau (không tự hoàn tiền). `applyTurn` và `applyMove` có thể làm lớp đã xác nhận lệch một nhịp khi báo lệch, tới khi trạng thái đầy đủ về thay thế (client luôn xin lại trạng thái).
 - **Test thủ công** (sau khi xong cả giai đoạn và publish): hai người chơi Coop, mỗi người xoay khối của mình bằng lượt miễn phí rồi thấy lượt xoay hiện ở khay của bạn chơi; hết lượt miễn phí bấm Rotate thì mở hộp thoại gói xoay, mua xong số lượt đã mua cập nhật; không xoay được khối của bạn chơi; hết nước đi thì cả hai thấy nút Revive và giá, một người trả thì cả hai tiếp tục chơi; cả hai cùng bấm mua một lúc thì chỉ một lần hồi sinh và lượt kia còn trong dữ liệu (dòng "You have N"); người ở lại hồi sinh được sau khi bạn chơi rời; hồi sinh rồi hết nước lần nữa thì Game Over cộng dồn EXP, bảng Coop giữ điểm cao hơn; xoay liên tục không làm nút Take over biến mất; xem funnel `CoopReviveOffer` và sự kiện `RotationUsed` có `coop` trên Analytics.
 
+### Vẽ lại giao diện Co-op theo mockup Figma
+
+Mockup: file ChikaBlocks-UI, trang Screens, mục "Co-op — PC 1280×720" (12 frame; chỉ có bản PC). Đã so từng màn với màn thật trong Studio (Play, `coopbot`) và sửa chỗ lệch:
+
+- **Nút không bấm được** (`Clay.setEnabled`, token `ButtonDisabled*` trong `Theme`): mặt xanh nhạt, chữ và viền xám, thay cho nút hồng bị làm mờ. Dùng ở lobby, tab "This week" của Leaderboard và nút Play again khi đã bấm.
+- **Lobby (`CoopView`):** hàng là thẻ trắng viền mảnh, nút to hơn; thẻ phòng màu tím nhạt, căn giữa; dòng "Waiting for X to answer…" khi lời mời đang chờ; trạng thái server vắng có mascot và nút Invite friends hồng ở giữa (xanh dưới danh sách khi có người); thẻ cao vừa nội dung.
+- **Thẻ mời (`CoopInviteView`):** thanh đếm vàng nằm dưới tên người mời, nút to hơn.
+- **Khay Co-op (`TrayView`):** thẻ bạn chơi vuông như các ô khay, viền và tên màu tím, viền vàng và "<tên> left" khi họ rời.
+- **Game Over Co-op (`Hud`):** điểm từng người là một dòng chữ thường (không còn pill vương miện); nút luôn là "Play again", dòng bên dưới ghi "X wants to play again" hoặc "Waiting for X…" (nút chuyển xanh nhạt sau khi bấm).
+- **Pause Co-op:** thêm dòng "The board keeps going while you are here."
+- **Leaderboard tab Co-op:** "All time" không tô hồng, "This week" xanh nhạt, tên cặp căn giữa hàng.
+
+Đã chụp lại và khớp: lobby (có người, trong phòng), khay Co-op, Game Over, Pause, Leaderboard tab Co-op. **Chưa so được** vì gói Figma Starter hết lượt gọi công cụ: Waiting + Take over, Partner left, Lobby khi đang mời / khi trống, thẻ mời, Main Menu (đã xem nhưng chưa so từng pixel). Thanh EXP ở Game Over để nguyên vì dùng chung với màn solo (mockup Co-op vẽ thành một hàng "Lv 7 [thanh] +120 EXP"). Mockup chỉ có bản PC: bản điện thoại dọc chưa kiểm.
+
 ## Bảo mật
 
 - Mọi remote: giới hạn tần suất → kiểm kiểu từng tham số → kiểm luật → mới làm. Client chỉ gửi ý định (mời ai, đặt ô nào), không gửi kết quả.

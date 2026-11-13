@@ -85,6 +85,8 @@ export type Hud = typeof(setmetatable(
 		finalCounter: NumberValue, -- the final score on show, counting up
 		finalTween: Tween?,
 		finalBestPill: Frame,
+		sharesLabel: TextLabel, -- Co-op: what each player scored, in place of the Best pill
+		playAgainNote: TextLabel, -- Co-op: who is waiting for whom under Play again
 		reviveRoot: Frame,
 		reviveButton: TextButton,
 		reviveHint: TextLabel,
@@ -100,6 +102,7 @@ export type Hud = typeof(setmetatable(
 		resumeButton: TextButton,
 		pauseRestartButton: TextButton,
 		pauseMenuButton: TextButton,
+		pauseNote: TextLabel, -- Co-op: the run keeps going while the player is in the pause panel
 		callbacks: Callbacks,
 		keyConnection: RBXScriptConnection?, -- Enter / Space restart while game over is open
 		pauseKeyConnection: RBXScriptConnection?, -- Enter / Space / Backspace / B resume while paused
@@ -231,6 +234,8 @@ function Hud.new(
 		finalScoreLabel.Text = Format.withCommas(math.round(finalCounter.Value))
 	end)
 	local finalBestPill = Clay.pill({ name = "Best", text = "Best 0", icon = Theme.Images.Crown, order = 5 })
+	local sharesLabel = label("Shares", "", fonts.Label, 18, colors.Text, 5)
+	sharesLabel.Visible = false
 	local coopNote = label("CoopNote", "", fonts.Body, 14, colors.TextMuted, 7)
 	coopNote.TextWrapped = true
 	coopNote.Visible = false
@@ -278,7 +283,9 @@ function Hud.new(
 	reviveHint.Visible = false
 	local restartRoot =
 		Clay.button({ name = "PlayAgain", text = "Play again", style = "primary", order = 3, size = wideButton })
-	local menuRoot = Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 4, size = wideButton })
+	local playAgainNote = label("PlayAgainNote", "", fonts.Body, 15, colors.Title, 4)
+	playAgainNote.Visible = false
+	local menuRoot = Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 5, size = wideButton })
 	local function column(name: string, order: number): Frame
 		return create("Frame", {
 			Name = name,
@@ -297,10 +304,10 @@ function Hud.new(
 	end
 	local info = column("Info", 1)
 	local choices = column("Choices", 2)
-	for _, child in { mascot, titleLabel, scoreCaption, finalScoreLabel, finalBestPill, rewards, coopNote } do
+	for _, child in { mascot, titleLabel, scoreCaption, finalScoreLabel, finalBestPill, sharesLabel, rewards, coopNote } do
 		child.Parent = info
 	end
-	for _, child in { reviveRoot, reviveHint, restartRoot, menuRoot } do
+	for _, child in { reviveRoot, reviveHint, restartRoot, playAgainNote, menuRoot } do
 		child.Parent = choices
 	end
 	local gameOverPanel, fitGameOver = newPanel("GameOverPanel", overlay, { info, choices })
@@ -325,13 +332,18 @@ function Hud.new(
 
 	-- Pause
 	local resumeRoot =
-		Clay.button({ name = "Resume", text = "Resume", style = "primary", order = 2, size = buttonSize })
+		Clay.button({ name = "Resume", text = "Resume", style = "primary", order = 3, size = buttonSize })
 	local pauseRestartRoot =
-		Clay.button({ name = "PlayAgain", text = "Play again", style = "secondary", order = 3, size = buttonSize })
+		Clay.button({ name = "PlayAgain", text = "Play again", style = "secondary", order = 4, size = buttonSize })
 	local pauseMenuRoot =
-		Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 4, size = buttonSize })
+		Clay.button({ name = "Menu", text = "Menu", style = "secondary", order = 5, size = buttonSize })
+	local pauseNote =
+		label("PauseNote", "The board keeps going while you are here.", fonts.Body, 15, colors.TextMuted, 2)
+	pauseNote.TextWrapped = true
+	pauseNote.Visible = false
 	local pausePanel, fitPause = newPanel("PausePanel", overlay, {
 		label("Title", "Paused", fonts.Title, sizes.Title, colors.Text, 1),
+		pauseNote,
 		resumeRoot,
 		pauseRestartRoot,
 		pauseMenuRoot,
@@ -370,6 +382,8 @@ function Hud.new(
 		finalCounter = finalCounter,
 		finalTween = nil,
 		finalBestPill = finalBestPill,
+		sharesLabel = sharesLabel,
+		playAgainNote = playAgainNote,
 		scoreCaption = scoreCaption,
 		coopNote = coopNote,
 		restartRoot = restartRoot,
@@ -391,6 +405,7 @@ function Hud.new(
 		resumeButton = resumeButton,
 		pauseRestartButton = pauseRestartButton,
 		pauseMenuButton = pauseMenuButton,
+		pauseNote = pauseNote,
 		callbacks = callbacks,
 		keyConnection = nil,
 		pauseKeyConnection = nil,
@@ -519,9 +534,12 @@ function Hud.showGameOver(self: Hud, score: number, best: number, isNewBest: boo
 	Clay.pillLabel(self.finalBestPill).Text = `Best {Format.withCommas(best)}`
 	self.scoreCaption.Text = "SCORE"
 	self.coopNote.Visible = false
+	self.finalBestPill.Visible = true
+	self.sharesLabel.Visible = false
+	self.playAgainNote.Visible = false
 	self.restartRoot.Visible = true
 	self.restartButton.Text = "Play again"
-	self.restartButton.Active = true
+	Clay.setEnabled(self.restartRoot, true)
 	self.titleLabel.Text = if isNewBest then "New best!" else "No more moves!"
 	self.mascot.Image = if isNewBest then Theme.Images.MascotCheer else Theme.Images.MascotSad
 	self.layoutPanels()
@@ -551,14 +569,17 @@ function Hud.showCoopGameOver(self: Hud, info: CoopGameOver)
 	self.finalTween = tween
 	tween:Play()
 	self.scoreCaption.Text = "TEAM SCORE"
-	Clay.pillLabel(self.finalBestPill).Text = info.shares
+	self.finalBestPill.Visible = false
+	self.sharesLabel.Text = info.shares
+	self.sharesLabel.Visible = true
+	self.playAgainNote.Visible = false
 	self.coopNote.Text = info.note or ""
 	self.coopNote.Visible = info.note ~= nil
 	self.titleLabel.Text = "No more moves!"
 	self.mascot.Image = Theme.Images.MascotSad
 	self.restartRoot.Visible = info.canPlayAgain
 	self.restartButton.Text = "Play again"
-	self.restartButton.Active = true
+	Clay.setEnabled(self.restartRoot, true)
 	if info.rewards then
 		self:showRewards(info.rewards)
 	end
@@ -576,17 +597,20 @@ function Hud.showCoopGameOver(self: Hud, info: CoopGameOver)
 	end
 end
 
--- Says what pressing Play again did: "Waiting for Alex…" (and the button waits), "Alex wants to play again", or
--- the plain "Play again".
-function Hud.setPlayAgain(self: Hud, text: string, enabled: boolean)
-	self.restartButton.Text = text
-	self.restartButton.Active = enabled
+-- Says what pressing Play again did: the button waits (pale) once the player has pressed it, and the line under it
+-- says "Waiting for Alex…" or "Alex wants to play again"; nil leaves the line out.
+function Hud.setPlayAgain(self: Hud, enabled: boolean, note: string?)
+	self.restartButton.Text = "Play again"
+	Clay.setEnabled(self.restartRoot, enabled)
+	self.playAgainNote.Text = note or ""
+	self.playAgainNote.Visible = note ~= nil
 end
 
 -- The partner's name in the bar and the Co-op pause panel (nil for a solo run).
 function Hud.setPartner(self: Hud, name: string?)
 	self.bar:setPartner(name)
 	self.pauseRestartRoot.Visible = name == nil -- a Co-op run has no restart: leaving is the other choice
+	self.pauseNote.Visible = name ~= nil
 	self.pauseMenuButton.Text = if name then "Leave run" else "Menu"
 	if not name then
 		self:setTakeOver(nil)

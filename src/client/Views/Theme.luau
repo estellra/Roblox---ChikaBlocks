@@ -26,6 +26,13 @@ export type Theme = {
 		ButtonSecondary: Color3,
 		ButtonSecondaryShadow: Color3,
 		ButtonSecondaryText: Color3,
+		ButtonDisabled: Color3, -- a button that can't be pressed right now: pale face and lip, grey text and outline
+		ButtonDisabledShadow: Color3,
+		ButtonDisabledText: Color3,
+		ButtonDisabledOutline: Color3,
+		RowBorder: Color3, -- the thin edge of a white list row
+		Lavender: Color3, -- soft purple card (the Co-op room), edged with Title
+		PartnerCard: Color3, -- the Co-op partner's side of the tray
 		Reward: Color3, -- gold: revive, combo
 		RewardShadow: Color3,
 		RewardText: Color3,
@@ -154,6 +161,13 @@ local Theme: Theme = {
 		ButtonSecondary = Color3.fromHex("#a9dbff"),
 		ButtonSecondaryShadow = Color3.fromHex("#62b2e8"),
 		ButtonSecondaryText = Color3.fromHex("#2f4a66"),
+		ButtonDisabled = Color3.fromHex("#d6eeff"),
+		ButtonDisabledShadow = Color3.fromHex("#bddcf3"),
+		ButtonDisabledText = Color3.fromHex("#9aa6b6"),
+		ButtonDisabledOutline = Color3.fromHex("#a9a6b0"),
+		RowBorder = Color3.fromHex("#ece2e8"),
+		Lavender = Color3.fromHex("#f1ebfd"),
+		PartnerCard = Color3.fromHex("#faf8ff"),
 		Reward = Color3.fromHex("#ffd36e"),
 		RewardShadow = Color3.fromHex("#e0a93a"),
 		RewardText = Color3.fromHex("#4e3d4a"),

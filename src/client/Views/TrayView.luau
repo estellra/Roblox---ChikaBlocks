@@ -41,6 +41,8 @@ export type TrayView = typeof(setmetatable(
 		partnerPanel: Frame, -- the partner's slots and their name; in the tray area only in Co-op
 		partnerSlots: Frame,
 		partnerLabel: TextLabel,
+		partnerStroke: UIStroke, -- purple while the partner is here, gold once they have left
+		partnerName: string,
 		slots: { Frame },
 		contents: { Frame }, -- padded area inside each slot that holds the piece preview
 		hitboxes: { TextButton },
@@ -193,12 +195,13 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		LayoutOrder = 1,
 		Size = UDim2.new(1, 0, 0, PARTNER_LABEL_HEIGHT),
 		BackgroundTransparency = 1,
-		FontFace = Theme.Fonts.Label,
-		TextSize = 15,
-		TextColor3 = Theme.Colors.TextMuted,
+		FontFace = Theme.Fonts.Title,
+		TextSize = 16,
+		TextColor3 = Theme.Colors.Title,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Text = "",
 	})
+	local partnerStroke = create("UIStroke", { Color = Theme.Colors.Title, Thickness = 2 })
 	local partnerSlots = create("Frame", {
 		Name = "Slots",
 		LayoutOrder = 2,
@@ -213,11 +216,22 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 			Padding = UDim.new(0, 6),
 		}),
 	})
+	-- The partner's side of the tray: a soft card edged in purple, so it reads as theirs.
 	local partnerPanel = create("Frame", {
 		Name = "Partner",
 		LayoutOrder = 3,
-		BackgroundTransparency = 1,
+		BackgroundColor3 = Theme.Colors.PartnerCard,
+		BorderSizePixel = 0,
 	}, {
+		create("UICorner", { CornerRadius = Theme.Radius.Button }),
+		create("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize }),
+		partnerStroke,
+		create("UIPadding", {
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+		}),
 		create("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -232,6 +246,8 @@ function TrayView.new(parent: GuiObject, onRotate: (slot: number) -> ()): TrayVi
 		partnerPanel = partnerPanel,
 		partnerSlots = partnerSlots,
 		partnerLabel = partnerLabel,
+		partnerStroke = partnerStroke,
+		partnerName = "",
 		slots = slots,
 		contents = contents,
 		hitboxes = hitboxes,
@@ -282,9 +298,16 @@ function TrayView.configure(self: TrayView, coop: Coop?)
 			slot.Size = UDim2.fromScale(PARTNER_SLOT_SHARE, 1)
 		end
 	end
-	self.partnerLabel.Text = coop.partnerName
+	self.partnerName = coop.partnerName
+	self:setPartnerLeft(false)
 	self.partnerPanel.LayoutOrder = ownOrder + 1
 	self.partnerPanel.Parent = self.parent
+end
+
+-- The partner's card says who they are, or (gold) that they have left.
+function TrayView.setPartnerLeft(self: TrayView, left: boolean)
+	self.partnerLabel.Text = if left then `{self.partnerName} left` else self.partnerName
+	self.partnerStroke.Color = if left then Theme.Colors.Reward else Theme.Colors.Title
 end
 
 -- Whether the slot's piece can be picked up is GameController's call; this only keeps its touch area from

@@ -1,7 +1,8 @@
 --!strict
 -- Co-op screen over the menu, in the same style as the Support and leaderboard screens: a cream card on the sky
 -- with the other players in the server, one Invite button each, and the room the player is in. It only draws
--- what CoopController hands it (setState) and reports presses; the server decides everything.
+-- what CoopController hands it (setState) and reports presses; the server decides everything. The card is as tall
+-- as what it holds (up to the screen), like the mockups.
 -- Closing works by the X button, Escape or Backspace, and the gamepad B button.
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,9 +11,15 @@ local Clay = require("./Clay")
 local Theme = require("./Theme")
 local create = require("./Create")
 
-local ROW_HEIGHT = 44 + Theme.Spacing.ButtonLip + 8 -- the button meets the minimum touch size; the lip comes on top
-local BUTTON_WIDTH = 112
+local BUTTON_HEIGHT = 52 + Theme.Spacing.ButtonLip -- the face is above the minimum touch size; the lip comes on top
+local ROW_HEIGHT = BUTTON_HEIGHT + 20
+local BUTTON_WIDTH = 140
 local CLOSE_SIZE = 44
+local HEADER_HEIGHT = 44
+local BODY_PADDING = 12 -- above and below what the card holds
+local BODY_GAP = 8 -- between the header and the list
+local CARD_MARGIN = 16 -- left free above and below the card
+local MASCOT_SIZE = 120
 local OPEN_START_SCALE = 0.94 -- the card grows from this as the screen opens
 local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Escape] = true,
@@ -65,6 +72,8 @@ export type CoopView = typeof(setmetatable(
 	{} :: {
 		backdrop: ScreenGui,
 		gui: ScreenGui,
+		card: Frame,
+		content: ScrollingFrame,
 		list: Frame,
 		rows: { Row },
 		roomCard: Frame,
@@ -119,14 +128,6 @@ local function paragraph(name: string, order: number, font: Font, size: number, 
 	})
 end
 
--- Dimmed and unpressable, or back to normal.
-local function setEnabled(face: TextButton, enabled: boolean)
-	face.Active = enabled
-	face.Selectable = enabled
-	face.BackgroundTransparency = if enabled then 0 else 0.55
-	face.TextTransparency = if enabled then 0 else 0.45
-end
-
 local function newRow(index: number): Row
 	local colors, fonts = Theme.Colors, Theme.Fonts
 	local name = text("Name", "", fonts.Label, 17, colors.Text, {
@@ -145,25 +146,26 @@ local function newRow(index: number): Row
 		text = "Invite",
 		style = "primary",
 		order = 3,
-		size = UDim2.fromOffset(BUTTON_WIDTH, 44 + Theme.Spacing.ButtonLip),
+		size = UDim2.fromOffset(BUTTON_WIDTH, BUTTON_HEIGHT),
 		textSize = Theme.TextSize.Label,
 	})
+	-- A white card with a thin edge, like the mockups' rows.
 	local frame = create("Frame", {
 		Name = `Person{index}`,
 		LayoutOrder = index,
 		Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
-		BackgroundColor3 = colors.CellEmpty,
-		BackgroundTransparency = if index % 2 == 0 then 1 else 0,
+		BackgroundColor3 = colors.TraySlot,
 		BorderSizePixel = 0,
 		Visible = false,
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
-		create("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 8) }),
+		create("UIStroke", { Color = colors.RowBorder, Thickness = 2 }),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 10) }),
 		create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 10),
+			Padding = UDim.new(0, 12),
 		}),
 		name,
 		level,
@@ -190,7 +192,7 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 	local header = create("Frame", {
 		Name = "Header",
 		LayoutOrder = 1,
-		Size = UDim2.new(1, 0, 0, 44),
+		Size = UDim2.new(1, 0, 0, HEADER_HEIGHT),
 		BackgroundTransparency = 1,
 	}, {
 		text("Heading", "Co-op", fonts.Title, Theme.TextSize.Title, colors.Text, {
@@ -204,15 +206,17 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 	local intro = paragraph("Intro", 1, fonts.Body, 15, colors.TextMuted)
 	intro.Text = "Team up on one board. Invite someone who is in this server."
 	local note = paragraph("Note", 2, fonts.Body, 15, colors.Title)
-	local status = paragraph("Status", 3, fonts.Title, 16, colors.Title)
+	local status = paragraph("Status", 3, fonts.Title, 18, colors.Title)
 
+	-- The room the player is in: a soft purple card with who they are with and the way out.
 	local roomText = paragraph("RoomText", 1, fonts.Title, 18, colors.Text)
+	roomText.TextXAlignment = Enum.TextXAlignment.Center
 	local leaveRoot = Clay.button({
 		name = "Leave",
 		text = "Leave room",
 		style = "secondary",
 		order = 2,
-		size = UDim2.new(1, 0, 0, 44 + Theme.Spacing.ButtonLip),
+		size = UDim2.new(0.7, 0, 0, BUTTON_HEIGHT),
 		textSize = Theme.TextSize.Label,
 	})
 	local roomCard = create("Frame", {
@@ -220,19 +224,23 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 		LayoutOrder = 4,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundColor3 = colors.Reward,
-		BackgroundTransparency = 0.6,
+		BackgroundColor3 = colors.Lavender,
 		BorderSizePixel = 0,
 		Visible = false,
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
+		create("UIStroke", { Color = colors.Title, Thickness = 2 }),
 		create("UIPadding", {
-			PaddingTop = UDim.new(0, 10),
-			PaddingBottom = UDim.new(0, 10),
+			PaddingTop = UDim.new(0, 16),
+			PaddingBottom = UDim.new(0, 14),
 			PaddingLeft = UDim.new(0, 12),
 			PaddingRight = UDim.new(0, 12),
 		}),
-		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }),
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 10),
+		}),
 		roomText,
 		leaveRoot,
 	})
@@ -244,15 +252,17 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 	}, {
-		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }),
+		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) }),
 	})
 
+	-- Invite friends: under the list (blue) when there are people to invite, in the middle of the empty screen (pink)
+	-- when there are none. render() moves it.
 	local friendsRoot = Clay.button({
 		name = "InviteFriends",
 		text = "Invite friends",
-		style = "primary",
-		order = 2,
-		size = UDim2.new(1, 0, 0, 44 + Theme.Spacing.ButtonLip),
+		style = "secondary",
+		order = 7,
+		size = UDim2.new(1, 0, 0, BUTTON_HEIGHT),
 		textSize = Theme.TextSize.Label,
 	})
 	friendsRoot.Visible = false
@@ -264,13 +274,24 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 		BackgroundTransparency = 1,
 		Visible = false,
 	}, {
-		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) }),
-		text("Message", "No one else is here yet.", fonts.Title, 18, colors.Text, {
-			LayoutOrder = 1,
-			Size = UDim2.new(1, 0, 0, 28),
-			TextXAlignment = Enum.TextXAlignment.Left,
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 12),
 		}),
-		friendsRoot,
+		create("UIPadding", { PaddingTop = UDim.new(0, 24), PaddingBottom = UDim.new(0, 12) }),
+		create("ImageLabel", {
+			Name = "Mascot",
+			LayoutOrder = 1,
+			Size = UDim2.fromOffset(MASCOT_SIZE, MASCOT_SIZE),
+			BackgroundTransparency = 1,
+			Image = Theme.Images.MascotHappy,
+		}),
+		text("Message", "No one else is here yet.", fonts.Title, 18, colors.Text, {
+			LayoutOrder = 2,
+			Size = UDim2.new(1, 0, 0, 28),
+			TextXAlignment = Enum.TextXAlignment.Center,
+		}),
 	})
 
 	local content = create("ScrollingFrame", {
@@ -308,7 +329,7 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 		Name = "Card",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(0.94, 0, 1, -16),
+		Size = UDim2.new(0.94, 0, 1, -CARD_MARGIN), -- fitCard() shrinks it to what it holds
 		BackgroundColor3 = colors.Panel,
 		BorderSizePixel = 0,
 	}, {
@@ -322,15 +343,15 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 			BackgroundTransparency = 1,
 		}, {
 			create("UIPadding", {
-				PaddingTop = UDim.new(0, 12),
-				PaddingBottom = UDim.new(0, 12),
+				PaddingTop = UDim.new(0, BODY_PADDING),
+				PaddingBottom = UDim.new(0, BODY_PADDING),
 				PaddingLeft = UDim.new(0, 16),
 				PaddingRight = UDim.new(0, 16),
 			}),
 			create("UIListLayout", {
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				Padding = UDim.new(0, 8),
+				Padding = UDim.new(0, BODY_GAP),
 			}),
 			header,
 			content,
@@ -350,6 +371,8 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 	local self = setmetatable({
 		backdrop = backdrop,
 		gui = gui,
+		card = card,
+		content = content,
 		list = list,
 		rows = {},
 		roomCard = roomCard,
@@ -379,11 +402,40 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 	table.insert(self.connections, closeButton.Activated:Connect(callbacks.onClose))
 	table.insert(self.connections, Clay.face(leaveRoot).Activated:Connect(callbacks.onLeave))
 	table.insert(self.connections, Clay.face(friendsRoot).Activated:Connect(callbacks.onInviteFriends))
+	-- The card follows what it holds, and the screen it has to fit on.
+	table.insert(
+		self.connections,
+		(content:FindFirstChildOfClass("UIListLayout") :: UIListLayout)
+			:GetPropertyChangedSignal("AbsoluteContentSize")
+			:Connect(function()
+				self:fitCard()
+			end)
+	)
+	table.insert(
+		self.connections,
+		gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			self:fitCard()
+		end)
+	)
 
 	backdrop.Parent = playerGui
 	gui.Parent = playerGui
 	self:render()
 	return self
+end
+
+-- Makes the card as tall as the header and what is under it, but never taller than the screen.
+function CoopView.fitCard(self: CoopView)
+	local layout = self.content:FindFirstChildOfClass("UIListLayout") :: UIListLayout
+	local wanted = HEADER_HEIGHT + BODY_GAP + layout.AbsoluteContentSize.Y + 2 * BODY_PADDING
+	local room = self.gui.AbsoluteSize.Y - CARD_MARGIN
+	if room <= 0 then
+		return -- not laid out yet
+	end
+	local height = math.min(wanted, room)
+	if math.abs(self.card.AbsoluteSize.Y - height) >= 1 then
+		self.card.Size = UDim2.new(0.94, 0, 0, height)
+	end
 end
 
 -- A row for each person, made when first needed and reused afterwards.
@@ -407,28 +459,29 @@ local function rowAt(self: CoopView, index: number): Row
 	return row
 end
 
--- What a person's button says and whether it can be pressed, given who the player is already inviting.
+-- What a person's button says and whether it can be pressed, given who the player is already inviting. A button
+-- that can't be pressed is pale, whatever the reason.
 local function setAction(row: Row, person: Person, state: State)
 	if state.invitingUserId == person.userId then
 		row.action = "cancel"
 		row.face.Text = "Cancel"
 		Clay.setStyle(row.button, "secondary")
-		setEnabled(row.face, true)
+		Clay.setEnabled(row.button, true)
 		return
 	end
 	Clay.setStyle(row.button, "primary")
 	if person.busy ~= nil then
 		row.action = nil
 		row.face.Text = BUSY_TEXT[person.busy] or "Busy"
-		setEnabled(row.face, false)
+		Clay.setEnabled(row.button, false)
 	elseif state.inRoom or state.myBusy ~= nil or state.invitingUserId ~= nil then
 		row.action = nil -- the player can't invite anyone right now
 		row.face.Text = "Invite"
-		setEnabled(row.face, false)
+		Clay.setEnabled(row.button, false)
 	else
 		row.action = "invite"
 		row.face.Text = "Invite"
-		setEnabled(row.face, true)
+		Clay.setEnabled(row.button, true)
 	end
 end
 
@@ -450,7 +503,15 @@ function CoopView.render(self: CoopView)
 		else ""
 	self.note.Text = note
 	self.note.Visible = note ~= ""
-	self.status.Text = state.status or ""
+
+	-- While an invitation is out, the line says who it waits for; afterwards, how the last one ended.
+	local waitingFor: string? = nil
+	for _, person in state.people do
+		if person.userId == state.invitingUserId then
+			waitingFor = person.name
+		end
+	end
+	self.status.Text = if waitingFor then `Waiting for {waitingFor} to answer…` else state.status or ""
 	self.status.Visible = self.status.Text ~= ""
 
 	for index, person in state.people do
@@ -467,7 +528,20 @@ function CoopView.render(self: CoopView)
 	end
 
 	self.empty.Visible = #state.people == 0
-	self.friendsButton.Visible = state.canInviteFriends
+	local friends = self.friendsButton
+	if #state.people == 0 then
+		Clay.setStyle(friends, "primary")
+		friends.Size = UDim2.new(0.64, 0, 0, BUTTON_HEIGHT)
+		friends.LayoutOrder = 3
+		friends.Parent = self.empty
+	else
+		Clay.setStyle(friends, "secondary")
+		friends.Size = UDim2.new(1, 0, 0, BUTTON_HEIGHT)
+		friends.LayoutOrder = 7
+		friends.Parent = self.content
+	end
+	friends.Visible = state.canInviteFriends
+	self:fitCard()
 end
 
 function CoopView.setState(self: CoopView, state: State)
@@ -518,7 +592,7 @@ end
 function CoopView.describe(self: CoopView): string
 	local room = if self.roomCard.Visible then `"{self.roomText.Text}"` else "none"
 	local lines = {
-		`status="{self.status.Text}" note="{self.note.Text}" room={room} friendsButton={self.friendsButton.Visible} empty={self.empty.Visible}`,
+		`status="{self.status.Text}" note="{self.note.Text}" room={room} friendsButton={self.friendsButton.Visible} empty={self.empty.Visible} card={self.card.AbsoluteSize.X // 1}x{self.card.AbsoluteSize.Y // 1}`,
 	}
 	for _, row in self.rows do
 		if row.frame.Visible then

@@ -74,11 +74,11 @@ local function refreshPlayAgain()
 	end
 	local name = partnerName()
 	if votes[run.seat] then
-		views.hud:setPlayAgain(`Waiting for {name}…`, false)
+		views.hud:setPlayAgain(false, `Waiting for {name}…`)
 	elseif votes[run:partnerSeat()] then
-		views.hud:setPlayAgain(`{name} wants to play again`, true)
+		views.hud:setPlayAgain(true, `{name} wants to play again`)
 	else
-		views.hud:setPlayAgain("Play again", true)
+		views.hud:setPlayAgain(true, nil)
 	end
 end
 
@@ -267,6 +267,7 @@ local source: GameController.Source = {
 	freeRotations = function(): number
 		return if sync then sync:freeRotations() else 0
 	end,
+	partnerLeft = partnerLeft,
 	statusText = statusText,
 	gameOver = function()
 		local run = sync :: CoopSync.CoopSync

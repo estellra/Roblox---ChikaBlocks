@@ -40,6 +40,7 @@ export type Source = {
 	tryPlace: (slot: unknown, x: unknown, y: unknown) -> GameSession.PlaceResult?,
 	rotate: (slot: unknown, bought: number) -> GameSession.RotateResult?, -- turns a piece (`bought`: the player's bought rotations)
 	freeRotations: () -> number, -- the player's own free rotations left in this run
+	partnerLeft: () -> boolean,
 	statusText: () -> string, -- the line under the tray: who the player waits for, or that the partner left
 	gameOver: () -> Hud.CoopGameOver,
 	leave: () -> (), -- Menu / Leave run
@@ -148,6 +149,7 @@ local function render()
 		for slot = 1, shown.setSize do
 			views.tray:setLocked(slot, not source.canDrag(slot) and shown.tray[slot] ~= false)
 		end
+		views.tray:setPartnerLeft(source.partnerLeft())
 	end
 end
 
