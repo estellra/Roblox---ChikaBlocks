@@ -406,7 +406,7 @@ Mockup: file ChikaBlocks-UI, trang Screens, mục "Co-op — PC 1280×720" (12 f
 - **Pause Co-op:** thêm dòng "The board keeps going while you are here."
 - **Leaderboard tab Co-op:** "All time" không tô hồng, "This week" xanh nhạt, tên cặp căn giữa hàng.
 
-Đã chụp lại và khớp: lobby (có người, trong phòng), khay Co-op, Game Over, Pause, Leaderboard tab Co-op. **Chưa so được** vì gói Figma Starter hết lượt gọi công cụ: Waiting + Take over, Partner left, Lobby khi đang mời / khi trống, thẻ mời, Main Menu (đã xem nhưng chưa so từng pixel). Thanh EXP ở Game Over để nguyên vì dùng chung với màn solo (mockup Co-op vẽ thành một hàng "Lv 7 [thanh] +120 EXP"). Mockup chỉ có bản PC: bản điện thoại dọc chưa kiểm.
+Đã chụp lại trên màn thật và khớp mockup: lobby (có người, trong phòng, trống), khay Co-op, Take over + "Waiting for …", Partner left, thẻ mời, Game Over, Pause, Leaderboard tab Co-op, nút Co-op ở Main Menu. Lobby đang mời chỉ kiểm được bằng chữ (`describe`: "Waiting for … to answer…" và nút Cancel), vì người chơi giả của debug không có thật nên server trả lời ngay "no longer here". Dòng dưới khay chỉ còn "Waiting for …" khi người chơi hết khối để xoay (như mockup), thay vì nối thêm dòng Rotate. Thanh EXP ở Game Over để nguyên vì dùng chung với màn solo (mockup Co-op vẽ thành một hàng "Lv 7 [thanh] +120 EXP"). Mockup chỉ có bản PC: bản điện thoại dọc chưa kiểm.
 
 ## Bảo mật
 

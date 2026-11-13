@@ -503,6 +503,14 @@ function GameController.getRotationText(): string
 		if source.session().isOver then
 			return status
 		end
+		-- With no piece of their own left to turn (waiting for the partner), only the waiting line is left.
+		local hasPiece = false
+		for slot = 1, source.session().setSize do
+			hasPiece = hasPiece or source.canDrag(slot)
+		end
+		if not hasPiece then
+			return status
+		end
 		local line = rotationLine(source.freeRotations(), bought)
 		return if status ~= "" then `{line}  ·  {status}` else line
 	end
