@@ -542,6 +542,62 @@ function PvpMatches.summary(self: PvpMatches, key: any): Summary?
 	}
 end
 
+--- The player's own PvpSession, for the server's practice bot to look at (never hand it to a client). Nil when the
+--- player is in no match.
+function PvpMatches.sessionOf(self: PvpMatches, key: any): any
+	local match = self.matchOf[key]
+	return if match then match.sides[seatOf(match, key)].session else nil
+end
+
+--- For the Studio debug bridge: `lines` of garbage join the player's own queue, as if the opponent had sent them.
+--- Returns the queue afterwards, or nil when the player has no match going.
+function PvpMatches.addGarbage(self: PvpMatches, key: any, lines: number): { number }?
+	local match = self.matchOf[key]
+	if not match or match.ended then
+		return nil
+	end
+	local side = match.sides[seatOf(match, key)]
+	if side.session:receiveAttack(lines) > 0 then
+		side.version += 1
+	end
+	return table.clone(side.session.pending)
+end
+
+--- For the Studio debug bridge: leaves the player one move from being stuck. Their board keeps a single empty cell in
+--- each corner and two per row and column (nothing bigger than a single cell fits) and their tray is a Dot and two
+--- 3x3 squares, so placing the Dot leaves no move. Returns the state to send them, or nil when no match is going.
+function PvpMatches.corner(self: PvpMatches, key: any, pieces: any): MatchState?
+	local match = self.matchOf[key]
+	if not match or match.ended then
+		return nil
+	end
+	local seat = seatOf(match, key)
+	local side = match.sides[seat]
+	local game = side.session.game
+	local size = math.sqrt(#game.board.cells)
+	for y = 0, size - 1 do
+		for x = 0, size - 1 do
+			local open = x == y or x + y == size - 1
+			game.board.cells[y * size + x + 1] = if open then 0 else 1 + (x + y) % 8
+		end
+	end
+	game.tray = { pieces.BY_ID.Dot, pieces.BY_ID.O3, pieces.BY_ID.O3 }
+	game.unlocked = { false, false, false }
+	game.awaitingSet = false
+	game.isOver = false
+	side.version += 1
+	return stateOf(match, seat)
+end
+
+--- For the Studio debug bridge: ends the player's match now, as if the clock had run out.
+function PvpMatches.finishNow(self: PvpMatches, key: any): EndInfo?
+	local match = self.matchOf[key]
+	if not match or match.ended then
+		return nil
+	end
+	return finish(match, "time")
+end
+
 --- How many entries the tables hold (matches, players, rate limiter buckets); 0 once everyone has left.
 function PvpMatches.footprint(self: PvpMatches): number
 	local count = 0

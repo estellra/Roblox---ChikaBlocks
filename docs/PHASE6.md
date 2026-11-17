@@ -434,7 +434,52 @@ Client A                                Server (PvpService → PvpMatches)      
   - Lockstep: 200 trận, 32 791 nước, 4 707 lần hết nước, 837 hàng rác, 20 trận bỏ cuộc. 0 lần lệch, 0 lần xin lại trạng thái.
 - **Sửa một test cũ:** `Rooms.spec` từng khẳng định mode `"pvp"` bị từ chối; dòng đó nay thử một mode lạ (`"duel"`).
 
-**Còn lại (sau cổng kiểm BY):** `PvpService` (remote, bộ chuyển đồng hồ sang giờ server, nối `PvpRating`, `beforeRelease`, `BindToClose`, analytics), `Net`, lời mời Duel qua `CoopInvite(target, mode)`, `pvpbot` và lệnh debug, `PvpRunController`, `PvpView`, `OpponentBoardView`, sửa `Hud`/`HudBar`/`BoardView`/`TrayView`/`CoopView`/`CoopInviteView` theo mockup, và lượt thử Studio.
+**Cổng kiểm BY (2026-11-17, Studio qua MCP, một client, PC):** đạt.
+
+| Phần kiểm | Kết quả |
+|---|---|
+| Menu, Play, kéo thả chuột, xoay, game over, revive (`fakepurchase`), tutorial | Đạt |
+| Màn Co-op, danh sách, thẻ mời, ván Co-op với `coopbot`, Game Over Co-op, thanh EXP, tab Co-op | Đạt |
+| Cảm ứng, màn dọc | Bỏ qua: bản này làm cho PC trước |
+
+Ba lỗi hiển thị của GĐ5 đã sửa:
+- Thẻ mời che nút X của màn Co-op: khi màn Co-op mở, thẻ dời sang góc trên bên phải.
+- Thanh cuộn luôn hiện, và bóng nút "Invite friends" bị cắt: chiều cao thẻ Co-op giờ đo phần khung thật thay vì cộng số cố định.
+
+Ảnh: `production/qa/evidence/gate-BY/` (thư mục bị gitignore, chỉ có trên máy).
+
+**Phần UI và server (đã làm):**
+
+- **Server:**
+  - `PvpService`: trận bắt đầu khi lập phòng `"pvp"`; rời phòng hoặc rời server khi trận đang chạy thì thua.
+  - Play again cần cả hai người; `BindToClose` hủy các trận đang chạy.
+  - Bảng đối thủ gửi sau mỗi thay đổi và nhắc lại mỗi giây.
+  - Bot luyện tập (`pvpbot`) đi nước tham lam.
+  - Lời mời Duel đi qua `CoopInvite(target, 2)`; `CoopInvited` mang thêm mode.
+- **Client:**
+  - `PvpRunController` là một `Source` của `GameController`, có cờ `isMatch`: không có Game Over, không bán lượt xoay, Pause mở Resume và Forfeit.
+  - `PvpView`: màn VS, đếm ngược, cột IN có mũi tên hướng, mũi tên ở mép bảng, hiệu ứng đẩy bảng, thẻ "Stuck", khóa khay có vòng đếm, màn kết quả.
+  - `OpponentBoardView`: thẻ đối thủ.
+  - `Gui` có biến thể bố cục `"match"`; `HudBar` có ô TIME.
+  - Màn Co-op có nút Duel; thẻ mời ghi "invites you to a Duel".
+- **Config:** `COUNTDOWN_SECONDS` đổi từ 3 lên 6, để chứa màn VS 3 giây (`VS_SECONDS`) rồi tới 3-2-1.
+- **Debug (chỉ Studio):**
+  - Server: `pvpbot`, `pvp`, `pvp nil <n> garbage`, `pvp nil nil cornered` (đặt bảng còn một nước, rồi đi tiếp theo đường thật tới lúc kẹt), `pvp nil nil end`.
+  - Client: `pvp [again|menu]`.
+- **Thử trong Studio với `pvpbot`, một client:**
+  - Đã thấy chạy: màn VS, đếm ngược, đồng hồ, bảng đối thủ đổi theo, rác chờ và rác vào từ trái.
+  - Đã thấy chạy: hết nước rồi khóa khay 5 giây, Pause rồi Forfeit, màn kết quả, Play again quay lại màn VS, Menu về menu, nút Duel.
+  - Không có lỗi trong Output.
+  - Ảnh: `production/qa/evidence/m26-pvp/` (8 ảnh, đặt cạnh mockup).
+- **Lỗi tìm thấy khi thử và đã sửa:**
+  - Cột IN trên thẻ đối thủ bị co lại; bảng nhỏ chừa khoảng trống.
+  - Đồng hồ vẫn chạy sau khi hết trận.
+  - Phiếu đấu lại có thể bị xóa nếu tới trước màn kết quả.
+
+**Còn lại:**
+- Thử với hai người thật (danh sách ở mục Test): lời mời Duel, trận thật, mạng chậm.
+- Analytics của trận (để M28, cùng các sự kiện PVP khác).
+- Thẻ VS và thẻ đối thủ hiện level thay vì hạng: hạng và huy hiệu đến ở M27/M28.
 
 ## M27: Hàng chờ ranked trong server
 

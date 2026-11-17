@@ -14,6 +14,8 @@
 --           coop [open|close|people <n>|invite [id] [seconds]|result <result> [userId]|room [left]|noroom|busy <reason|none>|press <userId> [result...]|cancel]
 --           (opens the Co-op screen and lists it; the rest feed it what the server would send, with the player
 --           themselves as the other party, or press Invite for a made-up person)
+--           pvp [again|menu] (the PVP match on this screen; again / menu press the result panel's buttons. Start one
+--           against the bot with ServerStorage.ChikaServerDebug "pvpbot")
 --           coop run | coop play [moves] | coop again | coop leave | coop takeover | coop rotate [slot] | coop revive
 --           (the Co-op run on this screen: its state, play random moves of the player's own, Play again, Menu / Leave
 --           run, Take over. Pair with the practice partner first: ServerStorage.ChikaServerDebug "coopbot")
@@ -36,6 +38,7 @@ local GamepadController = require("./GamepadController")
 local LeaderboardController = require("./LeaderboardController")
 local SupportController = require("./SupportController")
 local MenuController = require("./MenuController")
+local PvpRunController = require("./PvpRunController")
 local TutorialController = require("./TutorialController")
 local Theme = require("../Views/Theme")
 
@@ -310,6 +313,14 @@ local function handle(rng: Random, command: string, ...: any): string
 			SupportController.close()
 		end
 		return `open={SupportController.isOpen()} menuOpen={MenuController.isOpen()}\n{SupportController.describe()}`
+	elseif command == "pvp" then
+		-- The PVP match on this screen; "again" or "menu" press the result panel's buttons.
+		local action = ...
+		if action == "again" or action == "menu" then
+			PvpRunController.press(action)
+			task.wait(0.5)
+		end
+		return PvpRunController.describe()
 	elseif command == "coop" then
 		local action, first, second = ...
 		local me = Players.LocalPlayer

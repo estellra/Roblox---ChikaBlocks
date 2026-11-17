@@ -15,6 +15,10 @@
 -- coop lists the Co-op invitations, rooms and rests, every player's CoopBusy and Level attributes, and their Co-op run.
 -- coopbot [userId] [moves per second] pairs the player with a practice partner that plays on the server (it also
 -- plays again when the game is over); coopbot nil nil afk / back / leave idles it, wakes it, or takes it out.
+-- pvpbot [userId] [moves per second] starts a practice PVP match against a bot that plays on the server (it also plays
+-- again); pvpbot nil nil afk / back / leave as for coopbot. pvp [userId] describes the player's match; pvp nil <n>
+-- garbage puts n garbage lines in their queue; pvp nil nil cornered leaves them one move from being stuck; pvp nil nil
+-- end ends the match now, as if the clock had run out.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,6 +29,7 @@ local DataService = require("./DataService")
 local GameService = require("./GameService")
 local LeaderboardService = require("./LeaderboardService")
 local PurchaseService = require("./PurchaseService")
+local PvpService = require("./PvpService")
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local CoopService = require("./CoopService")
 local RewardService = require("./RewardService")
@@ -152,6 +157,10 @@ function DebugService.start(_self: any)
 			return `reset {player.Name}: best=0 games=0 tutorialDone=false onboardingStep=0 level=1 exp=0 milestones=none`
 		elseif command == "coopbot" then
 			return CoopService.bot(player, extra or "start", value)
+		elseif command == "pvpbot" then
+			return PvpService.bot(player, extra or "start", value)
+		elseif command == "pvp" then
+			return PvpService.debug(player, extra, value)
 		elseif command == "fakepurchase" then
 			local productId = value or Config.REVIVE_PRODUCTS[1]
 			debugReceipts += 1

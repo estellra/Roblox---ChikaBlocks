@@ -1,6 +1,7 @@
 --!strict
 -- Co-op screen over the menu, in the same style as the Support and leaderboard screens: a cream card on the sky
--- with the other players in the server, one Invite button each, and the room the player is in. It only draws
+-- with the other players in the server, an Invite button each (and a Duel button beside it once PVP is playable, for
+-- a friendly match), and the room the player is in. It only draws
 -- what CoopController hands it (setState) and reports presses; the server decides everything. The card is as tall
 -- as what it holds (up to the screen), like the mockups.
 -- Closing works by the X button, Escape or Backspace, and the gamepad B button.
@@ -14,6 +15,7 @@ local create = require("./Create")
 local BUTTON_HEIGHT = 52 + Theme.Spacing.ButtonLip -- the face is above the minimum touch size; the lip comes on top
 local ROW_HEIGHT = BUTTON_HEIGHT + 20
 local BUTTON_WIDTH = 140
+local PAIR_BUTTON_WIDTH = 100 -- each of Duel and Invite, side by side
 local CLOSE_SIZE = 44
 local HEADER_HEIGHT = 44
 local BODY_PADDING = 12 -- above and below what the card holds
@@ -45,11 +47,13 @@ export type State = {
 	myBusy: string?, -- why the player can't invite right now: "tutorial" or "loading" (in a room is inRoom)
 	status: string?, -- how the last invitation ended
 	canInviteFriends: boolean,
+	canDuel: boolean, -- PVP is playable: free people get a Duel button too
 }
 
 type Callbacks = {
 	onClose: () -> (),
 	onInvite: (userId: number) -> (),
+	onDuel: (userId: number) -> (),
 	onCancel: () -> (),
 	onLeave: () -> (),
 	onInviteFriends: () -> (),
@@ -61,6 +65,8 @@ type Row = {
 	level: TextLabel,
 	button: Frame,
 	face: TextButton,
+	duelButton: Frame,
+	duelFace: TextButton,
 	userId: number,
 	action: ("invite" | "cancel")?, -- what pressing the button does; nil when it is disabled
 }
@@ -145,10 +151,19 @@ local function newRow(index: number): Row
 		name = "Action",
 		text = "Invite",
 		style = "primary",
-		order = 3,
+		order = 4,
 		size = UDim2.fromOffset(BUTTON_WIDTH, BUTTON_HEIGHT),
 		textSize = Theme.TextSize.Label,
 	})
+	local duelButton = Clay.button({
+		name = "Duel",
+		text = "Duel",
+		style = "secondary",
+		order = 3,
+		size = UDim2.fromOffset(PAIR_BUTTON_WIDTH, BUTTON_HEIGHT),
+		textSize = Theme.TextSize.Label,
+	})
+	duelButton.Visible = false
 	-- A white card with a thin edge, like the mockups' rows.
 	local frame = create("Frame", {
 		Name = `Person{index}`,
@@ -169,11 +184,21 @@ local function newRow(index: number): Row
 		}),
 		name,
 		level,
+		duelButton,
 		button,
 	})
 	-- The name takes whatever width the level and button leave.
 	create("UIFlexItem", { FlexMode = Enum.UIFlexMode.Fill, Parent = name })
-	return { frame = frame, name = name, level = level, button = button, face = Clay.face(button), userId = 0 }
+	return {
+		frame = frame,
+		name = name,
+		level = level,
+		button = button,
+		face = Clay.face(button),
+		duelButton = duelButton,
+		duelFace = Clay.face(duelButton),
+		userId = 0,
+	}
 end
 
 function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
@@ -393,6 +418,7 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 			myBusy = nil,
 			status = nil,
 			canInviteFriends = false,
+			canDuel = false,
 		},
 		callbacks = callbacks,
 		keyConnection = nil,
@@ -417,6 +443,13 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 			self:fitCard()
 		end)
 	)
+	-- The list's window is only known once the card is laid out; measuring it settles the card in one more step.
+	table.insert(
+		self.connections,
+		content:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(function()
+			self:fitCard()
+		end)
+	)
 
 	backdrop.Parent = playerGui
 	gui.Parent = playerGui
@@ -424,16 +457,24 @@ function CoopView.new(playerGui: PlayerGui, callbacks: Callbacks): CoopView
 	return self
 end
 
--- Makes the card as tall as the header and what is under it, but never taller than the screen.
+-- Makes the card as tall as the header and what is under it, but never taller than the screen. Once the card is laid
+-- out, the part of it that isn't the list is measured rather than added up, so the list gets exactly the room its
+-- content needs: a few pixels short would clip the last button's lip and show a scroll bar for nothing.
 function CoopView.fitCard(self: CoopView)
 	local layout = self.content:FindFirstChildOfClass("UIListLayout") :: UIListLayout
-	local wanted = HEADER_HEIGHT + BODY_GAP + layout.AbsoluteContentSize.Y + 2 * BODY_PADDING
+	local scale = self.pop.Scale -- the opening pop scales every absolute size alike
+	local window = self.content.AbsoluteWindowSize.Y
+	local chrome = HEADER_HEIGHT + BODY_GAP + 2 * BODY_PADDING
+	if window > 0 and scale > 0 then
+		chrome = (self.card.AbsoluteSize.Y - window) / scale
+	end
+	local wanted = chrome + layout.AbsoluteContentSize.Y / math.max(scale, 0.01)
 	local room = self.gui.AbsoluteSize.Y - CARD_MARGIN
 	if room <= 0 then
 		return -- not laid out yet
 	end
-	local height = math.min(wanted, room)
-	if math.abs(self.card.AbsoluteSize.Y - height) >= 1 then
+	local height = math.ceil(math.min(wanted, room))
+	if math.abs(self.card.AbsoluteSize.Y / math.max(scale, 0.01) - height) >= 1 then
 		self.card.Size = UDim2.new(0.94, 0, 0, height)
 	end
 end
@@ -454,6 +495,14 @@ local function rowAt(self: CoopView, index: number): Row
 				end
 			end)
 		)
+		table.insert(
+			self.connections,
+			row.duelFace.Activated:Connect(function()
+				if row.action == "invite" then
+					self.callbacks.onDuel(row.userId)
+				end
+			end)
+		)
 		self.rows[index] = row
 	end
 	return row
@@ -462,6 +511,14 @@ end
 -- What a person's button says and whether it can be pressed, given who the player is already inviting. A button
 -- that can't be pressed is pale, whatever the reason.
 local function setAction(row: Row, person: Person, state: State)
+	-- Duel shows beside Invite only while the person can be invited; any other state is one button.
+	local free = person.busy == nil and state.invitingUserId ~= person.userId
+	local pair = state.canDuel and free
+	row.duelButton.Visible = pair
+	row.button.Size = UDim2.fromOffset(if pair then PAIR_BUTTON_WIDTH else BUTTON_WIDTH, BUTTON_HEIGHT)
+	if pair then
+		Clay.setEnabled(row.duelButton, not (state.inRoom or state.myBusy ~= nil or state.invitingUserId ~= nil))
+	end
 	if state.invitingUserId == person.userId then
 		row.action = "cancel"
 		row.face.Text = "Cancel"

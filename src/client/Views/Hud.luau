@@ -606,6 +606,22 @@ function Hud.setPlayAgain(self: Hud, enabled: boolean, note: string?)
 	self.playAgainNote.Visible = note ~= nil
 end
 
+-- The match clock in the bar (see HudBar.setTimer); nil outside a PVP match.
+function Hud.setTimer(self: Hud, text: string?)
+	self.bar:setTimer(text)
+end
+
+-- The pause panel of a PVP match: the clock keeps running, and the other choice is to forfeit (a loss); `false` goes
+-- back to the panel of a solo run.
+function Hud.setMatchPause(self: Hud, on: boolean)
+	self.pauseRestartRoot.Visible = not on
+	self.pauseNote.Text = if on
+		then "The clock keeps running. Forfeiting counts as a loss."
+		else "The board keeps going while you are here."
+	self.pauseNote.Visible = on
+	self.pauseMenuButton.Text = if on then "Forfeit" else "Menu"
+end
+
 -- The partner's name in the bar and the Co-op pause panel (nil for a solo run).
 function Hud.setPartner(self: Hud, name: string?)
 	self.bar:setPartner(name)

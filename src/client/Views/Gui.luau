@@ -3,6 +3,8 @@
 --   Portrait  (narrow screens): HUD, board and tray stacked top to bottom, tray slots in a row
 --   Landscape (wide screens):   board on the left; HUD above a column of tray slots on the right
 -- A one-line hint (controls for keyboard and gamepad) sits under the tray in both layouts.
+-- A PVP match uses the "match" variant of the landscape layout: under the HUD, the opponent's card (opponentArea), then
+-- the tray as a row of three, then the hint. Portrait has no room for the opponent's card yet (mobile comes later).
 -- The layout is re-applied whenever the safe area changes size (rotation, window resize, device switch).
 
 local Clay = require("./Clay")
@@ -10,16 +12,20 @@ local Theme = require("./Theme")
 local create = require("./Create")
 
 export type LayoutMode = "Portrait" | "Landscape"
+export type Variant = "normal" | "match"
 
 export type Gui = {
 	hudArea: Frame,
 	boardArea: Frame,
 	trayArea: Frame,
+	opponentArea: Frame, -- the opponent's card in a PVP match (landscape only)
 	dragLayer: Frame, -- full-screen layer above everything in the game UI, for pieces being dragged
 	hint: TextLabel, -- keeps its space when empty, so the board doesn't resize as hints come and go
 	overlay: ScreenGui, -- interactive panels over the game (game over); safe area, disabled until used
 	overlayBackdrop: ScreenGui, -- full-screen dimmer under the overlay; disabled until used
 	getMode: () -> LayoutMode,
+	getVariant: () -> Variant,
+	setVariant: (variant: Variant) -> (),
 	onLayoutChanged: (callback: (mode: LayoutMode) -> ()) -> (),
 	destroy: () -> (),
 }
@@ -41,6 +47,14 @@ local LANDSCAPE = {
 	tray = UDim2.fromScale(1, 0.7),
 	hint = UDim2.fromScale(1, 0.06),
 	slot = UDim2.fromScale(1, 0.31),
+}
+-- The side column of a PVP match (shares of the side column, like LANDSCAPE's).
+local LANDSCAPE_MATCH = {
+	hud = UDim2.fromScale(1, 0.19),
+	opponent = UDim2.fromScale(1, 0.42),
+	tray = UDim2.fromScale(1, 0.25),
+	hint = UDim2.fromScale(1, 0.08),
+	slot = UDim2.fromScale(0.3, 1),
 }
 
 local function area(name: string, layoutOrder: number): Frame
@@ -85,6 +99,8 @@ function Gui.create(playerGui: PlayerGui): Gui
 		Parent = boardArea,
 	})
 	local trayArea = area("TrayArea", 3)
+	local opponentArea = area("OpponentArea", 2)
+	opponentArea.Visible = false
 	local trayLayout = listLayout("Layout", spacing.TrayGap)
 	trayLayout.Parent = trayArea
 	local hint = create("TextLabel", {
@@ -155,6 +171,7 @@ function Gui.create(playerGui: PlayerGui): Gui
 	})
 
 	local mode: LayoutMode = "Portrait"
+	local variant: Variant = "normal"
 	local slotSize = PORTRAIT.slot
 	local listeners: { (mode: LayoutMode) -> () } = {}
 
@@ -170,11 +187,24 @@ function Gui.create(playerGui: PlayerGui): Gui
 			hint.Parent, hint.LayoutOrder, hint.Size = root, 4, PORTRAIT.hint
 			trayLayout.FillDirection = Enum.FillDirection.Horizontal
 			slotSize = PORTRAIT.slot
+			opponentArea.Visible = false
+		elseif variant == "match" then
+			rootLayout.FillDirection = Enum.FillDirection.Horizontal
+			boardArea.LayoutOrder, boardArea.Size = 1, LANDSCAPE.board
+			sideColumn.Visible, sideColumn.Size = true, LANDSCAPE.side
+			hudArea.Parent, hudArea.LayoutOrder, hudArea.Size = sideColumn, 1, LANDSCAPE_MATCH.hud
+			opponentArea.Parent, opponentArea.LayoutOrder, opponentArea.Size = sideColumn, 2, LANDSCAPE_MATCH.opponent
+			opponentArea.Visible = true
+			trayArea.Parent, trayArea.LayoutOrder, trayArea.Size = sideColumn, 3, LANDSCAPE_MATCH.tray
+			hint.Parent, hint.LayoutOrder, hint.Size = sideColumn, 4, LANDSCAPE_MATCH.hint
+			trayLayout.FillDirection = Enum.FillDirection.Horizontal
+			slotSize = LANDSCAPE_MATCH.slot
 		else
 			rootLayout.FillDirection = Enum.FillDirection.Horizontal
 			boardArea.LayoutOrder, boardArea.Size = 1, LANDSCAPE.board
 			sideColumn.Visible, sideColumn.Size = true, LANDSCAPE.side
 			hudArea.Parent, hudArea.LayoutOrder, hudArea.Size = sideColumn, 1, LANDSCAPE.hud
+			opponentArea.Visible = false
 			trayArea.Parent, trayArea.LayoutOrder, trayArea.Size = sideColumn, 2, LANDSCAPE.tray
 			hint.Parent, hint.LayoutOrder, hint.Size = sideColumn, 3, LANDSCAPE.hint
 			trayLayout.FillDirection = Enum.FillDirection.Vertical
@@ -210,12 +240,22 @@ function Gui.create(playerGui: PlayerGui): Gui
 		hudArea = hudArea,
 		boardArea = boardArea,
 		trayArea = trayArea,
+		opponentArea = opponentArea,
 		dragLayer = dragLayer,
 		hint = hint,
 		overlay = overlay,
 		overlayBackdrop = overlayBackdrop,
 		getMode = function(): LayoutMode
 			return mode
+		end,
+		getVariant = function(): Variant
+			return variant
+		end,
+		setVariant = function(newVariant: Variant)
+			if variant ~= newVariant then
+				variant = newVariant
+				applyLayout()
+			end
 		end,
 		onLayoutChanged = function(callback: (mode: LayoutMode) -> ())
 			table.insert(listeners, callback)

@@ -13,7 +13,8 @@
 --   RequestDonate(tier)                          a donation tier chosen on the Support screen (1 = smallest)
 --   PlacePiece(runId, moveIndex, slot, x, y)     a move the client has already shown (predicted)
 --   RequestState()                               the client disagrees with the server; send the full state
---   CoopInvite(targetUserId)                     invite a player in this server to a Co-op room
+--   CoopInvite(targetUserId, mode)               invite a player in this server to a room: mode 1 (or nil) Co-op, 2 a Duel
+--                                                (a friendly PVP match)
 --   CoopInviteReply(inviteId, accept)            answer an invitation (only its target can)
 --   CoopCancelInvite()                           take back the invitation the player has out
 --   CoopLeave()                                  leave the Co-op room (and with it the run)
@@ -28,6 +29,12 @@
 --   CoopHover(slot, x, y)                        (unreliable) the board cell a Co-op piece is aimed at, for the partner to
 --                                                see; sent when the cell changes, at most 10 a second. No arguments: the
 --                                                piece is no longer aimed
+--   PvpPlace(matchId, moveIndex, slot, x, y)     a PVP move the client has already shown (predicted); moveIndex is how many
+--                                                moves the player had made before it
+--   PvpRotate(matchId, moveIndex, slot)          turn a piece with the match's free rotation (predicted)
+--   PvpRequestState()                            the client thinks it is out of step; send the full match state
+--   PvpForfeit(matchId)                          give up the match (a loss)
+--   PvpRematch(matchId)                          Play again after a friendly or practice match; needs both players
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
@@ -41,7 +48,9 @@
 --   Donated(amount, total)                       a donation was granted: its Robux, and the player's total
 --   Leaderboard(snapshot)                        top entries of every board (the Co-op board by pair) and the
 --                                                player's own values (see LeaderboardService.Snapshot)
---   CoopInvited(inviteId, fromUserId, expiresAt) someone invited the player; expiresAt is in workspace:GetServerTimeNow()
+--   CoopInvited(inviteId, fromUserId, expiresAt, mode)
+--                                                someone invited the player; expiresAt is in workspace:GetServerTimeNow(),
+--                                                mode is "coop" or "pvp" (a Duel)
 --   CoopInviteResult(otherUserId, result)        how an invitation with that player stands. The inviter hears sent,
 --                                                declined, expired, busy, cooldown or left; the invited player hears
 --                                                expired or cancelled (the invitation is gone)
@@ -68,6 +77,20 @@
 --   CoopPartnerHover(slot, x, y)                 (unreliable) the partner's CoopHover, checked; no arguments when they
 --                                                stopped aiming. A lost message must not leave a shadow behind: the client
 --                                                drops one that isn't renewed within a second or so
+--   PvpEvent("start", state) / PvpEvent("state", state)
+--                                                a match begins, or its full state for a client out of step: { matchId,
+--                                                kind, seat, startAt, endAt, you, opponent, userIds, names } with you the
+--                                                PvpSession snapshot and every time in server time
+--   PvpEvent("result", result)                   the player's move was accepted: { matchId, moveIndex, score, sent,
+--                                                cancelled, pending, refill?, stuck? } (see PvpSync.Result)
+--   PvpEvent("incoming", matchId, pending)       the opponent's attack changed the player's garbage queue
+--   PvpEvent("end", info)                        the match is over: { matchId, kind, reason, results, scores, sent,
+--                                                blocked } by seat (see PvpMatches.EndInfo)
+--   PvpEvent("votes", matchId, votes)            who has pressed Play again, by seat
+--                                                Everything about a match goes through PvpEvent, one remote, so it arrives
+--                                                in the order it was sent
+--   PvpOpponentBoard(board)                      (unreliable) the opponent's board as a 39-byte buffer (PvpBoardCodec),
+--                                                after each of their moves and again every second
 -- Who is free to be invited is published on each Player as attributes: CoopBusy ("room", "tutorial", "loading" or
 -- nil when free) and Level.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -138,6 +161,13 @@ return {
 	CoopRematchVotes = remoteEvent("CoopRematchVotes"),
 	CoopRewards = remoteEvent("CoopRewards"),
 	CoopHover = unreliableEvent("CoopHover"),
+	PvpPlace = remoteEvent("PvpPlace"),
+	PvpRotate = remoteEvent("PvpRotate"),
+	PvpRequestState = remoteEvent("PvpRequestState"),
+	PvpForfeit = remoteEvent("PvpForfeit"),
+	PvpRematch = remoteEvent("PvpRematch"),
+	PvpEvent = remoteEvent("PvpEvent"),
+	PvpOpponentBoard = unreliableEvent("PvpOpponentBoard"),
 	CoopPartnerHover = unreliableEvent("CoopPartnerHover"),
 	Donated = remoteEvent("Donated"),
 	GameState = remoteEvent("GameState"),

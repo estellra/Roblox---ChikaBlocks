@@ -17,11 +17,16 @@ local Net = require(ReplicatedStorage.Shared.Net)
 
 local STATUS_SECONDS = 6 -- how long "Alex declined" stays up
 local SENT_TIMEOUT_SECONDS = 3 -- an invitation the server hasn't confirmed by then was dropped (sent too fast)
+local NOTICE_CORNER_WIDTH = 300 -- the invitation card while the Co-op screen is open: this wide, in the top right corner
+local NOTICE_CORNER_MARGIN = 12
 
 -- The room as the server describes it (see Net.CoopRoom).
 type Room = { id: number, mode: string, you: number, present: { boolean }, userIds: { number } }
 type Invite = { id: number, fromUserId: number }
 type Outgoing = { userId: number, confirmed: boolean }
+
+-- The room kinds an invitation can ask for, as Net.CoopInvite codes them.
+local MODE_CODES = { coop = 1, pvp = 2 }
 
 local CoopController = {}
 
@@ -37,6 +42,7 @@ local canInviteFriends = false
 local watchers: { [Player]: { RBXScriptConnection } } = {}
 local roomListeners: { (room: Room?) -> () } = {}
 local pretendPeople: { CoopView.Person }? = nil -- for the Studio debug bridge: stands in for the other players
+local placeNotices: () -> () = function() end -- puts the invitation card where it covers nothing (see start)
 
 -- What the inviter is told when their invitation ends without a room.
 local MESSAGES: { [string]: (name: string) -> string } = {
@@ -60,6 +66,11 @@ local MESSAGES: { [string]: (name: string) -> string } = {
 -- The Co-op button shows, and the server answers, only once the mode is playable (or in Studio).
 function CoopController.isAvailable(): boolean
 	return Config.COOP.ENABLED or RunService:IsStudio()
+end
+
+-- Whether Duel invitations (friendly PVP matches) can be sent: once PVP is playable (or in Studio).
+function CoopController.canDuel(): boolean
+	return Config.PVP.ENABLED or RunService:IsStudio()
 end
 
 local function nameOf(userId: number): string?
@@ -114,6 +125,7 @@ local function render()
 		myBusy = if mine == "tutorial" or mine == "loading" then mine else nil,
 		status = status,
 		canInviteFriends = canInviteFriends,
+		canDuel = CoopController.canDuel(),
 	})
 end
 
@@ -148,15 +160,16 @@ local function inviteFriends()
 	end)
 end
 
--- Invites the player with this UserId (the Invite button; also what the Studio debug bridge presses).
-local function invite(userId: number)
+-- Invites the player with this UserId to a room of `mode` (default Co-op): the Invite and Duel buttons, and what the
+-- Studio debug bridge presses.
+local function invite(userId: number, mode: ("coop" | "pvp")?)
 	if outgoing or room then
 		return
 	end
 	local sent: Outgoing = { userId = userId, confirmed = false }
 	outgoing = sent
 	setStatus(nil)
-	Net.CoopInvite:FireServer(userId)
+	Net.CoopInvite:FireServer(userId, MODE_CODES[mode or "coop"])
 	render()
 	task.delay(SENT_TIMEOUT_SECONDS, function()
 		if outgoing == sent and not sent.confirmed then
@@ -179,8 +192,8 @@ local function answer(inviteId: number, accept: boolean)
 	Net.CoopInviteReply:FireServer(inviteId, accept)
 end
 
--- Someone invited the player: show a notice that runs out when the invitation does.
-function CoopController.onInvited(inviteId: unknown, fromUserId: unknown, expiresAt: unknown)
+-- Someone invited the player (to Co-op, or to a Duel): show a notice that runs out when the invitation does.
+function CoopController.onInvited(inviteId: unknown, fromUserId: unknown, expiresAt: unknown, mode: unknown)
 	if typeof(inviteId) ~= "number" or typeof(fromUserId) ~= "number" or typeof(expiresAt) ~= "number" then
 		return
 	end
@@ -188,7 +201,7 @@ function CoopController.onInvited(inviteId: unknown, fromUserId: unknown, expire
 		return
 	end
 	invites[inviteId] = { id = inviteId, fromUserId = fromUserId }
-	notices:add(inviteId, nameOf(fromUserId) or "Someone", expiresAt - workspace:GetServerTimeNow())
+	notices:add(inviteId, nameOf(fromUserId) or "Someone", expiresAt - workspace:GetServerTimeNow(), mode == "pvp")
 end
 
 -- How an invitation with `otherUserId` stands: either the one the player sent or one they were sent.
@@ -262,6 +275,7 @@ function CoopController.dismiss()
 	if view and view:isOpen() then
 		view:close()
 	end
+	placeNotices()
 end
 
 CoopController.invite = invite
@@ -270,6 +284,7 @@ CoopController.cancel = cancelInvite
 function CoopController.close()
 	if view and view:isOpen() then
 		view:close()
+		placeNotices()
 		local callback = onClosed
 		onClosed = nil
 		if callback then
@@ -286,6 +301,7 @@ function CoopController.open(closed: () -> ())
 	onClosed = closed
 	setStatus(nil)
 	view:open()
+	placeNotices()
 	refreshFriends()
 end
 
@@ -346,7 +362,12 @@ function CoopController.start(_self: any)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	view = CoopView.new(playerGui, {
 		onClose = CoopController.close,
-		onInvite = invite,
+		onInvite = function(userId: number)
+			invite(userId, "coop")
+		end,
+		onDuel = function(userId: number)
+			invite(userId, "pvp")
+		end,
 		onCancel = cancelInvite,
 		onLeave = function()
 			Net.CoopLeave:FireServer()
@@ -356,7 +377,9 @@ function CoopController.start(_self: any)
 	local cards = CoopInviteView.new(playerGui, answer)
 	notices = cards
 	-- The invitation card goes over the score area, which is wherever the layout puts it (top of the screen in
-	-- portrait, above the tray in landscape), so it never covers the board or the pieces.
+	-- portrait, above the tray in landscape), so it never covers the board or the pieces. While the Co-op screen is
+	-- open the score area is hidden under it and the card would cover its close button, so the card moves to the
+	-- top right corner of the screen instead.
 	task.spawn(function()
 		local views = GameController.getViews()
 		while not views do
@@ -364,12 +387,20 @@ function CoopController.start(_self: any)
 			views = GameController.getViews()
 		end
 		local hud = views.gui.hudArea
-		local function followHud()
-			cards:setAnchor(hud.AbsolutePosition, hud.AbsoluteSize)
+		local screen = cards.gui
+		placeNotices = function()
+			if view and view:isOpen() then
+				local width = math.min(NOTICE_CORNER_WIDTH, screen.AbsoluteSize.X - 2 * NOTICE_CORNER_MARGIN)
+				local corner = Vector2.new(screen.AbsoluteSize.X - width - NOTICE_CORNER_MARGIN, NOTICE_CORNER_MARGIN)
+				cards:setAnchor(corner, Vector2.new(width, 0))
+			else
+				cards:setAnchor(hud.AbsolutePosition, hud.AbsoluteSize)
+			end
 		end
-		hud:GetPropertyChangedSignal("AbsolutePosition"):Connect(followHud)
-		hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(followHud)
-		followHud()
+		hud:GetPropertyChangedSignal("AbsolutePosition"):Connect(placeNotices)
+		hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeNotices)
+		screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeNotices)
+		placeNotices()
 	end)
 
 	Net.CoopInvited.OnClientEvent:Connect(CoopController.onInvited)

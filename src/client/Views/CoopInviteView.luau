@@ -118,7 +118,8 @@ local function destroyToast(self: CoopInviteView, toast: Toast)
 end
 
 -- Adds an invitation from `name` that runs out `seconds` from now. Another notice for the same id replaces it.
-function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seconds: number)
+-- `duel` says it is an invitation to a Duel (a friendly PVP match) rather than to Co-op.
+function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seconds: number, duel: boolean?)
 	self:remove(id)
 	local colors, fonts = Theme.Colors, Theme.Fonts
 
@@ -131,7 +132,7 @@ function CoopInviteView.add(self: CoopInviteView, id: number, name: string, seco
 		TextColor3 = colors.Text,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Text = `{name} invites you to Co-op`,
+		Text = if duel then `{name} invites you to a Duel` else `{name} invites you to Co-op`,
 	})
 	local more = create("TextLabel", {
 		Name = "More",

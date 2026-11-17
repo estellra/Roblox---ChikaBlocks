@@ -45,7 +45,7 @@ export type Theme = {
 		Title: Color3, -- the player's title and newly unlocked titles
 		ExpTrack: Color3, -- EXP bar background
 		ExpFill: Color3,
-		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT)
+		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT), then PVP garbage (Config.PVP.GARBAGE_COLOR)
 		PieceOutlines: { Color3 }, -- the darker edge of each piece color
 	},
 	Transparency: {
@@ -189,6 +189,7 @@ local Theme: Theme = {
 			Color3.fromHex("#cfbdff"), -- 6 lavender (T)
 			Color3.fromHex("#9ee6e0"), -- 7 aqua (Zigzag)
 			Color3.fromHex("#ff9e9e"), -- 8 coral (BigCorner)
+			Color3.fromHex("#c9c3cd"), -- 9 garbage grey (PVP)
 		},
 		PieceOutlines = {
 			Color3.fromHex("#e0b850"),
@@ -199,6 +200,7 @@ local Theme: Theme = {
 			Color3.fromHex("#9f86e6"),
 			Color3.fromHex("#5cc4bc"),
 			Color3.fromHex("#e06a6a"),
+			Color3.fromHex("#9d95a3"),
 		},
 	},
 	Transparency = {

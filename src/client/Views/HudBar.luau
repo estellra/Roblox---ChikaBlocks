@@ -1,5 +1,6 @@
 --!strict
--- The bar above the board: pause button, score, best score (in Co-op: who the player is with) and combo. In landscape it sits on a card in the
+-- The bar above the board: pause button, score, best score (in Co-op: who the player is with) and combo. In a PVP
+-- match the match clock (TIME) takes the pills' place (setTimer). In landscape it sits on a card in the
 -- side column; in portrait it floats on the sky across the top. All sizes are shares of the HUD area, so it
 -- keeps its proportions on any screen. The score counts up to each new value instead of jumping.
 local TweenService = game:GetService("TweenService")
@@ -35,6 +36,8 @@ export type HudBar = typeof(setmetatable(
 		comboPill: Frame,
 		comboPop: UIScale,
 		combo: number, -- the combo on show; 0 when the pill is hidden
+		timeBlock: Frame,
+		timeLabel: TextLabel,
 	},
 	HudBar
 ))
@@ -114,6 +117,44 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		comboPill,
 	})
 
+	-- The match clock: "TIME" over "2:41", where the pills are.
+	local timeLabel = create("TextLabel", {
+		Name = "Time",
+		LayoutOrder = 2,
+		Size = UDim2.fromScale(1, 0.68),
+		BackgroundTransparency = 1,
+		FontFace = fonts.Title,
+		TextScaled = true,
+		TextColor3 = colors.Text,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "3:00",
+	}, { create("UITextSizeConstraint", { MinTextSize = SCORE_MIN, MaxTextSize = SCORE_MAX }) })
+	local timeBlock = create("Frame", {
+		Name = "TimeBlock",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Size = UDim2.fromScale(0.3, 0.86),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+		create("TextLabel", {
+			Name = "Caption",
+			LayoutOrder = 1,
+			Size = UDim2.fromScale(1, 0.26),
+			BackgroundTransparency = 1,
+			FontFace = fonts.Label,
+			TextScaled = true,
+			TextColor3 = colors.TextMuted,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "TIME",
+		}, { create("UITextSizeConstraint", { MinTextSize = 10, MaxTextSize = 16 }) }),
+		timeLabel,
+	})
+
 	local cardStroke = create("UIStroke", {
 		Color = colors.Outline,
 		Thickness = Theme.Stroke.Panel,
@@ -131,6 +172,7 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		pauseButton,
 		scoreBlock,
 		pills,
+		timeBlock,
 	})
 	pauseButton.Activated:Connect(onPause)
 
@@ -159,6 +201,8 @@ function HudBar.new(hudArea: GuiObject, onPause: () -> ()): HudBar
 		comboPill = comboPill,
 		comboPop = comboPop,
 		combo = 0,
+		timeBlock = timeBlock,
+		timeLabel = timeLabel,
 	}, HudBar)
 	bar:setLayout("Portrait")
 	return bar
@@ -175,6 +219,16 @@ function HudBar.setLayout(self: HudBar, mode: Mode)
 	self.cardStroke.Enabled = card
 	self.pauseButton.Position = UDim2.fromScale(if card then 0.07 else 0.04, 0.5)
 	self.pills.Position = UDim2.fromScale(if card then 0.93 else 0.965, 0.5)
+	self.timeBlock.Position = self.pills.Position
+end
+
+-- Shows the match clock (e.g. "2:41") where the pills are, or (nil) goes back to the pills.
+function HudBar.setTimer(self: HudBar, text: string?)
+	self.timeBlock.Visible = text ~= nil
+	self.pills.Visible = text == nil
+	if text and self.timeLabel.Text ~= text then
+		self.timeLabel.Text = text
+	end
 end
 
 function HudBar.setScore(self: HudBar, score: number, best: number)

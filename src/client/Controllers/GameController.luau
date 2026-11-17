@@ -7,7 +7,9 @@
 -- tryPlace() and listen through the on* functions.
 -- A Co-op run has its own protocol (CoopRunController) but is drawn and played with the same views and controls:
 -- it attaches itself as the run's Source, and from then on this controller asks it for the session to draw,
--- which pieces can be picked up and how a move is made, until it detaches.
+-- which pieces can be picked up and how a move is made, until it detaches. A PVP match (PvpRunController) attaches
+-- the same way, as a Source marked isMatch: it has no game over panel, revive or rotation purchase (it ends on its
+-- own result screen), and the pause panel's other choice is to forfeit.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -46,6 +48,10 @@ export type Source = {
 	leave: () -> (), -- Menu / Leave run
 	playAgain: () -> (),
 	takeOver: () -> (),
+	isMatch: boolean?, -- a PVP match (see above)
+	rotationText: (() -> string)?, -- the line under the tray, in place of the one worked out here
+	forfeit: (() -> ())?, -- the pause panel's Forfeit (a match)
+	slotCount: number?, -- pieces per set; default Co-op's
 }
 -- What the server sends with Profile (see GameService.Profile).
 export type Profile = {
@@ -216,6 +222,11 @@ local function hideGameOver()
 	end
 end
 
+-- Whether a run that is over gets the game over panel: not a PVP match, which ends on its own result screen.
+local function endsWithGameOver(): boolean
+	return source == nil or source.isMatch ~= true
+end
+
 local function replaceSession(newSession: GameSession.GameSession)
 	session = newSession
 	table.clear(predictions)
@@ -354,11 +365,15 @@ function GameController.start(_self: any)
 		}),
 	}
 	local hud, tray = views.hud, views.tray
+	-- A match lays the tray out as a row, as the portrait layout does, whatever the screen.
+	local function trayMode(mode: Gui.LayoutMode): Gui.LayoutMode
+		return if gui.getVariant() == "match" then "Portrait" else mode
+	end
 	hud:setLayout(gui.getMode())
-	tray:setLayout(gui.getMode())
+	tray:setLayout(trayMode(gui.getMode()))
 	gui.onLayoutChanged(function(mode)
 		hud:setLayout(mode)
-		tray:setLayout(mode)
+		tray:setLayout(trayMode(mode))
 	end)
 	Net.GameState.OnClientEvent:Connect(onGameState)
 	Net.MoveResult.OnClientEvent:Connect(onMoveResult)
@@ -387,6 +402,14 @@ end
 
 -- Closes the game over panel and asks for the main menu (MenuController listens).
 function GameController.requestMenu()
+	if source and source.isMatch and source.forfeit then
+		-- The pause panel of a match: Forfeit. The match's result screen comes next, not the menu.
+		source.forfeit()
+		if views then
+			views.hud:hidePause()
+		end
+		return
+	end
 	if source then
 		source.leave() -- leaves the room and detaches
 	end
@@ -419,7 +442,8 @@ end
 function GameController.requestRotations()
 	local now = os.clock()
 	local normal = source ~= nil or runMode == "normal" -- a Co-op run is always a normal one
-	if Config.ROTATION_PRODUCT == 0 or not normal or now - rotationsAskedAt < ROTATIONS_ASK_GAP_SECONDS then
+	local match = source ~= nil and source.isMatch == true -- bought rotations don't work in PVP
+	if Config.ROTATION_PRODUCT == 0 or not normal or match or now - rotationsAskedAt < ROTATIONS_ASK_GAP_SECONDS then
 		return
 	end
 	rotationsAskedAt = now
@@ -498,6 +522,9 @@ end
 -- game over).
 function GameController.getRotationText(): string
 	local bought = if profile then profile.rotations else 0
+	if source and source.rotationText then
+		return source.rotationText()
+	end
 	if source then
 		local status = source.statusText()
 		if source.session().isOver then
@@ -573,15 +600,17 @@ function GameController.tryPlace(slot: unknown, x: unknown, y: unknown): GameSes
 end
 
 -- A Co-op run takes over the screen: the tray is rearranged (the player's two pieces and the partner's, small),
--- the bar says who the player is with, and the run is asked for everything from now on.
-function GameController.attachSource(newSource: Source, tray: TrayView.Coop)
+-- the bar says who the player is with, and the run is asked for everything from now on. A PVP match passes no tray
+-- arrangement (its three pieces are all the player's).
+function GameController.attachSource(newSource: Source, tray: TrayView.Coop?)
 	source = newSource
 	startToken += 1 -- a StartGame still waiting for its retry must not start a solo run over this
 	reviveOffer = nil
 	hideGameOver()
 	if views then
 		views.tray:configure(tray)
-		views.hud:setPartner(tray.partnerName)
+		views.hud:setPartner(if tray then tray.partnerName else nil)
+		views.hud:setMatchPause(newSource.isMatch == true)
 		views.hud:setRevive(nil)
 	end
 	render()
@@ -599,6 +628,9 @@ function GameController.detachSource()
 		views.board:clearPartnerAim()
 		views.tray:configure(nil)
 		views.hud:setPartner(nil)
+		views.hud:setMatchPause(false)
+		views.hud:setTimer(nil)
+		views.gui.setVariant("normal")
 		for slot = 1, Config.COOP.SET_SIZE do
 			views.tray:setLocked(slot, false) -- every piece of a solo run can be picked up
 		end
@@ -629,7 +661,7 @@ function GameController.sourceReplaced()
 	GameController.showPartnerAim(nil)
 	render()
 	notify(sessionReplacedListeners)
-	if current().isOver then
+	if current().isOver and endsWithGameOver() then
 		presentGameOver(0)
 	end
 end
@@ -653,7 +685,7 @@ function GameController.sourceChanged(result: GameSession.PlaceResult?, mine: bo
 			ui.board:accent(result, Theme.Colors.Title)
 		end
 	end
-	if current().isOver and not gameOverPresented then
+	if current().isOver and not gameOverPresented and endsWithGameOver() then
 		presentGameOver(Theme.Motion.GameOverDelay)
 	end
 end
@@ -702,7 +734,7 @@ end
 
 -- How many pieces a set has in the run being played.
 function GameController.getSlotCount(): number
-	return if source then Config.COOP.SET_SIZE else Config.PIECES_PER_SET
+	return if source then source.slotCount or Config.COOP.SET_SIZE else Config.PIECES_PER_SET
 end
 
 function GameController.isCoop(): boolean

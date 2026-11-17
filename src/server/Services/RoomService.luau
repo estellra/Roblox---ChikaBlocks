@@ -35,9 +35,23 @@ local formedListeners: { (room: Rooms.Room, inviteId: number?) -> () } = {}
 local leftListeners: { (room: Rooms.Room, player: Player, seat: number) -> () } = {}
 local closedListeners: { (room: Rooms.Room) -> () } = {}
 
--- The Co-op remotes do nothing until the mode is playable, except in Studio where it is being built.
+-- The Co-op remotes do nothing until the mode is playable, except in Studio where it is being built. Duels likewise.
 local function enabled(): boolean
 	return COOP.ENABLED or IS_STUDIO
+end
+
+local function pvpEnabled(): boolean
+	return Config.PVP.ENABLED or IS_STUDIO
+end
+
+-- The room kind an invitation asks for: 1 (or nothing) is Co-op, 2 a Duel. Nil for anything else.
+local function modeOf(code: unknown): Rooms.Mode?
+	if code == nil or code == 1 then
+		return "coop"
+	elseif code == 2 and pvpEnabled() then
+		return "pvp"
+	end
+	return nil
 end
 
 local function isHere(player: Player): boolean
@@ -81,12 +95,14 @@ end
 
 local function emit(event: Rooms.Event)
 	if event.kind == "invited" then
-		GameService.logCoopInvite(event.from, event.inviteId, 1) -- Sent
+		if event.mode == "coop" then
+			GameService.logCoopInvite(event.from, event.inviteId, 1) -- Sent
+		end
 		local to = event.to :: Player
 		if isHere(to) then
 			-- Rooms counts in os.clock(); the client needs a time it shares with the server.
 			local expiresAt = workspace:GetServerTimeNow() + (event.expiresAt - os.clock())
-			Net.CoopInvited:FireClient(to, event.inviteId, (event.from :: Player).UserId, expiresAt)
+			Net.CoopInvited:FireClient(to, event.inviteId, (event.from :: Player).UserId, expiresAt, event.mode)
 		end
 	elseif event.kind == "result" then
 		local to = event.to :: Player
@@ -144,8 +160,12 @@ local function onPlayerAdded(player: Player)
 end
 
 function RoomService.start(_self: any)
-	Net.CoopInvite.OnServerEvent:Connect(function(player: Player, targetUserId: unknown)
+	Net.CoopInvite.OnServerEvent:Connect(function(player: Player, targetUserId: unknown, modeCode: unknown)
 		if not enabled() or not inviteLimiter:allow(player) then
+			return
+		end
+		local mode = modeOf(modeCode)
+		if not mode then
 			return
 		end
 		local userId = Validate.integer(targetUserId, -MAX_USER_ID, MAX_USER_ID)
@@ -157,7 +177,7 @@ function RoomService.start(_self: any)
 			Net.CoopInviteResult:FireClient(player, userId, "left") -- not in this server (any more)
 			return
 		end
-		rooms:invite(player, target, "coop")
+		rooms:invite(player, target, mode)
 	end)
 
 	Net.CoopInviteReply.OnServerEvent:Connect(function(player: Player, inviteId: unknown, accept: unknown)
@@ -229,10 +249,11 @@ function RoomService.leave(player: Player): boolean
 	return rooms:leave(player)
 end
 
--- For the Studio debug bridge: puts the player in a room with a practice partner (a table with UserId, Name and
--- IsBot, which is not in Players and hears nothing). False when the player can't be invited.
-function RoomService.pairWithBot(player: Player, bot: any): boolean
-	local outcome = rooms:invite(player, bot, "coop")
+-- For the Studio debug bridge (and, later, practice against a bot): puts the player in a room of `mode` (default
+-- "coop") with a practice partner (a table with UserId, Name and IsBot, which is not in Players and hears nothing).
+-- False when the player can't be invited.
+function RoomService.pairWithBot(player: Player, bot: any, mode: Rooms.Mode?): boolean
+	local outcome = rooms:invite(player, bot, mode or "coop")
 	if outcome.kind ~= "sent" then
 		return false
 	end
