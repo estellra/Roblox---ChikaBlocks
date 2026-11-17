@@ -313,6 +313,15 @@ local Theme: Theme = {
 		MascotHappy = "rbxassetid://118309270467534",
 		MascotCheer = "rbxassetid://93948772498372",
 		MascotSad = "rbxassetid://112838677243386",
+		-- Rank badges (Figma component set "RankBadge" 81:6639, exported to assets/rank/ at 256 px).
+		RankBronze = "rbxassetid://76245593339217",
+		RankSilver = "rbxassetid://135553059458816",
+		RankGold = "rbxassetid://107946232986668",
+		RankPlatinum = "rbxassetid://83934014688944",
+		RankDiamond = "rbxassetid://107554837727005",
+		RankMaster = "rbxassetid://88711728501403",
+		RankTop10 = "rbxassetid://106595571953368",
+		RankChampion = "rbxassetid://112100581145450",
 	},
 	MinTouchTarget = Vector2.new(44, 44),
 }

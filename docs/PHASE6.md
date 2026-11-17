@@ -666,7 +666,10 @@ Mỗi mùa thêm một store vào danh sách xóa (12 store mỗi năm), ít hơ
 - Ảnh: `production/qa/evidence/m28-rank/`.
 
 **Còn lại:**
-- Ảnh huy hiệu hạng (khiên Bronze tới Master, Top 10, Champion): xuất từ component `RankBadge` (81:6639) trong Figma rồi upload lên Roblox. Lúc làm, plugin figma-bridge không phản hồi. Tới khi có ảnh, `RankBadge` vẫn vẽ hình tròn màu.
+- ~~Ảnh huy hiệu hạng~~ Đã làm:
+  - Xuất 8 biến thể của `RankBadge` (81:6639) ở 256 px vào `assets/rank/`. Bridge bỏ qua tham số scale, nên xuất qua instance tạm phóng ×4, xuất xong thì xóa khỏi Figma.
+  - Upload qua Studio MCP; ID nằm trong `Theme.Images.Rank*`. `RankBadge` giờ hiện ảnh.
+  - Lúc upload, ảnh còn chờ Roblox kiểm duyệt nên trong Studio chỗ huy hiệu tạm trống; duyệt xong sẽ tự hiện.
 - Badge ID cho Gold, Diamond, Master.
 - Kiểm trên server thật sau khi publish (xem mục Test).
 
