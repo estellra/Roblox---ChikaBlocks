@@ -35,6 +35,8 @@ local specs = {
 	require("./CoopProgress.spec"),
 	require("./CoopTurns.spec"),
 	require("./CoopTurnsLockstep.spec"),
+	require("./PvpSession.spec"),
+	require("./PvpSimulation.spec"),
 }
 
 for _, spec in specs do

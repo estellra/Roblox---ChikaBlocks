@@ -27,6 +27,18 @@ return function(t: TestKit.TestKit)
 			end
 		end)
 
+		t.it("gives garbage a color id after the piece colors", function()
+			t.expect(Config.PVP.GARBAGE_COLOR).toBe(Config.COLOR_COUNT + 1)
+		end)
+
+		t.it("keeps PVP numbers in range", function()
+			local pvp = Config.PVP
+			t.expect(pvp.GARBAGE_PER_SET >= 1 and pvp.GARBAGE_PER_SET <= pvp.GARBAGE_QUEUE_MAX).toBe(true)
+			t.expect(pvp.ATTACK_BY_LINES[1]).toBe(0) -- one line alone attacks nobody
+			t.expect(pvp.STUCK_LOCK_SECONDS > 0 and pvp.STUCK_LOCK_SECONDS < pvp.MATCH_SECONDS).toBe(true)
+			t.expect(pvp.GENERATOR.MERCY_SMALL_MULTIPLIER).toBe(1)
+		end)
+
 		t.it("is frozen", function()
 			t.expect(table.isfrozen(Config)).toBe(true)
 		end)

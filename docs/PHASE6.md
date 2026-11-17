@@ -1,6 +1,6 @@
 # Giai đoạn 6: PVP Ranked
 
-> Plan đã duyệt. Mọi điểm BB đến CB đã chốt, xem [cuối file](#quyết-định-đã-chốt). Các số cần mô phỏng (bảng đòn, số giây khóa khay, điểm khi xóa hàng rác) chốt lại ở M24. Những gì còn chờ bạn trả lời nằm ở [Câu hỏi mở](#câu-hỏi-mở). Mockup PC đã có (14 màn, xem [Mockup giao diện](#mockup-giao-diện-pc)). Chưa có dòng code nào.
+> Plan đã duyệt. Mọi điểm BB đến CD đã chốt, xem [cuối file](#quyết-định-đã-chốt). Các số cần mô phỏng (bảng đòn, số giây khóa khay, điểm khi xóa hàng rác) chốt lại ở M24. Những gì còn chờ bạn trả lời nằm ở [Câu hỏi mở](#câu-hỏi-mở). Mockup PC đã có (14 màn, xem [Mockup giao diện](#mockup-giao-diện-pc)). M24 đã cài, xem [Kết quả M24](#kết-quả-m24); chưa có code cho M25 trở đi.
 
 ## Bối cảnh
 
@@ -37,7 +37,7 @@
 | Xóa 2 | 1 |
 | Xóa 3 | 2 |
 | Xóa 4 trở lên | 3 |
-| Nước có xóa hàng khi combo ≥ 3 | +1 |
+| Nước có xóa hàng khi combo ≥ 8 (chốt ở M24, trước là 3) | +1 |
 | Dọn sạch bảng | +2 |
 
 - **Triệt tiêu (BF):** đòn của mình trừ vào rác đang chờ của mình trước, bắt đầu từ hàng **sắp vào nhất**; phần dư mới sang hàng chờ rác của đối thủ. Hàng chờ tối đa `PVP.GARBAGE_QUEUE_MAX` (4), dư thì bỏ hàng mới nhất.
@@ -49,7 +49,7 @@
 - **Chi tiết hàng rác (BG):**
   - Hàng/cột bị đẩy ra khỏi mép đối diện **biến mất**, không tính điểm.
   - Nếu sau khi đẩy có hàng/cột đầy thì xóa ngay, **không điểm, không đổi combo**.
-  - Ô rác là ô thường (màu xám, id `COLOR_COUNT + 1`): hàng chứa ô rác vẫn xóa và tính điểm như hàng thường. Điểm này phải qua mô phỏng mới giữ được: xem câu hỏi mở số 1.
+  - Ô rác là ô thường (màu xám, id `COLOR_COUNT + 1`): hàng chứa ô rác vẫn xóa được. **Hàng rác vụn (CD):** hàng/cột có quá nửa số ô là rác khi xóa thì không có điểm xóa hàng, không tăng combo, không sinh đòn; hàng có ít rác hơn tính như hàng thường.
 
 ### Hết nước trước giờ (BD)
 
@@ -230,6 +230,57 @@ Các điểm này nằm ở câu hỏi mở 8 đến 11; mình không tự chọ
   - 309 test cũ pass không sửa.
 - **Studio:** không có gì, đúng như mốc.
 - **Hai người thật:** không có gì.
+
+### Kết quả M24
+
+Đã cài: `Board.pushLine`, `Generator.Overrides.MERCY_SMALL_MULTIPLIER`, `Rng.mix` (seed con cho bộ thứ *k*, luồng `"stuck"` và `"garbage"` theo chỗ), `Config.PVP`, `src/shared/PvpSession.luau`. Test: `PvpSession.spec` và `PvpSimulation.spec`, cộng test mới trong `Board`, `Generator`, `Rng`, `Config`. 347 test pass; 309 test cũ không sửa.
+
+- **Khác plan một chút:** `PvpSession` tự giữ luồng rác của nạn nhân, nên `receiveAttack(lines)` và phần chia bộ không nhận `rng`. Phía server, `place` tự chia bộ sau khối thứ 3 (`refill`) và tự gỡ khi hết nước (`stuck`); kết quả trả về mang hai phần đó để gửi client. Phía client dùng `deliver`, `applyStuck`, `setPending`.
+- **Bộ thứ *k*** dùng độ khó của điểm `(k - 1) × DIFFICULTY_SCORE_PER_SET`, nên bộ đầu tiên dễ như lúc bắt đầu ván solo.
+
+Mô phỏng: 200 trận giữa hai bot tham lam, mỗi nước mất 1,5–2,5 giây. Thêm 100 trận bot tự sát gặp bot tham lam.
+
+**Lần chạy đầu, với số khởi điểm** (combo ≥ 3 cộng đòn, hàng rác tính điểm như hàng thường):
+- Điểm khi có rác **cao hơn 7,2%** so với không rác. Mục tiêu là thấp hơn 10–25%.
+- Mỗi người gửi trung vị **21** hàng rác một ván. Mục tiêu là 3–6.
+
+Lý do:
+- **Điểm cộng combo là nguồn chính của rác.** Bot tham lam giữ combo rất dài: bỏ điểm cộng combo thì số rác gửi rơi từ 21 xuống 2.
+- **Rác đang giúp nạn nhân.** Mỗi lần đẩy rác là xóa miễn phí một hàng ở mép đối diện, và hàng 7/8 ô rất dễ ăn điểm.
+
+**Các biến thể đã thử** (điểm khi có rác so với không rác; số rác gửi trung vị):
+
+| Biến thể | Điểm | Rác gửi |
+|---|---|---|
+| Số khởi điểm | +7,2% | 21 |
+| Bỏ điểm cộng combo | +3,0% | 2 |
+| Bảng `{0,0,1,2}`, không cộng combo | +0,4% | 0 |
+| Cộng combo từ combo 4 / 5 / 8 | +11,7% / +9,2% / +7,5% | 19 / 16,5 / 11 |
+| 2 lỗ / 3 lỗ | +0,6% / −8,4% | 20 / 19 |
+| 2 lỗ, 2 hàng rác mỗi bộ | −3,6% | 20 |
+| Hàng quá nửa là rác thì không điểm (gọi là "hàng rác vụn") | −11,3% | 18 |
+| Hàng rác vụn, cộng combo từ combo 6 / **8** / 10 / 12 | −11,4% / **−9,7%** / −8,6% / −4,8% | 11 / **8** / 6 / 5 |
+| Hàng rác vụn, cộng combo chỉ khi xóa ≥ 2 hàng | −4,4% | 3 |
+
+Không biến thể nào đạt cả hai mục tiêu: gửi ít thì rác vào ít, nên hại ít.
+
+**Đã chốt (CD):**
+- Thêm luật **hàng rác vụn**: hàng/cột có quá `JUNK_LINE_GARBAGE_SHARE` (một nửa) số ô là rác (tính trên bảng trước nước đi) vẫn xóa, nhưng không có điểm xóa hàng, không tăng combo, không sinh đòn.
+- `ATTACK_COMBO_FROM = 8`.
+- Chọn mốc 8 thay vì 10, vì người thật giữ combo ngắn hơn bot nên sẽ gửi ít rác hơn số đo.
+
+**Số cuối cùng:**
+
+| Câu hỏi | Mục tiêu | Đo được | Đạt? |
+|---|---|---|---|
+| Rác có gây hại không? | Điểm trung vị thấp hơn 10–25% | 1563 có rác, 1731 không rác: thấp hơn 9,7% | Gần đạt |
+| Số hàng rác gửi mỗi người một ván | Trung vị 3–6 | 8 | Hơi cao, chấp nhận (người thật giữ combo ngắn hơn bot) |
+| Số lần hết nước mỗi người một ván | Trung vị 0–2 | Trung vị 1, nhiều nhất 5 | Có |
+| Cố tình hết nước có lợi không? | Bot tự sát thua ≥ 90% | Thua 100% (trung vị 16 lần hết nước); giữ khóa 5 giây | Có |
+| Hai bot nhận cùng bộ | Chỉ ghi lại | 88% của 5619 bộ | — |
+| Thời gian chia bộ | Dưới vài ms | Trung bình 0,043 ms, tệ nhất 0,84 ms | Có |
+
+Chỉnh lại sau lượt thử với người thật ở M26: đổi `ATTACK_COMBO_FROM` và `JUNK_LINE_GARBAGE_SHARE` trong `Config.PVP`.
 
 ## M25: ELO, rank, mùa
 
@@ -489,7 +540,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 ## Bạn cần làm
 
-1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 1 và 2 chờ số liệu M24; câu 10 cần trước M26; câu 3, 4, 6 và 11 cần trước M27; câu 7 cần trước M28.
+1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; câu 3, 4, 6 và 11 cần trước M27; câu 7 cần trước M28.
 2. Trước M26: cùng mình chạy lượt kiểm UI trong Studio (M6 solo, màn hình M19/M21/M22). Nếu Studio MCP kết nối được thì mình tự chạy phần một client.
 3. Cho mình biết **số người tối đa mỗi server** đang đặt trong Creator Hub và số người chơi cùng lúc hiện tại (để ước lượng hàng chờ trong server có đủ người không).
 4. Sau M26 và M27: thử với hai tài khoản thật trên hai thiết bị theo các danh sách "Hai người thật".
@@ -497,7 +548,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 ## Câu hỏi mở
 
-1. **Điểm khi xóa hàng có ô rác.** Đề xuất hiện tại là tính như hàng thường. Nếu mô phỏng M24 cho thấy rác làm tăng điểm của nạn nhân, các lựa chọn là: hàng rác có 2 lỗ; hàng mà quá nửa là ô rác thì không có điểm xóa hàng; hoặc ô rác phải xóa hai lần. Chốt sau khi có số liệu M24.
+1. ~~**Điểm khi xóa hàng có ô rác.**~~ Đã trả lời (quyết định CD): hàng quá nửa là ô rác thì không có điểm, combo hay đòn; cộng đòn combo từ combo 8. Số liệu ở [Kết quả M24](#kết-quả-m24).
 2. **Rò khối sắp tới.** Vì hai người nhận cùng dãy khối, người đi chậm hơn có thể suy ra bộ sắp tới từ bảng của đối thủ. Lựa chọn: (a) chấp nhận ở bản đầu và đo; (b) bảng nhỏ chỉ hiện đối thủ "tại cùng số bộ với mình" (server giữ ảnh chụp theo từng bộ); (c) bỏ cùng nguồn khối, mỗi người một seed. Mình nghiêng về (a) rồi (b) nếu thấy bị lợi dụng.
 3. **ConfigService.** Skill analytics-liveops khuyên để cờ bật tắt và số liệu cần chỉnh nhanh trong experience config (đổi không cần publish). Plan hiện để mọi số trong `Config.luau`. Với ranked, một cờ tắt khẩn cấp và các số ELO chỉnh được live có giá trị thật. Bạn muốn dùng ConfigService cho `PVP.RANKED_ENABLED` và nhóm số ELO/hàng chờ ngay từ M27, hay giữ `Config.luau` như các giai đoạn trước?
 4. **Tuổi tài khoản tối thiểu** để vào ranked (`player.AccountAge`)? Chặn nick phụ tốt hơn level 3 nhưng cũng chặn người mới thật.
@@ -506,7 +557,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 7. **Mùa đầu tiên** bắt đầu từ tháng nào, và có cần một "mùa thử" không tính quà để chỉnh số không?
 8. ~~**Rác đẩy hay thay?**~~ Đã trả lời: **đẩy cả bảng**, đúng như BC. Mockup `04` (hàng rác thay hàng đáy, 7 hàng trên đứng yên) chỉ là minh họa; khi cài, cả bảng dịch một ô và hàng/cột ở mép đối diện mất.
 9. ~~**Báo trước hướng rác?**~~ Đã trả lời: **có** (quyết định CB). Server rút hướng lúc rác vào hàng chờ và gửi cho nạn nhân; vị trí lỗ không báo trước.
-10. **Nút Pause trong trận.** Trận có đồng hồ không dừng được. Đề xuất: bấm Pause mở bảng có **Resume** và **Forfeit** (ranked ghi rõ "counts as a loss"), đồng hồ vẫn chạy. Cần trước M26.
+10. ~~**Nút Pause trong trận.**~~ Đã trả lời (quyết định CC): bấm Pause mở bảng có **Resume** và **Forfeit**, đồng hồ vẫn chạy.
 11. **Menu trên điện thoại ngang thấp.** Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Cần trước M27.
 
 ## Quyết định đã chốt
@@ -542,3 +593,5 @@ BB đến BF chốt khi hỏi luật; BG đến BZ là đề xuất của mình,
 | **BZ.** Đấu lại | Ranked có đấu lại trực tiếp không? | ✅ **Chốt:** không, chỉ "Queue again". Giao hữu có "Play again" cần cả hai. |
 | **CA.** Danh hiệu ở tab Rank | Hạng rank hay danh hiệu mốc cạnh tên? | ✅ **Chốt (theo mockup `05`):** tab Rank hiện tên hạng dưới tên người chơi; các tab khác giữ danh hiệu mốc. |
 | **CB.** Báo trước hướng rác | Người chơi có thấy trước rác vào từ phía nào không? | ✅ **Chốt:** có. Hướng rút lúc hàng rác vào hàng chờ và hiện ở từng nấc IN cùng mũi tên ở mép bảng; lỗ rút lúc vào bảng, không báo trước. Triệt tiêu lấy hàng sắp vào nhất; quá trần thì bỏ hàng mới nhất (hai chi tiết này là đề xuất của mình). |
+| **CC.** Nút Pause trong trận | Trận có đồng hồ thì Pause làm gì? | ✅ **Chốt:** mở bảng **Resume** và **Forfeit**, đồng hồ vẫn chạy; ván ranked ghi rõ "counts as a loss". |
+| **CD.** Rác giúp nạn nhân (câu hỏi mở 1) | Sửa luật rác thế nào sau mô phỏng M24? | ✅ **Chốt:** hàng rác vụn (quá nửa là ô rác) xóa không điểm, không combo, không đòn; cộng đòn combo từ combo 8. Bot: điểm thấp hơn 9,7% khi có rác, gửi 8 hàng mỗi ván. Chỉnh lại sau thử thật ở M26. |

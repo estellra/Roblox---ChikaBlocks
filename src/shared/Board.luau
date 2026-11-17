@@ -9,6 +9,8 @@ type Piece = Pieces.Piece
 
 export type Board = { cells: { number } }
 export type Lines = { rows: { number }, cols: { number } }
+-- The edge a garbage line is pushed in from (PVP).
+export type PushSide = "bottom" | "left" | "right"
 
 local SIZE = Config.GRID_SIZE
 local CELL_COUNT = SIZE * SIZE
@@ -122,6 +124,49 @@ function Board.clearRect(board: Board, x: number, y: number, width: number, heig
 			cells[row * SIZE + col + 1] = 0
 		end
 	end
+end
+
+-- Pushes a garbage line in from one edge (PVP). The whole board moves one cell away from that edge, the row or
+-- column pushed off the opposite edge is lost, and the new edge line gets `color` in every cell except `hole`
+-- (0 to GRID_SIZE - 1, counted left to right for "bottom", top to bottom for "left" and "right"). Returns the lines
+-- that are full afterwards; clearing them is up to the caller. Only the server and its client-side copy call this,
+-- never with values straight from a remote, so bad arguments are errors.
+function Board.pushLine(board: Board, side: PushSide, hole: number, color: number): Lines
+	if side ~= "bottom" and side ~= "left" and side ~= "right" then
+		error(`unknown side {side}`, 2)
+	end
+	if typeof(hole) ~= "number" or hole ~= math.floor(hole) or hole < 0 or hole >= SIZE then
+		error(`hole must be an integer from 0 to {SIZE - 1}, got {hole}`, 2)
+	end
+	if typeof(color) ~= "number" or color ~= math.floor(color) or color < 1 then
+		error(`color must be a positive integer, got {color}`, 2)
+	end
+	local cells = board.cells
+	if side == "bottom" then
+		for y = 0, SIZE - 2 do
+			for x = 0, SIZE - 1 do
+				cells[y * SIZE + x + 1] = cells[(y + 1) * SIZE + x + 1]
+			end
+		end
+		for x = 0, SIZE - 1 do
+			cells[(SIZE - 1) * SIZE + x + 1] = if x == hole then 0 else color
+		end
+	elseif side == "left" then
+		for y = 0, SIZE - 1 do
+			for x = SIZE - 1, 1, -1 do
+				cells[y * SIZE + x + 1] = cells[y * SIZE + x]
+			end
+			cells[y * SIZE + 1] = if y == hole then 0 else color
+		end
+	else
+		for y = 0, SIZE - 1 do
+			for x = 0, SIZE - 2 do
+				cells[y * SIZE + x + 1] = cells[y * SIZE + x + 2]
+			end
+			cells[y * SIZE + SIZE] = if y == hole then 0 else color
+		end
+	end
+	return Board.findCompleteLines(board)
 end
 
 -- Lines that placing the piece would complete, without changing the board. Empty if the move is invalid.

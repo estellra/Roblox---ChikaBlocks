@@ -86,6 +86,16 @@ return function(t: TestKit.TestKit)
 				t.expect(near(shares.Small, easy.Small * 2 / total, 1e-9)).toBe(true)
 				t.expect(near(shares.Small + shares.Medium + shares.Large + shares.Huge, 1, 1e-9)).toBe(true)
 			end)
+
+			t.it("turns mercy off with a multiplier override of 1", function()
+				local crowded = Generator.groupShares(0, 0.9, { MERCY_SMALL_MULTIPLIER = 1 })
+				local empty = Generator.groupShares(0, 0)
+				for group, share in empty do
+					t.expect(near(crowded[group], share, 1e-9)).toBe(true)
+				end
+				-- Without the override, the default still applies.
+				t.expect(Generator.groupShares(0, 0.9, {}).Small > empty.Small).toBe(true)
+			end)
 		end)
 
 		t.it("picks the fairness tier from the score, and the strictest one for revives", function()

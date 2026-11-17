@@ -117,6 +117,57 @@ local Config = {
 			SOLVER_NODE_BUDGET = 500,
 		}),
 	}),
+
+	-- PVP (see PvpSession and docs/PHASE6.md): two players, one board each, race for score against a clock and push
+	-- garbage lines onto each other. The numbers marked "M24" are starting points that tests/PvpSimulation.spec reports
+	-- on; see docs/PHASE6.md, "Kết quả M24".
+	PVP = table.freeze({
+		-- Off outside Studio until M27 (ranked queue); M26 makes a friendly match playable in Studio.
+		ENABLED = false,
+
+		-- A match lasts this long; moves the server receives later than END_GRACE_SECONDS after the end are dropped.
+		MATCH_SECONDS = 180,
+		END_GRACE_SECONDS = 0.3,
+
+		-- Free rotations per player per match. Bought rotations and paid revives can't be used in PVP.
+		FREE_ROTATIONS = 1,
+
+		-- Attack, in garbage lines, for one placement: by lines cleared at once (the last entry for that many or
+		-- more), plus a bonus when the move clears lines with the combo at COMBO_BONUS_FROM or more, plus a bonus
+		-- for clearing the board. M24: a bonus from combo 3 sent 21 lines per player per match (the greedy bot keeps long
+		-- combos); from combo 8 it sends 8.
+		ATTACK_BY_LINES = table.freeze({ 0, 1, 2, 3 }),
+		ATTACK_COMBO_FROM = 8,
+		ATTACK_COMBO_BONUS = 1,
+		ATTACK_BOARD_CLEAR_BONUS = 2,
+
+		-- Garbage waiting to enter a board: at most GARBAGE_QUEUE_MAX lines (more are dropped, newest first), and at
+		-- most GARBAGE_PER_SET of them enter each time a new set is dealt.
+		GARBAGE_QUEUE_MAX = 4,
+		GARBAGE_PER_SET = 1,
+
+		-- Color id of a garbage cell: one past the piece colors (Config.COLOR_COUNT + 1).
+		GARBAGE_COLOR = 9,
+
+		-- A cleared line in which more than this share of the cells were garbage is a "junk" line: it clears but earns
+		-- no clear points, no combo and no attack. Without this rule garbage helped its victim (an almost full line is
+		-- easy points): bot scores went up 7% with garbage; with it they go down 10% (M24).
+		JUNK_LINE_GARBAGE_SHARE = 0.5,
+
+		-- When no piece in the tray fits, the board's middle is cleared (like a revive), a new set is dealt and the
+		-- tray stays locked for this long. M24.
+		STUCK_LOCK_SECONDS = 5,
+
+		-- Both players draw set k with the difficulty of a solo run at score (k - 1) * DIFFICULTY_SCORE_PER_SET, so the
+		-- piece mix depends on how far the match is, not on either player's score. M24.
+		DIFFICULTY_SCORE_PER_SET = 100,
+
+		-- Replaces numbers in GENERATOR for PVP's sets. Mercy depends on how full one player's board is, which would
+		-- make the two players' draws differ, so it is off.
+		GENERATOR = table.freeze({
+			MERCY_SMALL_MULTIPLIER = 1,
+		}),
+	}),
 }
 
 return table.freeze(Config)

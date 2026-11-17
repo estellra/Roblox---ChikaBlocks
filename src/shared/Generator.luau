@@ -25,6 +25,7 @@ export type Overrides = {
 	WHOLE_SET_BELOW_SCORE: number?,
 	EACH_PIECE_BELOW_SCORE: number?,
 	SOLVER_NODE_BUDGET: number?,
+	MERCY_SMALL_MULTIPLIER: number?, -- 1 turns mercy off (PVP, see Config.PVP)
 }
 -- Returns the next set, or nil when it isn't available yet (the client waits for the server's).
 export type SetSource = (board: Board, score: number, reason: DealReason) -> { Piece }?
@@ -234,6 +235,7 @@ local Generator = {}
 -- Normalized share of each size group for one draw.
 function Generator.groupShares(score: number, fillRatio: number, overrides: Overrides?): GroupShares
 	local maxScore = pick(overrides and overrides.DIFFICULTY_MAX_SCORE, SETTINGS.DIFFICULTY_MAX_SCORE)
+	local mercy = pick(overrides and overrides.MERCY_SMALL_MULTIPLIER, SETTINGS.MERCY_SMALL_MULTIPLIER)
 	local t = math.clamp(score / maxScore, 0, 1)
 	local shares: GroupShares = {}
 	local total = 0
@@ -241,7 +243,7 @@ function Generator.groupShares(score: number, fillRatio: number, overrides: Over
 		local easy = SETTINGS.GROUP_SHARES_EASY[group]
 		local share = easy + (SETTINGS.GROUP_SHARES_HARD[group] - easy) * t
 		if group == "Small" and fillRatio > SETTINGS.MERCY_FILL_RATIO then
-			share *= SETTINGS.MERCY_SMALL_MULTIPLIER
+			share *= mercy
 		end
 		shares[group] = share
 		total += share

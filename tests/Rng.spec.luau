@@ -59,5 +59,40 @@ return function(t: TestKit.TestKit)
 				t.expect(count > 850 and count < 1150).toBe(true)
 			end
 		end)
+
+		t.describe("mix", function()
+			t.it("gives the same seed for the same inputs", function()
+				t.expect(Rng.mix(42, "set", 3)).toBe(Rng.mix(42, "set", 3))
+				t.expect(Rng.mix(42)).toBe(Rng.mix(42))
+			end)
+
+			t.it("gives different seeds when any input changes", function()
+				local seen: { [number]: boolean } = {}
+				local count = 0
+				local function add(value: number)
+					t.expect(value >= 0 and value < 2 ^ 32 and value == math.floor(value)).toBe(true)
+					t.expect(seen[value]).toBe(nil)
+					seen[value] = true
+					count += 1
+				end
+				for seed = 1, 20 do
+					add(Rng.mix(seed))
+					for k = 1, 20 do
+						add(Rng.mix(seed, "set", k))
+						add(Rng.mix(seed, "stuck", 1, k))
+						add(Rng.mix(seed, "stuck", 2, k))
+					end
+					add(Rng.mix(seed, "garbage", 1))
+					add(Rng.mix(seed, "garbage", 2))
+				end
+				t.expect(count).toBe(20 * 63)
+			end)
+
+			t.it("feeds streams that start differently", function()
+				local a = Rng.new(Rng.mix(7, "set", 1))
+				local b = Rng.new(Rng.mix(7, "set", 2))
+				t.expect(a:nextUInt32() ~= b:nextUInt32()).toBe(true)
+			end)
+		end)
 	end)
 end
