@@ -14,17 +14,29 @@
 -- highest score that counted for that pair, as it is (no title). Both players of a pair are one row whichever of
 -- them writes it.
 --
+-- The Rank board ("Rank_season") has a store per ranked season ("Rank_2026M12", see Seasons): a player's rank points
+-- with their title, once they have played the season's minimum of ranked games. Points go down as well as up, so the
+-- board is written with the current value, like the others.
+--
 -- A stored value is stat * TITLE_SLOTS + title index (0 = no title; see Progression.titleIndex): the title
 -- shows next to the name without reading every player's profile, and the order is still by stat.
 
 export type Weekly = { week: string, bestScore: number, exp: number }
 
 -- The parts of PlayerData this module reads and changes.
-export type Stats = { bestScore: number, level: number, weekly: Weekly, robuxDonated: number }
+export type Stats = {
+	bestScore: number,
+	level: number,
+	weekly: Weekly,
+	robuxDonated: number,
+	pvp: { rating: number, season: string, seasonGames: number }?,
+}
 
 local TITLE_SLOTS = 100
 local DAY = 86400
 local STORE_NAMES: { [string]: string } = { Supporters = "RobuxDonated" } -- boards whose store is named otherwise
+
+local Seasons = require("./Seasons")
 
 local Leaderboards = {}
 
@@ -35,6 +47,8 @@ Leaderboards.SUPPORTERS_KEY = "Supporters_all"
 Leaderboards.SUPPORTERS_TOP = 10 -- entries on the Supporters board
 Leaderboards.COOP_KEY = "Coop_all"
 Leaderboards.COOP_TOP = 50 -- entries on the Co-op board
+Leaderboards.RANK_KEY = "Rank_season"
+Leaderboards.RANK_TOP = 50 -- entries on the Rank board
 Leaderboards.TITLE_SLOTS = TITLE_SLOTS
 
 -- ISO 8601 week of a UTC time, like "2026W45". Weeks start on Monday; week 1 holds the year's first Thursday.
@@ -64,7 +78,10 @@ end
 function Leaderboards.storeName(key: string, time: number, isStudio: boolean): string
 	local board, period = string.match(key, "^(%a+)_(%a+)$")
 	assert(board and period, `bad board key {key}`)
-	local name = if period == "week" then `{board}_{Leaderboards.weekKey(time)}` else (STORE_NAMES[board] or board)
+	local name = if period == "week"
+		then `{board}_{Leaderboards.weekKey(time)}`
+		elseif period == "season" then `{board}_{Seasons.id(time)}`
+		else (STORE_NAMES[board] or board)
 	return if isStudio then `{name}_Dev` else name
 end
 
@@ -95,8 +112,14 @@ function Leaderboards.recordRun(weekly: Weekly, time: number, score: number, exp
 end
 
 -- What each board should hold for this player now, by board key. Boards where the player has nothing to
--- show (no score, still level 1, nothing this week) are left out so they don't fill up with zeros.
-function Leaderboards.values(stats: Stats, titleIndex: number, time: number): { [string]: number }
+-- show (no score, still level 1, nothing this week, fewer than `rankMinGames` ranked games this season) are left out
+-- so they don't fill up with zeros.
+function Leaderboards.values(
+	stats: Stats,
+	titleIndex: number,
+	time: number,
+	rankMinGames: number?
+): { [string]: number }
 	local values: { [string]: number } = {}
 	if stats.bestScore > 0 then
 		values.Highscore_all = Leaderboards.encode(stats.bestScore, titleIndex)
@@ -115,6 +138,10 @@ function Leaderboards.values(stats: Stats, titleIndex: number, time: number): { 
 	end
 	if stats.robuxDonated > 0 then
 		values[Leaderboards.SUPPORTERS_KEY] = math.floor(stats.robuxDonated)
+	end
+	local pvp = stats.pvp
+	if pvp and rankMinGames and pvp.season == Seasons.id(time) and pvp.seasonGames >= rankMinGames then
+		values[Leaderboards.RANK_KEY] = Leaderboards.encode(pvp.rating, titleIndex)
 	end
 	return values
 end

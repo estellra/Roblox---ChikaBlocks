@@ -191,6 +191,59 @@ return function(t: TestKit.TestKit)
 			t.expect(logged).toEqual({ { kind = "custom", name = "CoopConflict", value = 1, fields = {} } })
 		end)
 
+		t.it("logs the ranked queue funnel and the wait", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:pvpQueueStep(PLAYER, "t1", 1)
+			telemetry:pvpQueueStep(PLAYER, "t1", 2)
+			telemetry:pvpQueueWait(PLAYER, 12.7, "matched")
+			t.expect(logged).toEqual({
+				{ kind = "funnel", name = "Queued", step = 1, session = "t1", fields = { "PvpQueue" } },
+				{ kind = "funnel", name = "Matched", step = 2, session = "t1", fields = { "PvpQueue" } },
+				{ kind = "custom", name = "PvpQueueWait", value = 12, fields = { "matched" } },
+			})
+		end)
+
+		t.it("logs a finished PVP match as one event per number, split by kind", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:pvpMatchEnded(PLAYER, {
+				kind = "ranked",
+				result = "win",
+				score = 3420,
+				margin = 440,
+				how = "time",
+				sent = 6,
+				cancelled = 3,
+				taken = 2,
+				stuck = 1,
+				pendingAtEnd = 0,
+			})
+			local byName: { [string]: Logged } = {}
+			for _, entry in logged do
+				byName[entry.name] = entry
+			end
+			t.expect(byName.PvpMatchScore.value).toBe(3420)
+			t.expect(byName.PvpMatchScore.fields).toEqual({ "ranked", "win" })
+			t.expect(byName.PvpMargin.value).toBe(440)
+			t.expect(byName.PvpEnd.fields).toEqual({ "time" })
+			t.expect(byName.PvpGarbageSent.value).toBe(6)
+			t.expect(byName.PvpGarbageCancelled.value).toBe(3)
+			t.expect(byName.PvpGarbageTaken.value).toBe(2)
+			t.expect(byName.PvpStuck.value).toBe(1)
+			t.expect(byName.PvpPendingAtEnd.fields).toEqual({ "ranked" })
+			t.expect(#logged).toBe(8)
+		end)
+
+		t.it("logs the rating gap of a ranked pair, an unrated pair, and the tier a season ended on", function()
+			local telemetry, logged = newTelemetry()
+			telemetry:pvpMatched(PLAYER, -35.5, true)
+			telemetry:pvpSeasonTier(PLAYER, "Gold")
+			t.expect(logged).toEqual({
+				{ kind = "custom", name = "PvpRatingGap", value = 35, fields = {} },
+				{ kind = "custom", name = "PvpUnratedPair", value = 1, fields = {} },
+				{ kind = "custom", name = "PvpSeasonTier", value = 1, fields = { "Gold" } },
+			})
+		end)
+
 		t.it("logs the rotation funnel per run and how each rotation was paid", function()
 			local telemetry, logged = newTelemetry()
 			telemetry:rotationStep(PLAYER, "4", 1)

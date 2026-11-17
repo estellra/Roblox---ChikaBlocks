@@ -18,7 +18,7 @@ export type Sink = {
 -- How a run ended for a player. "coop": they left their solo run to join a Co-op room. For a Co-op run: "gameover"
 -- with the partner still in it, "partner_left" for game over after the partner had left (the score no longer
 -- counted), "left" when the player left it, "takeover" when the partner put them out for being idle.
-export type RunEnd = "gameover" | "left" | "restart" | "coop" | "partner_left" | "takeover"
+export type RunEnd = "gameover" | "left" | "restart" | "coop" | "partner_left" | "takeover" | "pvp"
 
 export type RunSummary = { mode: string, score: number, moves: number, maxCombo: number, isOver: boolean }
 
@@ -46,6 +46,27 @@ local DONATE_STEPS = table.freeze({ "Requested", "Paid" })
 -- Funnel "CoopInvite": an invitation sent, accepted, the Co-op run started, and the run finished (the session is
 -- the invitation's id; each step is logged for the player who invited).
 local COOP_INVITE_STEPS = table.freeze({ "Sent", "Accepted", "RunStarted", "RunFinished" })
+
+-- Funnel "PvpQueue": joined the ranked queue, matched, the match started, the match finished (the session is the
+-- queue ticket).
+local PVP_QUEUE_STEPS = table.freeze({ "Queued", "Matched", "Started", "Finished" })
+
+-- How a PVP match ended for the analytics: by time, a forfeit, a player leaving or dropping, or voided by the server.
+export type PvpEnd = "time" | "forfeit" | "disconnect" | "void"
+
+-- One player's finished PVP match.
+export type PvpMatchSummary = {
+	kind: string, -- "ranked", "friendly" or "bot"
+	result: string, -- "win", "loss", "draw" or "void"
+	score: number,
+	margin: number, -- the player's score minus the opponent's
+	how: PvpEnd,
+	sent: number,
+	cancelled: number,
+	taken: number,
+	stuck: number,
+	pendingAtEnd: number,
+}
 
 local Telemetry = {}
 Telemetry.__index = Telemetry
@@ -131,6 +152,43 @@ function Telemetry.moveAccepted(self: Telemetry, player: any, data: Progress, li
 	if linesCleared > 0 then
 		advance(self, player, data, 4)
 	end
+end
+
+-- One step of the ranked queue funnel; `ticket` tells one wait apart from the next.
+function Telemetry.pvpQueueStep(self: Telemetry, player: any, ticket: string, step: number)
+	self.sink.funnel(player, "PvpQueue", ticket, step, PVP_QUEUE_STEPS[step])
+end
+
+-- How long a player waited in the queue, and how the wait ended: "matched", "cancelled", "bot" (they chose practice)
+-- or "left" (the server).
+function Telemetry.pvpQueueWait(self: Telemetry, player: any, seconds: number, how: string)
+	self.sink.custom(player, "PvpQueueWait", math.floor(seconds), { how })
+end
+
+-- A PVP match is over for the player. No user ids or names in any field.
+function Telemetry.pvpMatchEnded(self: Telemetry, player: any, match: PvpMatchSummary)
+	local kind = { match.kind }
+	self.sink.custom(player, "PvpMatchScore", match.score, { match.kind, match.result })
+	self.sink.custom(player, "PvpMargin", match.margin, kind)
+	self.sink.custom(player, "PvpEnd", 1, { match.how })
+	self.sink.custom(player, "PvpGarbageSent", match.sent, kind)
+	self.sink.custom(player, "PvpGarbageCancelled", match.cancelled, kind)
+	self.sink.custom(player, "PvpGarbageTaken", match.taken, kind)
+	self.sink.custom(player, "PvpStuck", match.stuck, kind)
+	self.sink.custom(player, "PvpPendingAtEnd", match.pendingAtEnd, kind)
+end
+
+-- A ranked pair was made: how far apart their points were, and whether the match is unrated (the pair's daily limit).
+function Telemetry.pvpMatched(self: Telemetry, player: any, ratingGap: number, unrated: boolean)
+	self.sink.custom(player, "PvpRatingGap", math.floor(math.abs(ratingGap)), {})
+	if unrated then
+		self.sink.custom(player, "PvpUnratedPair", 1, {})
+	end
+end
+
+-- A season rolled over for the player: the highest tier they reached in it.
+function Telemetry.pvpSeasonTier(self: Telemetry, player: any, tier: string)
+	self.sink.custom(player, "PvpSeasonTier", 1, { tier })
 end
 
 -- `data` may be nil when the player is leaving and their data is already gone; only game over needs it.

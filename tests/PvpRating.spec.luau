@@ -2,6 +2,7 @@
 local Config = require("../src/shared/Config")
 local PlayerData = require("../src/server/PlayerData")
 local PvpRating = require("../src/server/PvpRating")
+local Seasons = require("../src/server/Seasons")
 local TestKit = require("./TestKit")
 
 local RATING = Config.PVP.RATING
@@ -16,7 +17,10 @@ end
 
 return function(t: TestKit.TestKit)
 	t.describe("PvpRating", function()
-		local rating = PvpRating.new(RATING, Config.PVP.TIERS)
+		-- Every season gives rewards here; the trial season has its own tests below.
+		local settings = table.clone(RATING) :: any
+		settings.REWARDS_FROM_SEASON = "2000M01"
+		local rating = PvpRating.new(settings, Config.PVP.TIERS)
 
 		t.describe("matches", function()
 			t.it("writes the three possible changes when a match opens", function()
@@ -160,6 +164,31 @@ return function(t: TestKit.TestKit)
 				rating:rollSeason(pvp, "2027M01")
 				t.expect(pvp.medals["2026M12"]).toBe(nil)
 				t.expect((pvp.lastSeason :: any).games).toBe(RATING.MEDAL_MIN_GAMES - 1)
+			end)
+
+			t.it("gives no medal for a trial season, but still records it and pulls the points", function()
+				local trial = PvpRating.new(RATING, Config.PVP.TIERS)
+				local pvp = fresh()
+				local first = Seasons.previous(RATING.REWARDS_FROM_SEASON)
+				trial:rollSeason(pvp, first)
+				pvp.rating, pvp.peak, pvp.seasonGames = 1300, 1300, 8
+				trial:rollSeason(pvp, RATING.REWARDS_FROM_SEASON)
+				t.expect(pvp.medals[first]).toBe(nil)
+				t.expect((pvp.lastSeason :: any).id).toBe(first)
+				t.expect(pvp.rating).toBe(1150)
+				t.expect(trial:awardTop(pvp, first, 1, 10)).toBe(false)
+			end)
+
+			t.it("gives a Top 10 medal once, Champion for first place, keeping the season's tier", function()
+				local pvp = fresh()
+				rating:rollSeason(pvp, "2027M01")
+				pvp.rating, pvp.peak, pvp.seasonGames = 1700, 1700, 12
+				rating:rollSeason(pvp, "2027M02")
+				t.expect(rating:awardTop(pvp, "2027M01", 11, 10)).toBe(false)
+				t.expect(rating:awardTop(pvp, "2027M01", 1, 10)).toBe(true)
+				t.expect(pvp.medals["2027M01"]).toEqual({ tier = "Diamond", top = 1 })
+				t.expect(rating:awardTop(pvp, "2027M01", 3, 10)).toBe(false)
+				t.expect(pvp.medals["2027M01"].top).toBe(1)
 			end)
 
 			t.it("tells the tier from the points", function()

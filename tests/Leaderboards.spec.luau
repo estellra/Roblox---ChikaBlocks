@@ -120,6 +120,31 @@ return function(t: TestKit.TestKit)
 			end
 		)
 
+		t.it("puts the Rank board in a store per season", function()
+			t.expect(Leaderboards.storeName(Leaderboards.RANK_KEY, 1796083200, false)).toBe("Rank_2026M12")
+			t.expect(Leaderboards.storeName(Leaderboards.RANK_KEY, 1796083200, true)).toBe("Rank_2026M12_Dev")
+		end)
+
+		t.it("writes a player's rank points once they have played enough ranked games this season", function()
+			local time = 1796083200 -- December 2026
+			local stats: any = {
+				bestScore = 0,
+				level = 1,
+				weekly = { week = "", bestScore = 0, exp = 0 },
+				robuxDonated = 0,
+				pvp = { rating = 1320, season = "2026M12", seasonGames = 4 },
+			}
+			t.expect(Leaderboards.values(stats, 2, time, 5)[Leaderboards.RANK_KEY]).toBe(nil)
+			stats.pvp.seasonGames = 5
+			t.expect(Leaderboards.values(stats, 2, time, 5)[Leaderboards.RANK_KEY]).toBe(Leaderboards.encode(1320, 2))
+			-- Points from another season don't belong on this season's board.
+			stats.pvp.season = "2026M11"
+			t.expect(Leaderboards.values(stats, 2, time, 5)[Leaderboards.RANK_KEY]).toBe(nil)
+			-- Without the minimum (callers that don't write ranks), no Rank value.
+			stats.pvp.season = "2026M12"
+			t.expect(Leaderboards.values(stats, 2, time)[Leaderboards.RANK_KEY]).toBe(nil)
+		end)
+
 		t.it("writes again only what changed", function()
 			local written = { Highscore_all = 100, Level_all = 200 }
 			local changes = Leaderboards.changes({ Highscore_all = 100, Level_all = 300, Level_week = 5 }, written)

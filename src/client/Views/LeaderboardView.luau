@@ -10,6 +10,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
 local Clay = require("./Clay")
+local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local RankBadge = require("./RankBadge")
 local Format = require("./Format")
 local Theme = require("./Theme")
 local create = require("./Create")
@@ -27,15 +29,40 @@ local CLOSE_KEYS: { [Enum.KeyCode]: boolean } = {
 }
 
 export type Period = "all" | "week"
-export type Board = "Highscore" | "Level" | "Coop"
+export type Board = "Highscore" | "Level" | "Coop" | "Rank"
 export type Entry = { rank: number, userId: number, userIds: { number }?, name: string, title: string?, value: number }
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number,
-	you: { best: number, level: number, weekBest: number, weekExp: number, coopBest: number },
+	you: {
+		best: number,
+		level: number,
+		weekBest: number,
+		weekExp: number,
+		coopBest: number,
+		rank: {
+			rating: number,
+			wins: number,
+			losses: number,
+			draws: number?,
+			seasonGames: number,
+			season: string,
+			seasonEnds: string,
+			minGames: number,
+			medals: { string },
+		}?,
+	},
 }
 
-type Row = { frame: Frame, medal: Frame, rank: TextLabel, name: TextLabel, title: TextLabel, value: TextLabel }
+type Row = {
+	frame: Frame,
+	medal: Frame,
+	rank: TextLabel,
+	badge: Frame, -- the rank tier's badge, on the Rank board
+	name: TextLabel,
+	title: TextLabel,
+	value: TextLabel,
+}
 
 local LeaderboardView = {}
 LeaderboardView.__index = LeaderboardView
@@ -46,7 +73,10 @@ export type LeaderboardView = typeof(setmetatable(
 		gui: ScreenGui,
 		header: Frame,
 		tabArea: Frame,
-		tabs: { [string]: Frame }, -- "all", "week", "Highscore", "Level" (Clay buttons)
+		tabs: { [string]: Frame }, -- "all", "week", "Highscore", "Level", "Coop", "Rank" (Clay buttons)
+		seasonLabel: TextLabel, -- the Rank board's season, in place of the period tabs
+		medalsLabel: TextLabel, -- the player's season medals, under the Rank board
+		rankVisible: boolean,
 		rows: { Row },
 		list: ScrollingFrame,
 		status: TextLabel,
@@ -144,6 +174,10 @@ local function newRow(index: number): Row
 		Size = UDim2.new(1, -150, 0.4, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
+	local badge = RankBadge.new(24, nil)
+	badge.AnchorPoint = Vector2.new(0, 0.5)
+	badge.Position = UDim2.new(0, 46, 0.5, 0)
+	badge.Visible = false
 	local value = text("Value", "", fonts.Title, 20, colors.Text, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -10, 0, 0),
@@ -161,11 +195,12 @@ local function newRow(index: number): Row
 	}, {
 		create("UICorner", { CornerRadius = Theme.Radius.Button }),
 		medal,
+		badge,
 		name,
 		title,
 		value,
 	})
-	return { frame = frame, medal = medal, rank = rank, name = name, title = title, value = value }
+	return { frame = frame, medal = medal, rank = rank, badge = badge, name = name, title = title, value = value }
 end
 
 function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): LeaderboardView
@@ -187,7 +222,16 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		Highscore = tabButton("Highscore", "Highscore", 3),
 		Level = tabButton("Level", "Level", 4),
 		Coop = tabButton("Coop", "Co-op", 5),
+		Rank = tabButton("Rank", "Rank", 6),
 	}
+	tabs.Rank.Visible = false
+	-- The Rank board has one period, its season: this line takes the period tabs' place.
+	local seasonLabel = text("Season", "", fonts.Label, 15, colors.TextMuted, {
+		LayoutOrder = 0,
+		Size = UDim2.new(1, 0, 0, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = false,
+	})
 	-- Two rows of two tabs, or one row of four on short screens (see layout()).
 	local tabArea = create("Frame", {
 		Name = "Tabs",
@@ -209,7 +253,9 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		tabs.Highscore,
 		tabs.Level,
 		tabs.Coop,
+		tabs.Rank,
 	})
+	seasonLabel.Parent = tabArea
 
 	local header = create("Frame", {
 		Name = "Header",
@@ -264,6 +310,14 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		TextTruncate = Enum.TextTruncate.None,
 	})
 	local youPill = Clay.pill({ name = "You", text = "", icon = Theme.Images.Crown, order = 1 })
+	local medalsLabel = text("Medals", "", fonts.Label, 13, colors.Title, {
+		LayoutOrder = 6,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.None,
+		Visible = false,
+	})
 	local youRow = create("Frame", {
 		Name = "You",
 		LayoutOrder = 5,
@@ -318,6 +372,7 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 			list,
 			status,
 			youRow,
+			medalsLabel,
 		}),
 		closeButton, -- on top of the body, outside its layout
 	})
@@ -337,6 +392,9 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 		header = header,
 		tabArea = tabArea,
 		tabs = tabs,
+		seasonLabel = seasonLabel,
+		medalsLabel = medalsLabel,
+		rankVisible = false,
 		rows = rows,
 		list = list,
 		status = status,
@@ -352,14 +410,15 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 	}, LeaderboardView)
 
 	local function choose(period: Period?, board: Board?)
-		if period == "week" and self.board == "Coop" then
-			return -- the Co-op board has no weekly version
+		if period == "week" and (self.board == "Coop" or self.board == "Rank") then
+			return -- the Co-op and Rank boards have no weekly version
 		end
 		self.period = period or self.period
 		self.board = board or self.board
-		if self.board == "Coop" then
+		if self.board == "Coop" or self.board == "Rank" then
 			self.period = "all"
 		end
+		self:layout()
 		self.list.CanvasPosition = Vector2.zero
 		self:render()
 	end
@@ -393,6 +452,12 @@ function LeaderboardView.new(playerGui: PlayerGui, onClose: () -> ()): Leaderboa
 			choose(nil, "Coop")
 		end)
 	)
+	table.insert(
+		self.connections,
+		Clay.face(tabs.Rank).Activated:Connect(function()
+			choose(nil, "Rank")
+		end)
+	)
 	table.insert(self.connections, closeButton.Activated:Connect(onClose))
 	table.insert(
 		self.connections,
@@ -415,14 +480,46 @@ function LeaderboardView.layout(self: LeaderboardView)
 	self.header.Visible = not compact
 	local padding = self.tabArea:FindFirstChildOfClass("UIPadding") :: UIPadding
 	padding.PaddingRight = UDim.new(0, if compact then CLOSE_SIZE + 10 else 0)
-	local period = if compact then UDim2.new(0.2, -7, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
-	local board = if compact then period else UDim2.new(1 / 3, -6, 0, TAB_HEIGHT)
+	-- On the Rank board the season line takes the period tabs' place (mockup 05-leaderboard-rank-tab).
+	local rank = self.board == "Rank"
+	self.tabs.all.Visible = not rank
+	self.tabs.week.Visible = not rank
+	self.seasonLabel.Visible = rank
+	local boards = if self.rankVisible then 4 else 3
+	local shown = boards + (if rank then 0 else 2)
+	local period = if compact then UDim2.new(1 / shown, -7, 0, TAB_HEIGHT) else UDim2.new(0.5, -4, 0, TAB_HEIGHT)
+	local board = if compact then UDim2.new(1 / shown, -7, 0, TAB_HEIGHT) else UDim2.new(1 / boards, -6, 0, TAB_HEIGHT)
 	for key, button in self.tabs do
 		button.Size = if key == "all" or key == "week" then period else board
 	end
 end
 
+-- Shows the Rank tab (ranked is open in this server), or hides it.
+function LeaderboardView.setRankVisible(self: LeaderboardView, visible: boolean)
+	self.rankVisible = visible
+	self.tabs.Rank.Visible = visible
+	if not visible and self.board == "Rank" then
+		self.board = "Highscore"
+	end
+	self:layout()
+	self:render()
+end
+
+-- The tier of a number of rank points (Config.PVP.TIERS).
+local function tierOf(points: number): string
+	local id = Config.PVP.TIERS[1].id
+	for _, tier in Config.PVP.TIERS do
+		if points >= tier.from then
+			id = tier.id
+		end
+	end
+	return id
+end
+
 local function formatValue(board: Board, period: Period, value: number): string
+	if board == "Rank" then
+		return Format.withCommas(value)
+	end
 	if board == "Level" then
 		return if period == "week" then `{Format.withCommas(value)} EXP` else `Lv {value}`
 	end
@@ -432,15 +529,17 @@ end
 -- Draws the chosen board from the last snapshot (or "Loading…" before one arrives).
 function LeaderboardView.render(self: LeaderboardView)
 	local coop = self.board == "Coop" -- ranked by pair, all time only
+	local ranked = self.board == "Rank" -- this season only
 	for key, button in self.tabs do
 		-- The Co-op board has one period, so there is nothing to choose between: "All time" is not picked out.
-		local selected = key == self.board or (not coop and key == self.period)
+		local selected = key == self.board or (not coop and not ranked and key == self.period)
 		Clay.setStyle(button, if selected then "primary" else "secondary")
 	end
 	Clay.setEnabled(self.tabs.week, not coop) -- there is no weekly Co-op board: the tab goes pale
 
 	local snapshot = self.snapshot
-	local entries = if snapshot then snapshot.boards[if coop then "Coop_all" else `{self.board}_{self.period}`] else nil
+	local key = if coop then "Coop_all" elseif ranked then "Rank_season" else `{self.board}_{self.period}`
+	local entries = if snapshot then snapshot.boards[key] else nil
 	local me = Players.LocalPlayer.UserId
 	for i, row in self.rows do
 		local entry = entries and entries[i]
@@ -455,9 +554,18 @@ function LeaderboardView.render(self: LeaderboardView)
 			row.rank.Text = tostring(entry.rank)
 			row.name.Text = entry.name
 			row.title.Text = entry.title or ""
+			-- On the Rank board: the tier's badge before the name, and the tier's name under it (decision CA).
+			row.badge.Visible = ranked
+			local left = if ranked then 78 else 48
+			row.title.Position = UDim2.new(0, left, 0.5, 0)
+			if ranked then
+				local tier = tierOf(entry.value)
+				RankBadge.paint(row.badge, tier)
+				row.title.Text = tier
+			end
 			-- Without a title (a pair has none) the name sits in the middle of the row.
 			local hasTitle = row.title.Text ~= ""
-			row.name.Position = if hasTitle then UDim2.fromOffset(48, 4) else UDim2.fromOffset(48, 0)
+			row.name.Position = if hasTitle then UDim2.fromOffset(left, 4) else UDim2.fromOffset(left, 0)
 			row.name.Size = UDim2.new(1, -150, if hasTitle then 0.5 else 1, 0)
 			row.value.Text = formatValue(self.board, self.period, entry.value)
 			-- The player's own row stands out in gold; the others alternate pale stripes.
@@ -479,10 +587,28 @@ function LeaderboardView.render(self: LeaderboardView)
 	self.status.Text = if not empty
 		then ""
 		elseif coop then "No co-op scores yet. Play a run with a friend to get on the board!"
+		elseif ranked then "No ranked players yet this season. Play ranked to get on the board!"
 		else "No scores yet. Play a run to get on the board!"
 	self.status.Visible = empty
 	local you = snapshot.you
-	if coop then
+	local rank = you.rank
+	self.medalsLabel.Visible = false
+	if ranked and rank then
+		self.seasonLabel.Text = `Season {rank.season} · ends {rank.seasonEnds}`
+		local tier = tierOf(rank.rating)
+		local more = rank.minGames - rank.seasonGames
+		youLabel.Text = if more > 0
+			then `You: {tier} · {Format.withCommas(rank.rating)} · {more} more ranked {if more == 1
+				then "game"
+				else "games"} to show here`
+			else `You: {tier} · {Format.withCommas(rank.rating)} · {rank.wins}W {rank.losses}L{if (
+					rank.draws or 0
+				) > 0
+				then ` {rank.draws}D`
+				else ""}`
+		self.medalsLabel.Text = `Medals: {table.concat(rank.medals, "  ·  ")}`
+		self.medalsLabel.Visible = #rank.medals > 0
+	elseif coop then
 		youLabel.Text = `Your co-op best: {Format.withCommas(you.coopBest)}`
 	elseif self.board == "Highscore" then
 		youLabel.Text = if self.period == "week"

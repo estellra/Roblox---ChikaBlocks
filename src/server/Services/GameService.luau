@@ -356,12 +356,13 @@ function GameService.onGameOver(callback: (player: Player, runId: number) -> ())
 	table.insert(gameOverListeners, callback)
 end
 
--- The player is leaving their solo run for a Co-op room: the run is logged as ended ("coop") and forgotten, so
--- nothing of it lingers. A run that was already over has been logged.
-function GameService.abandonRun(player: Player)
+-- The player is leaving their solo run for a Co-op room ("coop", the default) or a PVP match or the ranked queue
+-- ("pvp"): the run is logged as ended that way and forgotten, so nothing of it lingers. A run that was already over
+-- has been logged.
+function GameService.abandonRun(player: Player, how: Telemetry.RunEnd?)
 	local summary = runs:summary(player)
 	if summary and not summary.isOver then
-		telemetry:runEnded(player, DataService.get(player), summary, "coop")
+		telemetry:runEnded(player, DataService.get(player), summary, how or "coop")
 	end
 	runs:remove(player)
 	runProgress[player] = nil
@@ -465,6 +466,11 @@ function GameService.getRecentEvents(): { string }
 end
 
 -- For the Studio debug bridge.
+-- The analytics, for the services that log their own events (PvpService).
+function GameService.getTelemetry(): Telemetry.Telemetry
+	return telemetry
+end
+
 function GameService.getRuns(): GameRuns.GameRuns
 	return runs
 end

@@ -7,13 +7,16 @@
 --   Roblox's own erasure tooling can find it);
 -- - one entry "<id>" in each leaderboard OrderedDataStore. An OrderedDataStore entry cannot carry user ids, so
 --   Roblox cannot link these itself; the weekly boards have a store per week, and this lists every week since
---   the first publish.
+--   the first publish, and the Rank board a store per season (month) since ranked began.
+-- The ranked queue's pair counts ("PvpPairs" in MemoryStore, keyed by the pair) expire on their own within 24 hours,
+-- so nothing is erased there.
 -- - the Co-op board is the exception: its rows are pairs "<id>_<id>" in the "Coop" store, so a row can't be found by
 --   one id. scripts/erase-user.luau lists the store page by page and deletes the rows pairKeyMatches() accepts. The
 --   profile does not keep who a player played with, so those rows are the only trace of a pairing, and erasing
 --   either player removes the row for both.
 -- Studio's "_Dev" stores are left out: they only ever hold the developer's own test data.
 local Leaderboards = require("./Leaderboards")
+local Seasons = require("./Seasons")
 
 local WEEK_SECONDS = 7 * 86400
 
@@ -26,6 +29,8 @@ Erasure.TOPIC = "EraseUser" -- the MessagingService topic live servers listen on
 Erasure.PROFILE_STORE = "PlayerData"
 -- 2026-10-30 00:00 UTC, the day the project began. No leaderboard store is older than this.
 Erasure.FIRST_WEEK_TIME = 1793318400
+-- 2026-11-01 00:00 UTC, the first ranked season. No Rank store is older than this.
+Erasure.FIRST_SEASON_TIME = 1793491200
 Erasure.COOP_STORE = "Coop" -- the Co-op board's OrderedDataStore, kept apart from orderedStoreNames() (see above)
 Erasure.MAX_USER_ID = 1e13 -- far above today's ids; also keeps tostring() from switching to exponent notation
 
@@ -70,6 +75,12 @@ function Erasure.orderedStoreNames(now: number): { string }
 	end
 	for _, board in Leaderboards.BOARDS do
 		add(Leaderboards.storeName(`{board}_week`, now, false))
+	end
+	-- Rank stores come last, so the lists above keep their order.
+	local season, last = Seasons.id(Erasure.FIRST_SEASON_TIME), Seasons.id(now)
+	while season <= last do
+		add(`Rank_{season}`)
+		season = Seasons.following(season)
 	end
 	return names
 end

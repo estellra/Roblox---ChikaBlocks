@@ -20,6 +20,9 @@
 -- requests) each time somebody is erased; far past tens of thousands of pairs it wants an index of its own.
 -- --dry-run lists the deletes without making any request. --no-kick skips step 1 (the player is known offline).
 -- Studio's "_Dev" stores are not touched.
+-- The leaderboard stores include the Rank board's store of every ranked season ("Rank_2026M11", ...). Not scanned:
+-- the ranked queue's pair counts ("PvpPairs" in MemoryStore, keyed by a pair of ids) expire on their own within 24
+-- hours, and nothing else of PVP is kept (no match history, no opponent ids).
 --
 -- The Co-op scan reads the list response as documented ("orderedDataStoreEntries" with an "id" each, and a
 -- "nextPageToken"); that shape was not seen live, so the script says how many rows it scanned and warns when a page

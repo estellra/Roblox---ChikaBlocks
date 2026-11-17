@@ -185,6 +185,17 @@ local Config = {
 		-- After this long without an opponent the queue screen offers practice against the bot and inviting friends.
 		QUEUE_OFFER_SECONDS = 20,
 
+		-- The Rank board (M28): one OrderedDataStore per season, "Rank_<season>". A player shows on it once they have
+		-- played RANK_MIN_GAMES ranked games that season. When a season is over, its final top TOP_REWARD get a "Top 10"
+		-- medal (first place "Champion"); servers read that board FINAL_TOP_DELAY_SECONDS after the season ends, so the
+		-- last writes have landed.
+		RANK_MIN_GAMES = 5,
+		TOP_REWARD = 10,
+		FINAL_TOP_DELAY_SECONDS = 10 * 60,
+		-- Roblox badges for reaching a tier the first time (0 until the badge is created in Creator Hub). Never change an
+		-- id once shipped.
+		TIER_BADGES = table.freeze({ Gold = 0, Diamond = 0, Master = 0 }),
+
 		-- The queue (see Matchmaker): each player accepts an opponent within WINDOW_BASE + WINDOW_PER_SECOND points per
 		-- second waited, at most WINDOW_MAX; two players are matched when each is within the other's window. A pair that
 		-- met in the last RECENT_SECONDS is matched only when nobody else fits. Pairs are made every TICK_SECONDS.
@@ -215,6 +226,9 @@ local Config = {
 			-- (their highest tier that season).
 			SEASON_PULL = 0.5,
 			MEDAL_MIN_GAMES = 1,
+			-- Seasons before this one are trial seasons: they have a Rank board but give no medals or Top 10. Set it to
+			-- the month after ranked is switched on (the first month is the trial).
+			REWARDS_FROM_SEASON = "2027M01",
 		}),
 
 		-- Rank tiers, lowest first: a player is in the last tier whose `from` their points reach. Never rename an id

@@ -30,6 +30,27 @@ local function award(player: Player, data: PlayerData.PlayerData, milestone: Pro
 	end
 end
 
+-- Awards badge `badgeId` for `key` (e.g. "rank_Gold") unless the data says it was awarded already or it is on its
+-- way; remembered in data.badgesAwarded[key] once Roblox confirms. A badgeId of 0 (not created yet) does nothing.
+function RewardService.awardBadge(player: Player, data: PlayerData.PlayerData, key: string, badgeId: number)
+	if badgeId == 0 or data.badgesAwarded[key] then
+		return
+	end
+	local inFlight = awarding[player]
+	if not inFlight then
+		inFlight = {}
+		awarding[player] = inFlight
+	end
+	if inFlight[key] then
+		return
+	end
+	inFlight[key] = true
+	task.spawn(function()
+		award(player, data, { id = key, badgeId = badgeId } :: any)
+		inFlight[key] = nil
+	end)
+end
+
 -- Claims newly reached milestones and starts awarding any badge still owed. Returns the milestones claimed
 -- by this call, in rank order.
 function RewardService.sync(player: Player, data: PlayerData.PlayerData): { Progression.Milestone }

@@ -24,6 +24,7 @@ export type Settings = Elo.Settings & {
 	START: number,
 	SEASON_PULL: number,
 	MEDAL_MIN_GAMES: number,
+	REWARDS_FROM_SEASON: string, -- earlier seasons are trial seasons: no medals
 }
 
 local PvpRating = {}
@@ -60,7 +61,7 @@ function PvpRating.rollSeason(self: PvpRating, pvp: PvpData, seasonId: string): 
 	if old ~= "" then
 		local tier = Seasons.tier(self.tiers, pvp.peak)
 		pvp.lastSeason = { id = old, rating = pvp.rating, peak = pvp.peak, games = pvp.seasonGames, tier = tier }
-		if pvp.seasonGames >= settings.MEDAL_MIN_GAMES then
+		if pvp.seasonGames >= settings.MEDAL_MIN_GAMES and old >= settings.REWARDS_FROM_SEASON then
 			pvp.medals[old] = { tier = tier }
 		end
 		pvp.rating = settings.START + round((pvp.rating - settings.START) * settings.SEASON_PULL)
@@ -69,6 +70,30 @@ function PvpRating.rollSeason(self: PvpRating, pvp: PvpData, seasonId: string): 
 	pvp.season = seasonId
 	pvp.seasonGames = 0
 	return true
+end
+
+--- The player finished season `seasonId` at `place` on its final Rank board (1 is first): a place in the top `top`
+--- adds a "Top 10" medal, first place "Champion" (`top` = 1 in the medal). Only once per season, and not for a trial
+--- season. Returns whether it gave one.
+function PvpRating.awardTop(self: PvpRating, pvp: PvpData, seasonId: string, place: number, top: number): boolean
+	if place < 1 or place > top or seasonId < self.settings.REWARDS_FROM_SEASON then
+		return false
+	end
+	local medal = pvp.medals[seasonId]
+	if medal and medal.top then
+		return false
+	end
+	local tier = if medal
+		then medal.tier
+		elseif pvp.lastSeason and pvp.lastSeason.id == seasonId then pvp.lastSeason.tier
+		else Seasons.tier(self.tiers, pvp.peak)
+	pvp.medals[seasonId] = { tier = tier, top = place }
+	return true
+end
+
+--- The highest tier the player has reached this season.
+function PvpRating.peakTier(self: PvpRating, pvp: PvpData): string
+	return Seasons.tier(self.tiers, pvp.peak)
 end
 
 --- A ranked match `matchId` starts against an opponent with `opponentRating` points: writes what each result would

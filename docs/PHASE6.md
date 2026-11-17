@@ -629,6 +629,47 @@ Mỗi mùa thêm một store vào danh sách xóa (12 store mỗi năm), ít hơ
 - **Studio:** chơi trận ranked với `pvpbot queue` rồi `boards` đọc lại từ `Rank_<mùa>_Dev`; tab Rank; lệnh debug `season +1` (lệch đồng hồ truyền vào) để thấy chuyển mùa, kéo điểm, huy chương; `lune run scripts/erase-user.luau <id> --dry-run` in thêm các store `Rank_`.
 - **Sau khi publish (chỉ liệt kê):** chạy `erase-user.luau` thật trên tài khoản thử đã chơi ranked và kiểm dòng Rank biến mất; xem funnel `PvpQueue` và các sự kiện trên Analytics; badge sau khi có ID; hai tài khoản thấy nhau trên tab Rank.
 
+### Kết quả M28
+
+**Đã làm:**
+- **Bảng Rank:**
+  - `Leaderboards` có bảng `Rank_season`, lưu ở store `Rank_<mùa>` (`_Dev` trong Studio).
+  - Chỉ ghi khi đã có `RANK_MIN_GAMES` (5) ván trong mùa. Ghi sau mỗi trận tính điểm (cách nhau ít nhất 20 giây) và ở vòng đọc mỗi phút; mỗi phút đọc top 50.
+  - Profile và snapshot bảng gửi client phần `you.rank`: điểm, thắng/thua/hòa, mùa, "ends Nov 30", huy chương.
+- **Mùa thử (trả lời câu hỏi mở 7):** `RATING.REWARDS_FROM_SEASON = "2027M01"`. Các mùa trước đó vẫn có bảng Rank nhưng không cấp huy chương hay Top 10. **Khi bật PVP, đặt giá trị này là tháng kế tiếp tháng bật.**
+- **Quà cuối mùa:**
+  - Huy chương hạng cấp lúc chuyển mùa (như M25), trừ mùa thử.
+  - Top 10 và Champion: mỗi server đọc top 10 chung cuộc của mùa vừa xong một lần, sau ranh giới mùa 10 phút (`LeaderboardService.finalTop`). Huy chương cấp cho người có tên khi họ vào game, hoặc ngay lúc đọc xong nếu họ đang ở server (`PvpRating.awardTop`, mỗi mùa một lần).
+- **Badge:** `Config.PVP.TIER_BADGES` (Gold, Diamond, Master) trao qua `RewardService.awardBadge` khi lần đầu đạt hạng. Badge ID còn là 0, chờ bạn tạo trên Creator Hub.
+- **Xóa dữ liệu:**
+  - `Erasure.orderedStoreNames` liệt kê thêm `Rank_<mùa>` cho mọi mùa từ `FIRST_SEASON_TIME` (2026-11-01), xếp cuối danh sách để các store cũ giữ thứ tự.
+  - `erase-user.luau` ghi chú rằng `PvpPairs` tự hết hạn.
+  - Chạy thử `--dry-run` đã in ra `Rank_2026M11`.
+- **Analytics:**
+  - Funnel `PvpQueue` (Queued, Matched, Started, Finished).
+  - Sự kiện: `PvpQueueWait` (`matched`, `cancelled`, `bot`, `left`); `PvpMatchScore`, `PvpMargin`, `PvpEnd`, `PvpGarbageSent`, `PvpGarbageCancelled`, `PvpGarbageTaken`, `PvpStuck`, `PvpPendingAtEnd`; `PvpRatingGap`, `PvpUnratedPair`, `PvpSeasonTier`.
+  - Ván solo bỏ dở để vào PVP ghi cách kết thúc `pvp`. Không có UserId hay tên trong trường nào.
+- **Giao diện:** tab Rank (`05`) có dòng mùa, huy hiệu, tên hạng dưới tên người chơi (CA), ô "You: Gold · 1,320 · 14W 9L", dòng huy chương các mùa. Tab Rank chỉ hiện khi server bật `RankedOpen`.
+- **Debug (Studio):**
+  - `pvp nil <n> season` đẩy đồng hồ mùa lên n tháng rồi chuyển mùa cho người chơi.
+  - `pvpbot queue` không cho hai bot vào hàng chờ cùng lúc. Lúc thử, hai bot đã ghép với nhau.
+- **Test:** thêm test cho `Leaderboards`, `Erasure`, `Seasons`, `PvpRating` (mùa thử, Top 10) và `Telemetry`. 441 test pass.
+- **Hai test cũ phải sửa vì luật mới:**
+  - `Erasure.spec` đếm đúng số store, nay có thêm `Rank_2026M11`.
+  - `PvpRating.spec` dùng mùa 2026M12, nay là mùa thử.
+
+**Thử trong Studio:**
+- 5 trận ranked với bot, rồi `boards` đọc lại `Rank_2026M11_Dev`.
+- Tab Rank khớp mockup `05`.
+- `pvp nil 1 season`: điểm kéo 989 → 994, ghi `lastSeason`, mùa thử không có huy chương.
+- Analytics ghi đủ funnel và các sự kiện.
+- Ảnh: `production/qa/evidence/m28-rank/`.
+
+**Còn lại:**
+- Ảnh huy hiệu hạng (khiên Bronze tới Master, Top 10, Champion): xuất từ component `RankBadge` (81:6639) trong Figma rồi upload lên Roblox. Lúc làm, plugin figma-bridge không phản hồi. Tới khi có ảnh, `RankBadge` vẫn vẽ hình tròn màu.
+- Badge ID cho Gold, Diamond, Master.
+- Kiểm trên server thật sau khi publish (xem mục Test).
+
 ## M29: Ghép liên server (phác thảo)
 
 Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `PvpQueueWait` kết thúc bằng `bot` hoặc `cancelled` chiếm đa số trong khi tổng số người đang chơi đủ lớn). Có plan chi tiết riêng khi tới nơi. Hướng theo skill `roblox-teleport-matchmaking`:
@@ -673,7 +714,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 ## Bạn cần làm
 
-1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; câu 7 cần trước M28.
+1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; không còn câu nào chặn M28.
 2. Trước M26: cùng mình chạy lượt kiểm UI trong Studio (M6 solo, màn hình M19/M21/M22). Nếu Studio MCP kết nối được thì mình tự chạy phần một client.
 3. Cho mình biết **số người tối đa mỗi server** đang đặt trong Creator Hub và số người chơi cùng lúc hiện tại (để ước lượng hàng chờ trong server có đủ người không).
 4. Sau M26 và M27: thử với hai tài khoản thật trên hai thiết bị theo các danh sách "Hai người thật".
@@ -687,7 +728,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 4. ~~**Tuổi tài khoản tối thiểu**~~ Đã trả lời: không, chỉ cần level ≥ 3. Câu gốc: để vào ranked (`player.AccountAge`)? Chặn nick phụ tốt hơn level 3 nhưng cũng chặn người mới thật.
 5. ~~**Danh hiệu rank cạnh tên.**~~ Đã trả lời bằng mockup `05`: tab Rank hiện tên hạng dưới tên người chơi, không hiện danh hiệu mốc (quyết định CA).
 6. ~~**Hàng chờ chạy nền.**~~ Đã trả lời: không, người chơi ngồi ở màn hàng chờ như mockup `08`/`09`. Bản đầu người chơi ngồi ở màn hàng chờ. Có muốn cho chơi solo trong lúc chờ (ghép được thì hiện thẻ "Match found" như thẻ mời) không? Tốt cho lúc vắng, nhưng thêm một bước Accept và các ca hết hạn.
-7. **Mùa đầu tiên** bắt đầu từ tháng nào, và có cần một "mùa thử" không tính quà để chỉnh số không?
+7. ~~**Mùa đầu tiên**~~ Đã trả lời: tháng bật PVP là mùa thử, không có quà; mùa có quà bắt đầu từ `RATING.REWARDS_FROM_SEASON`. Câu gốc: bắt đầu từ tháng nào, và có cần một "mùa thử" không tính quà để chỉnh số không?
 8. ~~**Rác đẩy hay thay?**~~ Đã trả lời: **đẩy cả bảng**, đúng như BC. Mockup `04` (hàng rác thay hàng đáy, 7 hàng trên đứng yên) chỉ là minh họa; khi cài, cả bảng dịch một ô và hàng/cột ở mép đối diện mất.
 9. ~~**Báo trước hướng rác?**~~ Đã trả lời: **có** (quyết định CB). Server rút hướng lúc rác vào hàng chờ và gửi cho nạn nhân; vị trí lỗ không báo trước.
 10. ~~**Nút Pause trong trận.**~~ Đã trả lời (quyết định CC): bấm Pause mở bảng có **Resume** và **Forfeit**, đồng hồ vẫn chạy.

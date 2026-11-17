@@ -6,14 +6,19 @@
 --   what this server has (UpdateAsync), so a pair's old record is never lowered by a server that doesn't know it;
 -- - reads the top of every board once a minute, resolves display names in one batch, and keeps the result
 --   for clients, who ask with RequestLeaderboard. Clients never touch the DataStores.
+-- - once a season is over (and FINAL_TOP_DELAY_SECONDS later, so its last writes have landed), reads its final top
+--   TOP_REWARD from that season's Rank store, which nobody writes any more, so PvpService can give the Top 10 medals.
+--   Every server reads it once on its own; no scheduled job is needed.
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserService = game:GetService("UserService")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local DataService = require("./DataService")
 local Leaderboards = require("../Leaderboards")
+local Seasons = require("../Seasons")
 local Net = require(ReplicatedStorage.Shared.Net)
 local PlayerData = require("../PlayerData")
 local Progression = require(ReplicatedStorage.Shared.Progression)
@@ -32,8 +37,29 @@ export type Entry = { rank: number, userId: number, userIds: { number }?, name: 
 export type Snapshot = {
 	boards: { [string]: { Entry } },
 	updatedAt: number, -- os.time() of the last read
-	you: { best: number, level: number, weekBest: number, weekExp: number, donated: number, coopBest: number },
+	you: {
+		best: number,
+		level: number,
+		weekBest: number,
+		weekExp: number,
+		donated: number,
+		coopBest: number,
+		rank: {
+			rating: number,
+			wins: number,
+			losses: number,
+			draws: number,
+			seasonGames: number,
+			season: string, -- the season now
+			seasonEnds: string, -- "Dec 31"
+			minGames: number, -- ranked games this season before the player shows on the board
+			medals: { string }, -- "2026M12 Gold", "2026M11 Champion", newest first
+		},
+	},
 }
+
+-- A season's final top, read once it is over: user ids in order (first place first).
+export type FinalTop = { season: string, userIds: { number } }
 
 -- What this server knows of one pair's score on the Co-op board.
 type Pair = {
@@ -55,6 +81,8 @@ local refreshQueued = false -- a refreshSoon() is waiting to run
 local writesInFlight = 0 -- DataStore writes started and not finished, so shutdown can wait for them
 local lastFlush: { [Player]: number } = {} -- when each player's boards were last written
 local coopPairs: { [string]: Pair } = {} -- the Co-op pairs this server has a score for, by row key
+local finalTop: FinalTop? = nil
+local finalTopListeners: { (top: FinalTop) -> () } = {}
 
 local function storeFor(key: string, time: number): OrderedDataStore
 	return DataStoreService:GetOrderedDataStore(Leaderboards.storeName(key, time, IS_STUDIO))
@@ -82,7 +110,8 @@ function LeaderboardService.flush(player: Player, data: PlayerData.PlayerData, m
 		done = {}
 		written[player] = done
 	end
-	local values = Leaderboards.values(data, Progression.titleIndex(data.milestonesClaimed), now)
+	local values =
+		Leaderboards.values(data, Progression.titleIndex(data.milestonesClaimed), now, Config.PVP.RANK_MIN_GAMES)
 	for key, value in Leaderboards.changes(values, done) do
 		writesInFlight += 1
 		task.spawn(function()
@@ -226,6 +255,7 @@ function LeaderboardService.refresh()
 		end
 	end
 	table.insert(reads, { key = Leaderboards.COOP_KEY, top = Leaderboards.COOP_TOP })
+	table.insert(reads, { key = Leaderboards.RANK_KEY, top = Leaderboards.RANK_TOP })
 	table.insert(reads, { key = Leaderboards.SUPPORTERS_KEY, top = Leaderboards.SUPPORTERS_TOP })
 
 	local raw: { [string]: { RawItem } } = {}
@@ -289,6 +319,55 @@ function LeaderboardService.refresh()
 	updatedAt = now
 end
 
+-- Reads the final top of the season that ended, once it has been over for FINAL_TOP_DELAY_SECONDS. Trial seasons give
+-- no rewards, so they are not read.
+local function readFinalTop()
+	local now = os.time()
+	local current = Seasons.id(now)
+	local ended = Seasons.previous(current)
+	if finalTop and finalTop.season == ended then
+		return
+	end
+	if ended < Config.PVP.RATING.REWARDS_FROM_SEASON then
+		return
+	end
+	if now - Seasons.startOf(current) < Config.PVP.FINAL_TOP_DELAY_SECONDS then
+		return
+	end
+	local store = DataStoreService:GetOrderedDataStore(if IS_STUDIO then `Rank_{ended}_Dev` else `Rank_{ended}`)
+	local ok, page = pcall(function()
+		return store:GetSortedAsync(false, Config.PVP.TOP_REWARD):GetCurrentPage()
+	end)
+	if not ok then
+		if IS_STUDIO then
+			warn(`[ChikaBlock] final top of {ended} not read: {page}`)
+		end
+		return -- tried again at the next refresh
+	end
+	local userIds: { number } = {}
+	for _, item in page do
+		local userId = tonumber(item.key)
+		if userId then
+			table.insert(userIds, userId)
+		end
+	end
+	local top: FinalTop = { season = ended, userIds = userIds }
+	finalTop = top
+	for _, listener in finalTopListeners do
+		task.spawn(listener, top)
+	end
+end
+
+-- The final top of the season that ended, once it has been read; nil before.
+function LeaderboardService.finalTop(): FinalTop?
+	return finalTop
+end
+
+-- Called when a season's final top has been read.
+function LeaderboardService.onFinalTop(callback: (top: FinalTop) -> ())
+	table.insert(finalTopListeners, callback)
+end
+
 -- Reads the boards again in a few seconds, e.g. after a donation so the Supporters board shows it. Asking
 -- again meanwhile changes nothing.
 function LeaderboardService.refreshSoon()
@@ -322,6 +401,21 @@ function LeaderboardService.describe(): string
 		table.insert(coopParts, `{entry.rank}. {entry.name} {entry.value}`)
 	end
 	table.insert(lines, `Coop: {if coop then table.concat(coopParts, " | ") else "not loaded"}`)
+	local rank = boards[Leaderboards.RANK_KEY]
+	local rankParts = {}
+	for _, entry in rank or {} do
+		table.insert(rankParts, `{entry.rank}. {entry.name} {entry.value}`)
+	end
+	table.insert(
+		lines,
+		`Rank ({Leaderboards.storeName(Leaderboards.RANK_KEY, os.time(), IS_STUDIO)}): {if rank
+			then table.concat(rankParts, " | ")
+			else "not loaded"}`
+	)
+	table.insert(
+		lines,
+		`final top: {if finalTop then `{finalTop.season} {table.concat(finalTop.userIds, ",")}` else "not read"}`
+	)
 	local supporters = boards[Leaderboards.SUPPORTERS_KEY]
 	local parts = {}
 	for _, entry in supporters or {} do
@@ -337,8 +431,30 @@ function LeaderboardService.describe(): string
 	return table.concat(lines, "\n")
 end
 
+-- The player's season medals for the Rank tab, newest first: "2026M12 Gold", "2026M11 Champion".
+local function medalLines(pvp: PlayerData.PvpData): { string }
+	local seasons = {}
+	for season in pvp.medals do
+		table.insert(seasons, season)
+	end
+	table.sort(seasons, function(a: string, b: string): boolean
+		return a > b
+	end)
+	local lines = {}
+	for _, season in seasons do
+		local medal = pvp.medals[season]
+		local top = if medal.top == 1 then "Champion" elseif medal.top then `Top {medal.top}` else nil
+		table.insert(lines, if top then `{season} {medal.tier} · {top}` else `{season} {medal.tier}`)
+	end
+	return lines
+end
+
 local function snapshotFor(data: PlayerData.PlayerData): Snapshot
-	Leaderboards.rollWeek(data.weekly, os.time())
+	local now = os.time()
+	local season = Seasons.id(now)
+	local pvp = data.pvp
+	local current = pvp.season == season
+	Leaderboards.rollWeek(data.weekly, now)
 	return {
 		boards = boards,
 		updatedAt = updatedAt,
@@ -349,6 +465,17 @@ local function snapshotFor(data: PlayerData.PlayerData): Snapshot
 			weekExp = data.weekly.exp,
 			donated = data.robuxDonated,
 			coopBest = data.coopBest,
+			rank = {
+				rating = pvp.rating,
+				wins = pvp.wins,
+				losses = pvp.losses,
+				draws = pvp.draws,
+				seasonGames = if current then pvp.seasonGames else 0,
+				season = season,
+				seasonEnds = Seasons.lastDayText(season),
+				minGames = Config.PVP.RANK_MIN_GAMES,
+				medals = medalLines(pvp),
+			},
 		},
 	}
 end
@@ -394,6 +521,7 @@ function LeaderboardService.start(_self: any)
 	task.spawn(function()
 		while true do
 			LeaderboardService.refresh()
+			readFinalTop()
 			task.wait(REFRESH_SECONDS)
 		end
 	end)

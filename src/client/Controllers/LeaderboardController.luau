@@ -46,6 +46,12 @@ function LeaderboardController.start(_self: any)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local leaderboard = LeaderboardView.new(playerGui, LeaderboardController.close)
 	view = leaderboard
+	-- The Rank tab shows where ranked is open (the server says; see PvpService).
+	local function refreshRank()
+		leaderboard:setRankVisible(ReplicatedStorage:GetAttribute("RankedOpen") == true)
+	end
+	refreshRank()
+	ReplicatedStorage:GetAttributeChangedSignal("RankedOpen"):Connect(refreshRank)
 	Net.Leaderboard.OnClientEvent:Connect(function(snapshot: LeaderboardView.Snapshot)
 		leaderboard:setSnapshot(snapshot)
 	end)

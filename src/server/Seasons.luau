@@ -14,6 +14,61 @@ function Seasons.id(time: number): string
 	return string.format("%dM%02d", date.year, date.month)
 end
 
+--- When season `id` starts (Unix time, UTC).
+function Seasons.startOf(id: string): number
+	local year, month = string.match(id, "^(%d+)M(%d+)$")
+	assert(year and month, `bad season id {id}`)
+	return os.time({
+		year = tonumber(year) :: number,
+		month = tonumber(month) :: number,
+		day = 1,
+		hour = 0,
+		min = 0,
+		sec = 0,
+		isdst = false,
+	}) - Seasons.utcOffset()
+end
+
+--- How many seconds local time is ahead of UTC on this machine (os.time reads a date as local time).
+function Seasons.utcOffset(): number
+	local now = os.time()
+	local utc = os.date("!*t", now) :: any
+	utc.isdst = false
+	return now - os.time(utc)
+end
+
+--- The season after `id`.
+function Seasons.following(id: string): string
+	local year, month = string.match(id, "^(%d+)M(%d+)$")
+	assert(year and month, `bad season id {id}`)
+	local y, m = tonumber(year) :: number, tonumber(month) :: number
+	m += 1
+	if m > 12 then
+		y, m = y + 1, 1
+	end
+	return string.format("%dM%02d", y, m)
+end
+
+--- The season before `id`.
+function Seasons.previous(id: string): string
+	local year, month = string.match(id, "^(%d+)M(%d+)$")
+	assert(year and month, `bad season id {id}`)
+	local y, m = tonumber(year) :: number, tonumber(month) :: number
+	m -= 1
+	if m < 1 then
+		y, m = y - 1, 12
+	end
+	return string.format("%dM%02d", y, m)
+end
+
+local MONTHS = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+
+--- The last day of season `id`, as the Rank tab says it: "Dec 31".
+function Seasons.lastDayText(id: string): string
+	local last = os.date("!*t", Seasons.startOf(Seasons.following(id)) - 1) :: any
+	return `{MONTHS[last.month]} {last.day}`
+end
+
 --- The tier id for these points.
 function Seasons.tier(tiers: Tiers, rating: number): string
 	local id = tiers[1].id

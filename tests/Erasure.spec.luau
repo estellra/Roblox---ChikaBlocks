@@ -45,8 +45,30 @@ return function(t: TestKit.TestKit)
 			end
 			t.expect(has(names, "Highscore_2026W43")).toBe(false)
 			t.expect(has(names, "Highscore_2026W47")).toBe(false)
-			t.expect(#names).toBe(3 + 2 * 3)
+			-- Plus one Rank store per season since ranked began (November 2026), after all the others.
+			t.expect(names[#names]).toBe("Rank_2026M11")
+			t.expect(#names).toBe(3 + 2 * 3 + 1)
 		end)
+
+		t.it(
+			"lists a Rank store for every season since the first, in order, without moving the older stores",
+			function()
+				local before = Erasure.orderedStoreNames(NOV_10_2026)
+				local later = Erasure.orderedStoreNames(NOV_10_2026 + 100 * DAY) -- February 2027
+				local ranks = {}
+				for _, name in later do
+					if string.sub(name, 1, 5) == "Rank_" then
+						table.insert(ranks, name)
+					end
+				end
+				t.expect(ranks).toEqual({ "Rank_2026M11", "Rank_2026M12", "Rank_2027M01", "Rank_2027M02" })
+				for index, name in before do
+					if string.sub(name, 1, 5) ~= "Rank_" then
+						t.expect(later[index]).toBe(name)
+					end
+				end
+			end
+		)
 
 		t.it("lists no store twice and none of Studio's", function()
 			local names = Erasure.orderedStoreNames(Erasure.FIRST_WEEK_TIME + 400 * DAY)
@@ -60,7 +82,16 @@ return function(t: TestKit.TestKit)
 
 		t.it("names exactly the stores the boards write to", function()
 			local names = Erasure.orderedStoreNames(NOV_10_2026)
-			for _, key in { "Highscore_all", "Highscore_week", "Level_all", "Level_week", Leaderboards.SUPPORTERS_KEY } do
+			for _, key in
+				{
+					"Highscore_all",
+					"Highscore_week",
+					"Level_all",
+					"Level_week",
+					Leaderboards.SUPPORTERS_KEY,
+					Leaderboards.RANK_KEY,
+				}
+			do
 				t.expect(has(names, Leaderboards.storeName(key, NOV_10_2026, false))).toBe(true)
 			end
 		end)

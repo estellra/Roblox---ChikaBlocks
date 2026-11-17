@@ -22,6 +22,9 @@ local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
 local DataService = require("./DataService")
 local GameService = require("./GameService")
+local HttpService = game:GetService("HttpService")
+local LeaderboardService = require("./LeaderboardService")
+local RewardService = require("./RewardService")
 local Matchmaker = require("../Matchmaker")
 local PairLimits = require("../PairLimits")
 local PvpRating = require("../PvpRating")
@@ -61,6 +64,9 @@ local botCount = 0
 local rankedOf: { [number]: RankedMatch } = {} -- by match id
 local pairRated: { [any]: boolean } = {} -- set by the queue for the room it is about to form
 local queueLimiter = RateLimiter.new(2, 1, os.clock)
+local tickets: { [any]: { id: string, since: number } } = {} -- the queue ticket of each waiting player (analytics)
+local seasonShift = 0 -- months added to the clock's season, for the Studio debug bridge
+local RANK_WRITE_GAP_SECONDS = 20 -- the Rank board is written at most this often per player
 local practiceLimiter = RateLimiter.new(1, 2, os.clock)
 
 local function enabled(): boolean
@@ -113,10 +119,51 @@ local function ratingOf(who: any): number
 	return if bot then bot.rating else PVP.RATING.START
 end
 
--- Brings the player's rank data up to date: a match left pending in saved data is a loss, and a new season rolls over.
-local function prepareRank(data: any)
+local function telemetry(): any
+	return GameService.getTelemetry()
+end
+
+-- The season now (shifted by the Studio debug bridge's `pvp season`).
+local function seasonNow(): string
+	local season = Seasons.id(os.time())
+	for _ = 1, seasonShift do
+		season = Seasons.following(season)
+	end
+	return season
+end
+
+-- Gives the player the Top 10 medal of the season that just ended, if they finished in it (once; see
+-- PvpRating.awardTop). Returns whether it gave one.
+local function awardFinalTop(player: Player, data: any): boolean
+	local top = LeaderboardService.finalTop()
+	if not top then
+		return false
+	end
+	local place = table.find(top.userIds, player.UserId)
+	return place ~= nil and rating:awardTop(data.pvp, top.season, place, PVP.TOP_REWARD)
+end
+
+-- Roblox badges for the tiers the player has reached this season (first time ever; see Config.PVP.TIER_BADGES).
+local function awardTierBadges(player: Player, data: any)
+	local reached = Seasons.tierIndex(PVP.TIERS, rating:peakTier(data.pvp)) or 1
+	for tier, badgeId in PVP.TIER_BADGES do
+		local index = Seasons.tierIndex(PVP.TIERS, tier)
+		if index and reached >= index then
+			RewardService.awardBadge(player, data, `rank_{tier}`, badgeId)
+		end
+	end
+end
+
+-- Brings the player's rank data up to date: a match left pending in saved data is a loss, a new season rolls over,
+-- and a finished season's Top 10 medal is given.
+local function prepareRank(data: any, player: Player?)
 	rating:settleStale(data.pvp)
-	rating:rollSeason(data.pvp, Seasons.id(os.time()))
+	if rating:rollSeason(data.pvp, seasonNow()) and player and data.pvp.lastSeason then
+		telemetry():pvpSeasonTier(player, data.pvp.lastSeason.tier)
+	end
+	if player then
+		awardFinalTop(player, data)
+	end
 end
 
 local function wireSnapshot(snapshot: any): any
@@ -191,6 +238,35 @@ local function sendEnd(info: PvpMatches.EndInfo)
 	rankedOf[info.matchId] = nil
 	for seat, member in info.players do
 		local wire = wireEnd(info)
+		if isPlayer(member) then
+			-- Analytics: this player's match in numbers (the session is gone for a player who left).
+			local session = matches:sessionOf(member)
+			local result = if info.results then info.results[seat] else "void"
+			local scores = info.scores
+			telemetry():pvpMatchEnded(
+				member,
+				{
+					kind = info.kind,
+					result = result,
+					score = scores[seat],
+					margin = scores[seat] - scores[3 - seat],
+					how = if info.reason == "cancelled"
+						then "void"
+						elseif info.reason == "left" then "disconnect"
+						else info.reason,
+					sent = info.sent[seat],
+					cancelled = info.blocked[seat],
+					taken = if session then session.takenTotal else 0,
+					stuck = if session then session.stuckCount else 0,
+					pendingAtEnd = if session then #session.pending else 0,
+				} :: any
+			)
+			local ticket = tickets[member]
+			if ticket and info.kind == "ranked" then
+				telemetry():pvpQueueStep(member, ticket.id, 4) -- Finished
+				tickets[member] = nil
+			end
+		end
 		if ranked then
 			local before = ranked.ratings[seat]
 			local after = before
@@ -208,6 +284,8 @@ local function sendEnd(info: PvpMatches.EndInfo)
 				tier = Seasons.tier(PVP.TIERS, after),
 			}
 			if data then
+				awardTierBadges(member :: Player, data)
+				LeaderboardService.flush(member :: Player, data, RANK_WRITE_GAP_SECONDS)
 				GameService.sendProfile(member :: Player)
 			end
 		end
@@ -226,7 +304,7 @@ local function openRanked(matchId: number, players: { any }): RankedMatch
 		for seat, member in players do
 			local data = if isPlayer(member) then DataService.get(member :: Player) else nil
 			if data then
-				prepareRank(data)
+				prepareRank(data, member :: Player)
 				rating:open(data.pvp, ranked.pendingId, ratings[3 - seat], os.time())
 			end
 		end
@@ -247,7 +325,11 @@ local function startMatch(room: Rooms.Room, kind: string)
 	end
 	for seat, member in room.players do
 		if isPlayer(member) then
-			GameService.abandonRun(member :: Player) -- one thing at a time: the solo run is over
+			GameService.abandonRun(member :: Player, "pvp") -- one thing at a time: the solo run is over
+			local ticket = tickets[member]
+			if ticket and kind == "ranked" then
+				telemetry():pvpQueueStep(member, ticket.id, 3) -- Started
+			end
 		end
 		fire(member, Net.PvpEvent, "start", wireState(states[seat], member))
 	end
@@ -310,9 +392,19 @@ local function sendQueueState(player: any, refusal: RankedRules.Refusal?)
 	})
 end
 
-local function leaveQueue(player: any)
+-- Takes the player out of the queue; `how` is how the wait ended for the analytics ("cancelled", "bot", "left"),
+-- nil when a match was made (logged when the pair is made).
+local function leaveQueue(player: any, how: string?)
+	local waited = matchmaker:waited(player)
 	if matchmaker:cancel(player) and isPlayer(player) then
 		RoomService.setQueued(player :: Player, false)
+		local ticket = tickets[player]
+		if how and waited then
+			telemetry():pvpQueueWait(player, waited, how)
+		end
+		if how and ticket then
+			tickets[player] = nil
+		end
 	end
 end
 
@@ -404,11 +496,14 @@ local function joinQueue(player: Player)
 	end
 	local data = DataService.get(player)
 	if data then
-		prepareRank(data)
+		prepareRank(data, player)
 	end
 	if matchmaker:enqueue(player, ratingOf(player)) then
-		GameService.abandonRun(player)
+		GameService.abandonRun(player, "pvp")
 		RoomService.setQueued(player, true)
+		local ticket = { id = HttpService:GenerateGUID(false), since = os.clock() }
+		tickets[player] = ticket
+		telemetry():pvpQueueStep(player, ticket.id, 1) -- Queued
 	end
 	sendQueueState(player)
 end
@@ -426,6 +521,14 @@ local function matchQueue()
 			and (not isPlayer(b) or (b :: Player).Parent == Players)
 		local rated = here and pairLimits:isRated(userIdOf(a), userIdOf(b))
 		pairRated[a], pairRated[b] = rated, rated
+		for index, member in pair do
+			local ticket = tickets[member]
+			if isPlayer(member) and ticket then
+				telemetry():pvpQueueStep(member, ticket.id, 2) -- Matched
+				telemetry():pvpQueueWait(member, os.clock() - ticket.since, "matched")
+				telemetry():pvpMatched(member, ratingOf(member) - ratingOf(pair[3 - index]), not rated)
+			end
+		end
 		if not here or not RoomService.form(a, b, "pvp") then
 			pairRated[a], pairRated[b] = nil, nil
 			for _, member in pair do
@@ -509,7 +612,7 @@ function PvpService.start(_self: any)
 		if join then
 			joinQueue(player)
 		else
-			leaveQueue(player)
+			leaveQueue(player, "cancelled")
 			sendQueueState(player)
 		end
 	end)
@@ -520,14 +623,15 @@ function PvpService.start(_self: any)
 	end)
 	-- A player is in one thing at a time: starting a solo run leaves the queue.
 	Net.StartGame.OnServerEvent:Connect(function(player: Player)
-		leaveQueue(player)
+		leaveQueue(player, "cancelled")
 	end)
 
 	-- Rank data is brought up to date when it loads (a match left pending counts as lost, a new season rolls over).
 	local function onPlayerAdded(player: Player)
 		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
 		if data then
-			prepareRank(data)
+			prepareRank(data, player)
+			awardTierBadges(player, data)
 			GameService.sendProfile(player)
 		end
 	end
@@ -541,14 +645,26 @@ function PvpService.start(_self: any)
 		if info then
 			sendEnd(info)
 		end
+		leaveQueue(player, "left")
 		matchmaker:remove(player)
+	end)
+	-- A season's final top was read: players here who finished in it get their medal now.
+	LeaderboardService.onFinalTop(function()
+		for _, player in Players:GetPlayers() do
+			local data = DataService.get(player)
+			if data and awardFinalTop(player, data) then
+				GameService.sendProfile(player)
+			end
+		end
 	end)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		local info = matches:remove(player) -- the room's own events may have ended the match already
 		if info then
 			sendEnd(info)
 		end
+		leaveQueue(player, "left")
 		matchmaker:remove(player)
+		tickets[player] = nil
 		queueLimiter:forget(player)
 		practiceLimiter:forget(player)
 	end)
@@ -669,7 +785,7 @@ end
 --- Practice against the bot (the queue screen offers it when nobody else is there): the player leaves the queue and
 --- whatever room they are in, and plays an unranked match against a bot that plays on the server.
 function PvpService.practice(player: Player): boolean
-	leaveQueue(player)
+	leaveQueue(player, "bot")
 	RoomService.leave(player)
 	local bot, state = newBot(BOT_RATE)
 	if not RoomService.pairWithBot(player, bot, "pvp") then
@@ -690,6 +806,11 @@ function PvpService.bot(player: Player, action: string, rate: number?): string
 		return "practice bots are for Studio only"
 	end
 	if action == "queue" then
+		for other in bots do
+			if matchmaker:isQueued(other) then
+				return "a bot is already waiting in the queue" -- two bots would only play each other
+			end
+		end
 		local bot, state = newBot(BOT_RATE, rate)
 		matchmaker:enqueue(bot, state.rating)
 		task.spawn(playBot, bot, state)
@@ -749,6 +870,21 @@ function PvpService.debug(player: Player, command: string?, value: number?): str
 		fire(player, Net.PvpEvent, "state", wireState(state, player))
 		sendBoard(player)
 		return "cornered: place the Dot (slot 1) on a corner and nothing else fits"
+	elseif command == "season" then
+		-- Moves the season clock on `value` months (Studio only) and rolls the player's data over, as a new month would.
+		if not IS_STUDIO then
+			return "only in Studio"
+		end
+		seasonShift = math.max(0, seasonShift + math.floor(value or 1))
+		local data = DataService.get(player)
+		if data then
+			prepareRank(data, player)
+			GameService.sendProfile(player)
+		end
+		local pvp = data and data.pvp
+		return `season now {seasonNow()}: rating={pvp and pvp.rating} last={pvp and pvp.lastSeason and pvp.lastSeason.id} medals={pvp and HttpService:JSONEncode(
+			pvp.medals
+		)}`
 	elseif command == "end" then
 		local info = matches:finishNow(player)
 		if not info then
