@@ -128,6 +128,11 @@ local Config = {
 		-- A match lasts this long; moves the server receives later than END_GRACE_SECONDS after the end are dropped.
 		MATCH_SECONDS = 180,
 		END_GRACE_SECONDS = 0.3,
+		-- The "3, 2, 1" before a match starts; both trays are already shown.
+		COUNTDOWN_SECONDS = 3,
+		-- The opponent's board is sent unreliably after each of their moves and again this often, so a lost update
+		-- heals itself.
+		OPPONENT_BOARD_RESEND_SECONDS = 1,
 
 		-- Free rotations per player per match. Bought rotations and paid revives can't be used in PVP.
 		FREE_ROTATIONS = 1,

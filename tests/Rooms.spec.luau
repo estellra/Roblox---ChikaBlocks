@@ -167,10 +167,81 @@ return function(t: TestKit.TestKit)
 			t.expect(lines(h.events)).toEqual({ "A hears B:expired", "B hears A:expired" })
 		end)
 
+		t.describe("pvp", function()
+			t.it("makes a pvp room from a pvp invitation, telling the invitee the mode", function()
+				local h = harness({ "A", "B" })
+				local outcome = h.rooms:invite("A", "B", "pvp")
+				assert(outcome.kind == "sent")
+				local invited = h.events[1]
+				assert(invited.kind == "invited")
+				t.expect(invited.mode).toBe("pvp")
+				local reply = h.rooms:reply("B", outcome.inviteId, true)
+				assert(reply.kind == "joined")
+				t.expect(reply.room.mode).toBe("pvp")
+				t.expect(reply.room.players).toEqual({ "A", "B" })
+			end)
+
+			t.it("says the mode of a Co-op invitation too", function()
+				local h = harness({ "A", "B" })
+				send(h, "A", "B")
+				local invited = h.events[1]
+				assert(invited.kind == "invited")
+				t.expect(invited.mode).toBe("coop")
+			end)
+
+			t.it("joins the other player's invitation only when it is for the same kind of room", function()
+				local h = harness({ "A", "B" })
+				send(h, "B", "A") -- Co-op
+				local outcome = h.rooms:invite("A", "B", "pvp")
+				t.expect(outcome.kind).toBe("sent")
+				t.expect(h.rooms:roomOf("A")).toBe(nil)
+				local again = harness({ "A", "B" })
+				again.rooms:invite("B", "A", "pvp")
+				local joined = again.rooms:invite("A", "B", "pvp")
+				assert(joined.kind == "joined")
+				t.expect(joined.room.mode).toBe("pvp")
+				t.expect(joined.room.players).toEqual({ "B", "A" })
+			end)
+
+			t.it("forms a room without an invitation and withdraws the pair's invitations", function()
+				local h = harness({ "A", "B", "C" })
+				send(h, "A", "C")
+				send(h, "C", "B")
+				table.clear(h.events)
+				local room = h.rooms:form("A", "B", "pvp")
+				assert(room)
+				t.expect(room.mode).toBe("pvp")
+				t.expect(room.players).toEqual({ "A", "B" })
+				t.expect(formedInvite(h.events)).toBe(nil)
+				t.expect(h.rooms:outgoingOf("A")).toBe(nil)
+				t.expect(h.rooms:incomingOf("B")).toEqual({})
+				t.expect(lines(h.events)).toEqual({
+					"C hears A:cancelled",
+					"C hears B:busy",
+					"B hears C:cancelled",
+					"formed 1:A,B",
+					"A room 1:A,B",
+					"B room 1:A,B",
+				})
+			end)
+
+			t.it("refuses to form a room with a bad mode, one player, or someone busy or not ready", function()
+				local h = harness({ "A", "B", "C", "D" })
+				t.expect(h.rooms:form("A", "B", "duel")).toBe(nil)
+				t.expect(h.rooms:form("A", "B", nil)).toBe(nil)
+				t.expect(h.rooms:form("A", "A", "pvp")).toBe(nil)
+				h.ready.D = false
+				t.expect(h.rooms:form("A", "D", "pvp")).toBe(nil)
+				pair(h, "B", "C")
+				t.expect(h.rooms:form("A", "B", "pvp")).toBe(nil)
+				t.expect(h.rooms:roomOf("A")).toBe(nil)
+			end)
+		end)
+
 		t.it("refuses invitations that make no sense, telling the inviter only when it is useful", function()
 			local h = harness({ "A", "B", "C", "D" })
 			t.expect(h.rooms:invite("A", "A")).toEqual({ kind = "refused", reason = "self" })
-			t.expect(h.rooms:invite("A", "B", "pvp")).toEqual({ kind = "refused", reason = "badMode" })
+			t.expect(h.rooms:invite("A", "B", "duel")).toEqual({ kind = "refused", reason = "badMode" })
 			t.expect(h.rooms:invite("A", "B", 5)).toEqual({ kind = "refused", reason = "badMode" })
 			h.ready.D = false
 			t.expect(h.rooms:invite("D", "A")).toEqual({ kind = "refused", reason = "inviterNotReady" })

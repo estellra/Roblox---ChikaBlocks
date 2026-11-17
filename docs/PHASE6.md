@@ -413,6 +413,29 @@ Client A                                Server (PvpService → PvpMatches)      
 - **Studio, một client với `pvpbot`:** trọn một trận 3 phút; rác vào từ cả ba hướng; triệt tiêu thấy trên thanh; hết nước và khóa khay; hết giờ khi đang kéo khối; Leave giữa trận (thua); kết quả thắng, thua, hòa (`pvp end`); dữ liệu rác lên từng remote không sinh lỗi ở Output; solo và Coop vẫn chạy (chạy lại nhanh M6 và một ván `coopbot`).
 - **Hai người thật (sau khi publish, chỉ liệt kê):** mời Duel, nhận, từ chối; chơi trọn trận, mỗi bên thấy bảng nhỏ của bên kia đổi theo; gửi và nhận rác; một bên đóng app giữa trận (bên kia thắng ngay); một bên bật giả lập mạng chậm (đồng hồ hai máy lệch nhau bao nhiêu, nước cuối sát giờ); điện thoại dọc và ngang, tay cầm; đấu lại.
 
+### Tiến độ M26
+
+**Phần logic (đã làm; UI chờ cổng kiểm BY vì lúc làm không có Studio nào kết nối MCP):**
+
+- `src/server/PvpMatches.luau`: đủ các hàm `start`, `place`, `rotate`, `state`, `peek`, `board`, `opponentOf`, `forfeit`, `sweep`, `cancelAll`, `rematch`, `leave`, `remove`, `summary`, `footprint`.
+  - Nước tới sau `endAt + END_GRACE_SECONDS` bị bỏ (`ignored "too late"`).
+  - Nước trong lúc đếm ngược hoặc lúc khóa khay thì server trả trạng thái (`resync`).
+  - Trận đã xong vẫn giữ lại cho màn kết quả và đấu lại, tới khi cả hai rời.
+- `Rooms`:
+  - Thêm mode `"pvp"`.
+  - Thêm `Rooms.form(a, b, mode)` để lập phòng không qua lời mời; sự kiện `formed` khi đó có `inviteId = nil`. `RoomService` và `CoopService` đã chặn trường hợp `nil` này.
+  - Lời mời mang theo `mode`.
+  - Hai người mời nhau thì chỉ tự nhận lời khi cùng loại phòng.
+- `src/shared/PvpBoardCodec.luau`: bảng đối thủ 39 byte. Số phiên bản là u16 (chạy vòng), client chỉ giữ tin mới nhất.
+- `src/client/Util/PvpSync.luau`: bản dự đoán phía client và luật xin lại trạng thái. Tin `result` mang thêm `sent` và `cancelled` của server: client có thể đã dự đoán nước đi trên hàng chờ rác cũ, khi tin `incoming` còn đang trên đường. Bảng và điểm không bị ảnh hưởng, chỉ tổng "đã gửi/đã đỡ" cần sửa theo server.
+- `Config.PVP` thêm `COUNTDOWN_SECONDS = 3` và `OPPONENT_BOARD_RESEND_SECONDS = 1`.
+- Test:
+  - Spec mới: `PvpMatches.spec`, `PvpSync.spec`, `PvpBoardCodec.spec`, `PvpLockstep.spec`, cộng test mode `"pvp"` trong `Rooms.spec`. 415 test pass.
+  - Lockstep: 200 trận, 32 791 nước, 4 707 lần hết nước, 837 hàng rác, 20 trận bỏ cuộc. 0 lần lệch, 0 lần xin lại trạng thái.
+- **Sửa một test cũ:** `Rooms.spec` từng khẳng định mode `"pvp"` bị từ chối; dòng đó nay thử một mode lạ (`"duel"`).
+
+**Còn lại (sau cổng kiểm BY):** `PvpService` (remote, bộ chuyển đồng hồ sang giờ server, nối `PvpRating`, `beforeRelease`, `BindToClose`, analytics), `Net`, lời mời Duel qua `CoopInvite(target, mode)`, `pvpbot` và lệnh debug, `PvpRunController`, `PvpView`, `OpponentBoardView`, sửa `Hud`/`HudBar`/`BoardView`/`TrayView`/`CoopView`/`CoopInviteView` theo mockup, và lượt thử Studio.
+
 ## M27: Hàng chờ ranked trong server
 
 ### Ghép cặp (BQ)

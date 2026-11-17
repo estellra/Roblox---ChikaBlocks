@@ -1,6 +1,6 @@
 --!strict
 -- Invitations and two-player rooms. It knows nothing about the game played in a room: a room only carries a
--- `mode` ("coop" now, "pvp" later) and who is in it. Pure Luau so Lune can test it with fake players and a fake
+-- `mode` ("coop" or "pvp") and who is in it. Pure Luau so Lune can test it with fake players and a fake
 -- clock; RoomService wires it to the remotes and to Players.
 --
 -- Rules:
@@ -16,7 +16,7 @@
 -- Everything that has to reach a player goes out through `deps.emit` as an event addressed to them (`to`).
 -- Players are opaque keys (Player instances in the game, strings in tests).
 
-export type Mode = "coop" -- "pvp" arrives with phase 6
+export type Mode = "coop" | "pvp"
 
 export type Limits = { inviteSeconds: number, cooldownSeconds: number, maxIncoming: number }
 
@@ -28,10 +28,10 @@ export type Room = { id: number, mode: Mode, players: { any }, present: { boolea
 export type Result = "sent" | "declined" | "expired" | "busy" | "cooldown" | "left" | "cancelled"
 
 export type Event =
-	{ kind: "invited", to: any, from: any, inviteId: number, expiresAt: number } -- expiresAt is on deps.clock
+	{ kind: "invited", to: any, from: any, inviteId: number, expiresAt: number, mode: Mode } -- expiresAt: deps.clock
 	| { kind: "result", to: any, other: any, result: Result } -- tell `to` how its invitation with `other` stands
 	| { kind: "room", to: any, room: Room? } -- tell `to` its room is this one now, or that it has none
-	| { kind: "formed", room: Room, inviteId: number } -- for other services: a room was formed, from this invitation
+	| { kind: "formed", room: Room, inviteId: number? } -- for other services: a room was formed (inviteId nil: form())
 	| { kind: "memberLeft", room: Room, player: any, seat: number } -- room is as it is after they left
 	| { kind: "closed", room: Room } -- the last member left; room is as it was just before
 
@@ -63,7 +63,7 @@ export type ReplyOutcome = { kind: "joined", room: Room } | { kind: "declined" }
 type Invite = { id: number, from: any, to: any, mode: Mode, expiresAt: number }
 type InternalRoom = { id: number, mode: Mode, players: { any }, present: { boolean } }
 
-local MODES: { [string]: boolean } = { coop = true }
+local MODES: { [string]: boolean } = { coop = true, pvp = true }
 
 local Rooms = {}
 Rooms.__index = Rooms
@@ -208,13 +208,11 @@ local function expireDue(self: Rooms)
 	end
 end
 
--- Makes a room of the invitation's two players and ends everything else either of them had going.
-local function formRoom(self: Rooms, invite: Invite): Room
-	drop(self, invite)
-	local host, guest = invite.from, invite.to
+-- Makes a room of the two players (seat 1 is the host) and ends everything else either of them had going.
+local function makeRoom(self: Rooms, host: any, guest: any, mode: Mode, inviteId: number?): Room
 	local room: InternalRoom = {
 		id = self.nextRoomId,
-		mode = invite.mode,
+		mode = mode,
 		players = { host, guest },
 		present = { true, true },
 	}
@@ -237,10 +235,16 @@ local function formRoom(self: Rooms, invite: Invite): Room
 	end
 
 	local snapshot = snapshotOf(room)
-	emit(self, { kind = "formed", room = snapshot, inviteId = invite.id })
+	emit(self, { kind = "formed", room = snapshot, inviteId = inviteId })
 	emit(self, { kind = "room", to = host, room = snapshot })
 	emit(self, { kind = "room", to = guest, room = snapshot })
 	return snapshot
+end
+
+-- Makes a room of the invitation's two players; the inviter is the host.
+local function formRoom(self: Rooms, invite: Invite): Room
+	drop(self, invite)
+	return makeRoom(self, invite.from, invite.to, invite.mode, invite.id)
 end
 
 -- Invites `to` to a room in `mode` (default "coop"). Refusals that the inviter should hear about are emitted as
@@ -262,9 +266,9 @@ function Rooms.invite(self: Rooms, from: any, to: any, mode: unknown?): InviteOu
 		return { kind = "refused", reason = "inviterInRoom" }
 	end
 
-	-- The target already invited the inviter: say yes to that one instead of sending a second.
+	-- The target already invited the inviter to the same kind of room: say yes to that one instead of sending a second.
 	for _, theirs in self.incoming[from] or {} do
-		if theirs.from == to then
+		if theirs.from == to and theirs.mode == roomMode then
 			return { kind = "joined", room = formRoom(self, theirs) }
 		end
 	end
@@ -304,9 +308,30 @@ function Rooms.invite(self: Rooms, from: any, to: any, mode: unknown?): InviteOu
 		self.incoming[to] = waiting
 	end
 	table.insert(waiting, invite)
-	emit(self, { kind = "invited", to = to, from = from, inviteId = invite.id, expiresAt = invite.expiresAt })
+	emit(self, {
+		kind = "invited",
+		to = to,
+		from = from,
+		inviteId = invite.id,
+		expiresAt = invite.expiresAt,
+		mode = roomMode,
+	})
 	say(self, from, to, "sent")
 	return { kind = "sent", inviteId = invite.id }
+end
+
+-- Puts `a` (seat 1) and `b` in a room of `mode` without an invitation (a match found by the ranked queue). Both must
+-- be able to play and be out of a room; their invitations end as when a room is formed from one. Nil, and nothing
+-- changes, otherwise.
+function Rooms.form(self: Rooms, a: any, b: any, mode: unknown): Room?
+	expireDue(self)
+	if typeof(mode) ~= "string" or not MODES[mode :: string] or a == b then
+		return nil
+	end
+	if not self.deps.canPlay(a) or not self.deps.canPlay(b) or self.membership[a] or self.membership[b] then
+		return nil
+	end
+	return makeRoom(self, a, b, mode :: Mode, nil)
 end
 
 -- `player` answers invitation `inviteId`. Only the invited player can, and only while it is open.

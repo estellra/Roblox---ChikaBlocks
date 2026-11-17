@@ -40,6 +40,10 @@ local specs = {
 	require("./Elo.spec"),
 	require("./Seasons.spec"),
 	require("./PvpRating.spec"),
+	require("./PvpBoardCodec.spec"),
+	require("./PvpMatches.spec"),
+	require("./PvpSync.spec"),
+	require("./PvpLockstep.spec"),
 }
 
 for _, spec in specs do

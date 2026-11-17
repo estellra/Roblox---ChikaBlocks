@@ -332,8 +332,8 @@ local function rematch(player: any)
 	end
 end
 
-local function onRoomFormed(room: Rooms.Room, inviteId: number)
-	if room.mode ~= "coop" then
+local function onRoomFormed(room: Rooms.Room, inviteId: number?)
+	if room.mode ~= "coop" or inviteId == nil then
 		return
 	end
 	inviteOf[room.id] = inviteId
