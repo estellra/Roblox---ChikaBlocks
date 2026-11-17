@@ -63,6 +63,15 @@ export type Profile = {
 	rotations: number, -- bought rotations left
 	donated: number, -- Robux given through donation products
 	title: string?,
+	rank: { -- ranked PVP (see GameService.Rank)
+		rating: number,
+		tier: string,
+		wins: number,
+		losses: number,
+		draws: number,
+		season: string,
+		seasonGames: number,
+	}?,
 }
 export type RunRewards = Hud.RunRewards
 

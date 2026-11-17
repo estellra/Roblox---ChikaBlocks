@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 local Clay = require("./Clay")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require("./Format")
+local RankBadge = require("./RankBadge")
 local Theme = require("./Theme")
 local create = require("./Create")
 
@@ -38,7 +39,18 @@ local EDGE_POSITION = { [1] = UDim2.fromScale(0.5, 1), [2] = UDim2.fromScale(0, 
 local PUSH_FROM =
 	{ [1] = UDim2.fromScale(0, 1 / SIZE), [2] = UDim2.fromScale(-1 / SIZE, 0), [3] = UDim2.fromScale(1 / SIZE, 0) }
 
-export type Card = { name: string, initial: string, subtitle: string, color: Color3, subtitleColor: Color3? }
+-- One player's card on the VS screen; `tier` adds their rank badge before the subtitle ("Gold · 1,320").
+export type Card = {
+	name: string,
+	initial: string,
+	subtitle: string,
+	color: Color3,
+	subtitleColor: Color3?,
+	tier: string?,
+}
+
+-- What a ranked match did to the player's points: "Gold 1,320 → 1,338 +18".
+export type RatingChange = { tierBefore: string, tier: string, before: number, after: number, rated: boolean }
 
 export type VsInfo = { label: string, you: Card, opponent: Card }
 
@@ -51,9 +63,13 @@ export type Result = {
 	scores: { number }, -- you, opponent
 	garbage: string, -- "Garbage sent 2 · blocked 4"
 	canPlayAgain: boolean,
+	playAgainText: string, -- "Play again", or "Queue again" after a ranked match
+	rating: RatingChange?, -- a ranked match
 }
 
 export type Callbacks = { onPlayAgain: () -> (), onMenu: () -> () }
+
+type VsCardView = { root: Frame, circle: Frame, initial: TextLabel, name: TextLabel, subtitle: TextLabel, badge: Frame }
 
 local PvpView = {}
 PvpView.__index = PvpView
@@ -77,7 +93,11 @@ export type PvpView = typeof(setmetatable(
 		lockLabel: TextLabel,
 		vsGui: ScreenGui,
 		vsLabel: TextLabel,
-		vsCards: { { root: Frame, circle: Frame, initial: TextLabel, name: TextLabel, subtitle: TextLabel } },
+		vsCards: { VsCardView },
+		ratingRow: Frame,
+		ratingBadge: Frame,
+		ratingText: TextLabel,
+		ratingDelta: TextLabel,
 		resultGui: ScreenGui,
 		resultPanel: Frame,
 		mascot: ImageLabel,
@@ -143,7 +163,7 @@ local function circleWith(initial: TextLabel, size: number): Frame
 	})
 end
 
-local function vsCard(order: number): (Frame, Frame, TextLabel, TextLabel, TextLabel)
+local function vsCard(order: number): (Frame, Frame, TextLabel, TextLabel, TextLabel, Frame)
 	local colors, fonts = Theme.Colors, Theme.Fonts
 	local initial = create("TextLabel", {
 		Name = "Initial",
@@ -158,7 +178,28 @@ local function vsCard(order: number): (Frame, Frame, TextLabel, TextLabel, TextL
 	local name = label("Name", "", fonts.Title, 30, colors.Text, 2)
 	name.TextWrapped = false
 	name.TextTruncate = Enum.TextTruncate.AtEnd
-	local subtitle = label("Subtitle", "", fonts.Label, 17, colors.TextMuted, 3)
+	local subtitle = label("Subtitle", "", fonts.Label, 17, colors.TextMuted, 2)
+	subtitle.Size = UDim2.fromScale(0, 0)
+	subtitle.AutomaticSize = Enum.AutomaticSize.XY
+	subtitle.TextWrapped = false
+	local badge = RankBadge.new(24, nil, 1)
+	badge.Visible = false
+	local subtitleRow = create("Frame", {
+		Name = "SubtitleRow",
+		LayoutOrder = 3,
+		Size = UDim2.fromScale(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+	}, {
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 8),
+		}),
+		badge,
+		subtitle,
+	})
 	local root = create("Frame", {
 		Name = `Card{order}`,
 		LayoutOrder = order,
@@ -177,9 +218,9 @@ local function vsCard(order: number): (Frame, Frame, TextLabel, TextLabel, TextL
 		}),
 		circle,
 		name,
-		subtitle,
+		subtitleRow,
 	})
-	return root, circle, initial, name, subtitle
+	return root, circle, initial, name, subtitle, badge
 end
 
 local function scoreBox(order: number, color: Color3): (Frame, TextLabel, TextLabel)
@@ -420,8 +461,8 @@ function PvpView.new(
 		create("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }),
 		vsLabelText,
 	})
-	local youCard, youCircle, youInitial, youName, youSubtitle = vsCard(1)
-	local oppCard, oppCircle, oppInitial, oppName, oppSubtitle = vsCard(3)
+	local youCard, youCircle, youInitial, youName, youSubtitle, youBadge = vsCard(1)
+	local oppCard, oppCircle, oppInitial, oppName, oppSubtitle, oppBadge = vsCard(3)
 	local vsText = create("TextLabel", {
 		Name = "Vs",
 		LayoutOrder = 2,
@@ -501,21 +542,67 @@ function PvpView.new(
 		oppBox,
 	})
 	local garbageLabel = label("Garbage", "", fonts.Label, 15, colors.TextMuted, 5)
-	local rematchNote = label("Rematch", "", fonts.Label, 15, colors.Title, 6)
+	-- "Gold 1,320 → 1,338 +18" on a pill, after a ranked match.
+	local ratingBadge = RankBadge.new(22, nil, 1)
+	local ratingText = create("TextLabel", {
+		Name = "Text",
+		LayoutOrder = 2,
+		Size = UDim2.fromScale(0, 1),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 1,
+		FontFace = fonts.Title,
+		TextSize = 17,
+		TextColor3 = colors.Text,
+		Text = "",
+	})
+	local ratingDelta = create("TextLabel", {
+		Name = "Delta",
+		LayoutOrder = 3,
+		Size = UDim2.fromScale(0, 1),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 1,
+		FontFace = fonts.Title,
+		TextSize = 17,
+		TextColor3 = colors.RankUp,
+		Text = "",
+	})
+	local ratingRow = create("Frame", {
+		Name = "Rating",
+		LayoutOrder = 6,
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = colors.Panel,
+		BorderSizePixel = 0,
+		Visible = false,
+	}, {
+		create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		create("UIStroke", { Color = colors.Outline, Thickness = Theme.Stroke.Pill }),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14) }),
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 8),
+		}),
+		ratingBadge,
+		ratingText,
+		ratingDelta,
+	})
+	local rematchNote = label("Rematch", "", fonts.Label, 15, colors.Title, 7)
 	rematchNote.Visible = false
 	local lip = Theme.Spacing.ButtonLip
 	local playAgainRoot = Clay.button({
 		name = "PlayAgain",
 		text = "Play again",
 		style = "primary",
-		order = 7,
+		order = 8,
 		size = UDim2.new(1, 0, 0, 56 + lip),
 	})
 	local menuRoot = Clay.button({
 		name = "Menu",
 		text = "Menu",
 		style = "secondary",
-		order = 8,
+		order = 9,
 		size = UDim2.new(1, 0, 0, 56 + lip),
 	})
 	local resultPanel = create("Frame", {
@@ -545,6 +632,7 @@ function PvpView.new(
 		resultSubtitle,
 		scores,
 		garbageLabel,
+		ratingRow,
 		rematchNote,
 		playAgainRoot,
 		menuRoot,
@@ -589,9 +677,27 @@ function PvpView.new(
 		vsGui = vsGui,
 		vsLabel = vsLabelText,
 		vsCards = {
-			{ root = youCard, circle = youCircle, initial = youInitial, name = youName, subtitle = youSubtitle },
-			{ root = oppCard, circle = oppCircle, initial = oppInitial, name = oppName, subtitle = oppSubtitle },
+			{
+				root = youCard,
+				circle = youCircle,
+				initial = youInitial,
+				name = youName,
+				subtitle = youSubtitle,
+				badge = youBadge,
+			},
+			{
+				root = oppCard,
+				circle = oppCircle,
+				initial = oppInitial,
+				name = oppName,
+				subtitle = oppSubtitle,
+				badge = oppBadge,
+			},
 		},
+		ratingRow = ratingRow,
+		ratingBadge = ratingBadge,
+		ratingText = ratingText,
+		ratingDelta = ratingDelta,
 		resultGui = resultGui,
 		resultPanel = resultPanel,
 		mascot = mascot,
@@ -637,6 +743,10 @@ function PvpView.showVs(self: PvpView, info: VsInfo)
 		view.name.Text = card.name
 		view.subtitle.Text = card.subtitle
 		view.subtitle.TextColor3 = card.subtitleColor or Theme.Colors.TextMuted
+		view.badge.Visible = card.tier ~= nil
+		if card.tier then
+			RankBadge.paint(view.badge, card.tier)
+		end
 	end
 	self.vsGui.Enabled = true
 end
@@ -738,6 +848,25 @@ function PvpView.showResult(self: PvpView, result: Result)
 	boxes[2].caption.Text = result.opponentName
 	boxes[2].value.Text = Format.withCommas(result.scores[2])
 	self.garbageLabel.Text = result.garbage
+	local change = result.rating
+	self.ratingRow.Visible = change ~= nil
+	if change then
+		RankBadge.paint(self.ratingBadge, change.tier)
+		local delta = change.after - change.before
+		if change.rated then
+			local before, after = Format.withCommas(change.before), Format.withCommas(change.after)
+			self.ratingText.Text = if change.tierBefore == change.tier
+				then `{change.tier} {before} → {after}`
+				else `{change.tierBefore} {before} → {change.tier} {after}`
+			self.ratingDelta.Text = if delta >= 0 then `+{delta}` else `{delta}`
+			self.ratingDelta.TextColor3 = if delta >= 0 then Theme.Colors.RankUp else Theme.Colors.RankDown
+		else
+			self.ratingText.Text = `{change.tier} {Format.withCommas(change.after)}`
+			self.ratingDelta.Text = "Unrated"
+			self.ratingDelta.TextColor3 = Theme.Colors.TextMuted
+		end
+	end
+	Clay.face(self.playAgainRoot).Text = result.playAgainText
 	self.playAgainRoot.Visible = result.canPlayAgain
 	Clay.setEnabled(self.playAgainRoot, true)
 	self.rematchNote.Visible = false

@@ -4,13 +4,14 @@
 -- needs to draw and play it, as a Source marked isMatch. GameController does the board, the drag and drop and the
 -- tray as for a solo run; what is only a match's lives here and in PvpView / OpponentBoardView: the VS screen, the
 -- countdown, the clock, the garbage queue, being stuck with the tray locked, the opponent's card, forfeiting, and the
--- result with Play again.
+-- result with Play again (or, after a ranked match, its rank change and Queue again).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local CoopController = require("./CoopController")
+local Format = require("../Views/Format")
 local GameController = require("./GameController")
 local MenuController = require("./MenuController")
 local Net = require(ReplicatedStorage.Shared.Net)
@@ -33,6 +34,7 @@ type MatchInfo = {
 	kind: string,
 	names: { string }, -- by seat
 	userIds: { number },
+	ranked: { rated: boolean, ratings: { number }, tiers: { string } }?, -- a ranked match, by seat
 }
 
 local PvpRunController = {}
@@ -138,6 +140,10 @@ local function renderRematch()
 	if not run or not ui or not ui:isResultOpen() then
 		return
 	end
+	if run.kind == "ranked" then
+		ui:setRematch(true, true, nil) -- Queue again: no votes in ranked
+		return
+	end
 	local room = CoopController.getRoom()
 	local here = room ~= nil and room.present[opponentSeat(run)] == true
 	local name = opponentName()
@@ -167,7 +173,10 @@ local function showResult(ended: any)
 		elseif mine == "loss" then `{name} wins`
 		elseif mine == "draw" then "Draw!"
 		else "Match cancelled"
-	local kindText = if run.kind == "bot" then "practice match, no rank change" else "friendly duel, no rank change"
+	local kindText = if run.kind == "ranked"
+		then "higher score wins"
+		elseif run.kind == "bot" then "practice match, no rank change"
+		else "friendly duel, no rank change"
 	local reason = ended.reason
 	local how = if reason == "time"
 		then "Time's up"
@@ -189,7 +198,17 @@ local function showResult(ended: any)
 		opponentName = name,
 		scores = { scores[me] or 0, scores[them] or 0 },
 		garbage = `Garbage sent {sent} · blocked {blocked}`,
-		canPlayAgain = reason ~= "cancelled",
+		canPlayAgain = reason ~= "cancelled" or run.kind == "ranked",
+		playAgainText = if run.kind == "ranked" then "Queue again" else "Play again",
+		rating = if typeof(ended.rating) == "table"
+			then {
+				tierBefore = ended.rating.tierBefore,
+				tier = ended.rating.tier,
+				before = ended.rating.before,
+				after = ended.rating.after,
+				rated = ended.rating.rated == true,
+			}
+			else nil,
 	})
 	renderRematch()
 	local views = GameController.getViews()
@@ -217,25 +236,37 @@ local function tick()
 			local opponent = Players:GetPlayerByUserId(opponentId)
 			local level = if opponent then opponent:GetAttribute("Level") else nil
 			local name = opponentName()
+			local ranked = match.ranked
+			local me, them = run.seat, opponentSeat(run)
+			local function rankLine(seat: number): string
+				local points = (ranked :: any).ratings[seat]
+				return `{(ranked :: any).tiers[seat]} · {Format.withCommas(points)}`
+			end
 			ui:showVs({
-				label = if run.kind == "bot"
-					then "Practice match · no rank change"
+				label = if ranked
+					then (if ranked.rated
+						then "Ranked match"
+						else "Ranked match · unrated (you two already played twice today)")
+					elseif run.kind == "bot" then "Practice match · no rank change"
 					else "Friendly duel · no rank change",
 				you = {
 					name = "You",
 					initial = string.upper(string.sub(Players.LocalPlayer.DisplayName, 1, 1)),
-					subtitle = if profile then `Level {profile.level}` else "",
+					subtitle = if ranked then rankLine(me) elseif profile then `Level {profile.level}` else "",
 					color = Theme.Colors.Button,
+					tier = if ranked then ranked.tiers[me] else nil,
 				},
 				opponent = {
 					name = name,
 					initial = string.upper(string.sub(name, 1, 1)),
-					subtitle = if run.kind == "bot"
-						then "Practice bot"
+					subtitle = if ranked
+						then rankLine(them)
+						elseif run.kind == "bot" then "Practice bot"
 						elseif typeof(level) == "number" then `Level {level}`
 						else "",
 					subtitleColor = if run.kind == "bot" then Theme.Colors.Title else nil,
 					color = Theme.Colors.ButtonSecondary,
+					tier = if ranked then ranked.tiers[them] else nil,
 				},
 			})
 		end
@@ -346,7 +377,12 @@ local source: GameController.Source = {
 local function enter(state: any)
 	local run = PvpSync.new(DEPS, state)
 	sync = run
-	info = { kind = state.kind, names = state.names or {}, userIds = state.userIds or {} }
+	info = {
+		kind = state.kind,
+		names = state.names or {},
+		userIds = state.userIds or {},
+		ranked = if typeof(state.ranked) == "table" then state.ranked else nil,
+	}
 	votes = { false, false }
 	boardVersion = nil
 	lastCanDrag = false
@@ -514,7 +550,12 @@ end
 function PvpRunController.press(button: string)
 	if button == "again" then
 		local run = sync
-		if run and run.ended and not votes[run.seat] then
+		if run and run.ended and run.kind == "ranked" then
+			-- Queue again: out of this room, and back in the queue.
+			leaveRoom()
+			detach()
+			MenuController.openRanked()
+		elseif run and run.ended and not votes[run.seat] then
 			votes[run.seat] = true
 			Net.PvpRematch:FireServer(run.matchId)
 			renderRematch()

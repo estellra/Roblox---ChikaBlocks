@@ -54,8 +54,11 @@ export type MenuView = typeof(setmetatable(
 		playButton: TextButton,
 		leaderboardButton: TextButton,
 		coopButton: TextButton,
+		rankedButton: TextButton,
 		leaderboardRoot: Frame,
 		coopRoot: Frame,
+		rankedRoot: Frame,
+		modeRow: Frame,
 		helpButton: TextButton,
 		supportButton: TextButton,
 		floaters: { Tween },
@@ -105,7 +108,8 @@ function MenuView.new(
 	onLeaderboard: () -> (),
 	onHowToPlay: () -> (),
 	onSupport: () -> (),
-	onCoop: () -> ()
+	onCoop: () -> (),
+	onRanked: (() -> ())?
 ): MenuView
 	local colors, fonts = Theme.Colors, Theme.Fonts
 	local lip = Theme.Spacing.ButtonLip
@@ -192,12 +196,13 @@ function MenuView.new(
 		size = UDim2.new(1, 0, 0, 72 + lip),
 		textSize = 30,
 	})
-	-- Leaderboard, and Co-op beside it once that is on (see setCoopVisible). The text shrinks to fit a half-width button.
-	local function secondaryButton(name: string, label: string, order: number): Frame
+	-- Ranked (gold) and Co-op side by side once they are on (see setModes), and Leaderboard on its own row under them
+	-- (mockup 06-menu-ranked-button). The text shrinks to fit a half-width button.
+	local function secondaryButton(name: string, label: string, order: number, style: Clay.ButtonStyle?): Frame
 		local root = Clay.button({
 			name = name,
 			text = label,
-			style = "secondary",
+			style = style or "secondary",
 			order = order,
 			size = UDim2.fromScale(1, 1),
 		})
@@ -207,25 +212,34 @@ function MenuView.new(
 		return root
 	end
 	local leaderboardRoot = secondaryButton("Leaderboard", "Leaderboard", 1)
+	local rankedRoot = secondaryButton("Ranked", "Ranked", 1, "reward")
 	local coopRoot = secondaryButton("Coop", "Co-op", 2)
+	rankedRoot.Visible = false
 	coopRoot.Visible = false
-	local secondaryRow = create("Frame", {
-		Name = "SecondaryRow",
-		LayoutOrder = 3,
-		Size = UDim2.new(1, 0, 0, 60 + lip),
-		BackgroundTransparency = 1,
-	}, {
-		create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 10),
-		}),
-		leaderboardRoot,
-		coopRoot,
-	})
+	local function row(name: string, order: number, children: { Instance }): Frame
+		local frame = create("Frame", {
+			Name = name,
+			LayoutOrder = order,
+			Size = UDim2.new(1, 0, 0, 60 + lip),
+			BackgroundTransparency = 1,
+		}, {
+			create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 10),
+			}),
+		})
+		for _, child in children do
+			child.Parent = frame
+		end
+		return frame
+	end
+	local modeRow = row("ModeRow", 3, { rankedRoot, coopRoot })
+	modeRow.Visible = false
+	local secondaryRow = row("SecondaryRow", 4, { leaderboardRoot })
 	local tagline = create("TextLabel", {
 		Name = "Tagline",
-		LayoutOrder = 4,
+		LayoutOrder = 5,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
@@ -249,6 +263,7 @@ function MenuView.new(
 		}),
 		pills,
 		playRoot,
+		modeRow,
 		secondaryRow,
 		tagline,
 	})
@@ -302,6 +317,7 @@ function MenuView.new(
 
 	local playButton, leaderboardButton = Clay.face(playRoot), Clay.face(leaderboardRoot)
 	local coopButton = Clay.face(coopRoot)
+	local rankedButton = Clay.face(rankedRoot)
 	local supportButton = Clay.face(supportRoot)
 	local self = setmetatable({
 		backdrop = backdrop,
@@ -320,8 +336,11 @@ function MenuView.new(
 		playButton = playButton,
 		leaderboardButton = leaderboardButton,
 		coopButton = coopButton,
+		rankedButton = rankedButton,
 		leaderboardRoot = leaderboardRoot,
 		coopRoot = coopRoot,
+		rankedRoot = rankedRoot,
+		modeRow = modeRow,
 		helpButton = helpButton,
 		supportButton = supportButton,
 		floaters = floaters,
@@ -351,6 +370,14 @@ function MenuView.new(
 		coopButton.Activated:Connect(function()
 			if self.ready then
 				onCoop()
+			end
+		end)
+	)
+	table.insert(
+		self.connections,
+		rankedButton.Activated:Connect(function()
+			if self.ready and onRanked then
+				onRanked()
 			end
 		end)
 	)
@@ -413,11 +440,21 @@ function MenuView.setReady(self: MenuView, best: number, level: number, title: s
 	Clay.pillLabel(self.levelPill).Text = if title then `Lv {level} · {title}` else `Lv {level}`
 end
 
--- Shows the Co-op button beside Leaderboard (each takes half the row), or hides it so Leaderboard fills the row.
+-- Shows the Ranked and Co-op buttons that are on, side by side on their row (one alone fills it; with neither the row
+-- goes). Leaderboard keeps its own row.
+function MenuView.setModes(self: MenuView, ranked: boolean, coop: boolean)
+	self.rankedRoot.Visible = ranked
+	self.coopRoot.Visible = coop
+	self.modeRow.Visible = ranked or coop
+	local both = ranked and coop
+	local size = if both then UDim2.new(0.5, -5, 1, 0) else UDim2.fromScale(1, 1)
+	self.rankedRoot.Size = size
+	self.coopRoot.Size = size
+end
+
+-- The Co-op button on its own (Ranked off); see setModes.
 function MenuView.setCoopVisible(self: MenuView, visible: boolean)
-	self.coopRoot.Visible = visible
-	self.leaderboardRoot.Size = if visible then UDim2.new(0.5, -5, 1, 0) else UDim2.fromScale(1, 1)
-	self.coopRoot.Size = UDim2.new(0.5, -5, 1, 0)
+	self:setModes(self.rankedRoot.Visible, visible)
 end
 
 function MenuView.show(self: MenuView)
@@ -450,6 +487,7 @@ function MenuView.hide(self: MenuView)
 		selected == self.playButton
 		or selected == self.leaderboardButton
 		or selected == self.coopButton
+		or selected == self.rankedButton
 		or selected == self.helpButton
 		or selected == self.supportButton
 	then

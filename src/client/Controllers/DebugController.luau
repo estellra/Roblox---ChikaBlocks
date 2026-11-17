@@ -14,6 +14,7 @@
 --           coop [open|close|people <n>|invite [id] [seconds]|result <result> [userId]|room [left]|noroom|busy <reason|none>|press <userId> [result...]|cancel]
 --           (opens the Co-op screen and lists it; the rest feed it what the server would send, with the player
 --           themselves as the other party, or press Invite for a made-up person)
+--           queue [open|keep|practice|close] (the ranked queue screen)
 --           pvp [again|menu] (the PVP match on this screen; again / menu press the result panel's buttons. Start one
 --           against the bot with ServerStorage.ChikaServerDebug "pvpbot")
 --           coop run | coop play [moves] | coop again | coop leave | coop takeover | coop rotate [slot] | coop revive
@@ -39,6 +40,7 @@ local LeaderboardController = require("./LeaderboardController")
 local SupportController = require("./SupportController")
 local MenuController = require("./MenuController")
 local PvpRunController = require("./PvpRunController")
+local QueueController = require("./QueueController")
 local TutorialController = require("./TutorialController")
 local Theme = require("../Views/Theme")
 
@@ -313,6 +315,18 @@ local function handle(rng: Random, command: string, ...: any): string
 			SupportController.close()
 		end
 		return `open={SupportController.isOpen()} menuOpen={MenuController.isOpen()}\n{SupportController.describe()}`
+	elseif command == "queue" then
+		-- The ranked queue screen: "open" opens it from the menu (joining the queue); "keep", "practice" and "close"
+		-- press its buttons.
+		local action = ...
+		if action == "open" then
+			MenuController.openRanked()
+			task.wait(0.5)
+		elseif action == "keep" or action == "practice" or action == "close" then
+			QueueController.press(action)
+			task.wait(0.5)
+		end
+		return QueueController.describe()
 	elseif command == "pvp" then
 		-- The PVP match on this screen; "again" or "menu" press the result panel's buttons.
 		local action = ...

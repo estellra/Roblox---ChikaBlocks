@@ -519,6 +519,56 @@ Ba lỗi hiển thị của GĐ5 đã sửa:
 - **Studio, một client:** vào hàng chờ một mình, sau 20 giây thấy ba nút; `pvpbot queue [điểm]` cho một người giả vào hàng chờ để thử ghép, màn VS và chốt điểm (chỉ trong Studio mới cho bot tính điểm); dừng Play giữa trận ranked rồi vào lại, `data` cho thấy đã bị trừ điểm; đếm cặp ghi và đọc được từ MemoryStore của Studio; ranked tắt khi giả lập private server.
 - **Hai người thật (sau khi publish, chỉ liệt kê):** hai tài khoản cùng server vào hàng chờ và được ghép; điểm hai bên đổi đúng sau trận; trận thứ 3 trong ngày của cùng cặp báo "Unrated" và không đổi điểm; một bên rời giữa trận rồi vào lại thấy bị trừ; vào game bằng thiết bị thứ hai giữa trận (cướp phiên) rồi kiểm điểm; private server không có nút Ranked; tài khoản mới dưới level 3 thấy lý do bị khóa.
 
+### Kết quả M27
+
+**Đã làm:**
+- **Logic thuần:**
+  - `Matchmaker`: cửa sổ điểm nới dần; ưu tiên người chưa gặp trong 10 phút, rồi người chờ lâu nhất.
+  - `PairLimits`: một cặp tối đa 2 trận tính điểm mỗi 24 giờ. Đếm trong MemoryStore `PvpPairs`; MemoryStore lỗi thì đếm trong server và ghi cảnh báo.
+  - `RankedRules`: điều kiện vào hàng chờ, và chốt hoặc hủy điểm khi trận kết thúc.
+  - Test: `Matchmaker.spec` (gồm bài ngẫu nhiên 300 thao tác), `PairLimits.spec` (gồm lúc kho lỗi), `RankedRules.spec`. 432 test pass.
+- **Server (`PvpService`):**
+  - Hàng chờ (`PvpQueue`, `PvpQueueState`). Người đang chờ có `CoopBusy = "queue"` và không mời được.
+  - Phòng ranked lập bằng `Rooms.form` (không qua lời mời).
+  - Trận tính điểm: ghi trước khoản thua lúc bắt đầu. Khi kết thúc: chốt điểm, gửi điểm trước và sau, gửi lại profile.
+  - Rời trận bị xử thua trước khi dữ liệu được giải phóng (`DataService.beforeRelease`).
+  - Lúc vào game: `settleStale` và chuyển mùa.
+  - Tắt server có báo trước: hủy trận, không ai đổi điểm.
+  - Practice vs bot không còn giới hạn trong Studio (`PvpPractice`).
+  - Server ghi attribute `RankedOpen` lên `ReplicatedStorage`: client không đọc được `PrivateServerOwnerId`.
+  - Profile gửi client có thêm `rank`.
+  - Debug: `pvpbot nil <điểm> queue`.
+- **Client:**
+  - Nút Ranked trên menu (`06`).
+  - Màn hàng chờ `QueueView`/`QueueController` (`08`, `09`); khi bị chặn thì ghi lý do.
+  - Màn VS ranked có huy hiệu hạng và điểm (`14`).
+  - Màn kết quả có ô đổi điểm và nút "Queue again" (`11`).
+  - Huy hiệu hạng tạm vẽ bằng UI (`RankBadge`), chờ ảnh thật ở M28.
+  - Debug: `queue [open|keep|practice|close]`.
+
+**Thử trong Studio (một client):**
+- Đã thấy chạy:
+  - Menu có nút Ranked.
+  - Bị chặn khi dưới level 3 và hiện đúng lý do.
+  - Màn hàng chờ, và sau 20 giây hiện 3 lựa chọn.
+  - Bot ghép được vào trận ranked; `pending` đúng công thức (+23/+3/−17 khi 1000 gặp 1050, K 40).
+  - Thua thì điểm đổi 1000 → 983; dữ liệu ghi 1 trận thua; `pending` đã xóa.
+  - Queue again quay lại hàng chờ; Practice vs bot mở trận loại bot.
+  - MemoryStore của Studio đọc và ghi được.
+  - `data` in đúng phần `pvp` (xong bước Studio còn nợ của M25).
+- Ảnh: `production/qa/evidence/m27-ranked/` (6 ảnh).
+- **Lỗi tìm thấy khi thử và đã sửa:**
+  - Client đọc `PrivateServerOwnerId` (Roblox chỉ cho đọc ở server).
+  - Ô đổi điểm ghi hạng mới cạnh điểm cũ khi rớt hạng.
+- **Chưa thử được với một client:**
+  - Rời trận ranked rồi vào lại (dừng Play trong Studio là tắt server, nên trận bị hủy chứ không xử thua).
+  - Trận thứ 3 trong ngày của cùng một cặp ("Unrated"), vì mỗi bot có UserId mới.
+  - Private server.
+
+  Các phần này nằm trong danh sách "Hai người thật".
+
+**Chưa bật cho người chơi:** `PVP.ENABLED` vẫn `false`. Ngoài Studio chưa có PVP nào chạy. Bật sau lượt thử hai người thật của GĐ5 và GĐ6 (lời mời, phòng, trận Duel, ranked).
+
 ## M28: Bảng Rank, mùa, quà, dữ liệu, analytics
 
 ### Bảng Rank (BU)
@@ -623,7 +673,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 ## Bạn cần làm
 
-1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; câu 3, 4, 6 và 11 cần trước M27; câu 7 cần trước M28.
+1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; câu 7 cần trước M28.
 2. Trước M26: cùng mình chạy lượt kiểm UI trong Studio (M6 solo, màn hình M19/M21/M22). Nếu Studio MCP kết nối được thì mình tự chạy phần một client.
 3. Cho mình biết **số người tối đa mỗi server** đang đặt trong Creator Hub và số người chơi cùng lúc hiện tại (để ước lượng hàng chờ trong server có đủ người không).
 4. Sau M26 và M27: thử với hai tài khoản thật trên hai thiết bị theo các danh sách "Hai người thật".
@@ -633,15 +683,15 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 1. ~~**Điểm khi xóa hàng có ô rác.**~~ Đã trả lời (quyết định CD): hàng quá nửa là ô rác thì không có điểm, combo hay đòn; cộng đòn combo từ combo 8. Số liệu ở [Kết quả M24](#kết-quả-m24).
 2. **Rò khối sắp tới.** Vì hai người nhận cùng dãy khối, người đi chậm hơn có thể suy ra bộ sắp tới từ bảng của đối thủ. Lựa chọn: (a) chấp nhận ở bản đầu và đo; (b) bảng nhỏ chỉ hiện đối thủ "tại cùng số bộ với mình" (server giữ ảnh chụp theo từng bộ); (c) bỏ cùng nguồn khối, mỗi người một seed. Mình nghiêng về (a) rồi (b) nếu thấy bị lợi dụng.
-3. **ConfigService.** Skill analytics-liveops khuyên để cờ bật tắt và số liệu cần chỉnh nhanh trong experience config (đổi không cần publish). Plan hiện để mọi số trong `Config.luau`. Với ranked, một cờ tắt khẩn cấp và các số ELO chỉnh được live có giá trị thật. Bạn muốn dùng ConfigService cho `PVP.RANKED_ENABLED` và nhóm số ELO/hàng chờ ngay từ M27, hay giữ `Config.luau` như các giai đoạn trước?
-4. **Tuổi tài khoản tối thiểu** để vào ranked (`player.AccountAge`)? Chặn nick phụ tốt hơn level 3 nhưng cũng chặn người mới thật.
+3. ~~**ConfigService.**~~ Đã trả lời: giữ `Config.luau`, có thể chuyển sang ConfigService sau khi ranked chạy thật. Câu gốc: Skill analytics-liveops khuyên để cờ bật tắt và số liệu cần chỉnh nhanh trong experience config (đổi không cần publish). Plan hiện để mọi số trong `Config.luau`. Với ranked, một cờ tắt khẩn cấp và các số ELO chỉnh được live có giá trị thật. Bạn muốn dùng ConfigService cho `PVP.RANKED_ENABLED` và nhóm số ELO/hàng chờ ngay từ M27, hay giữ `Config.luau` như các giai đoạn trước?
+4. ~~**Tuổi tài khoản tối thiểu**~~ Đã trả lời: không, chỉ cần level ≥ 3. Câu gốc: để vào ranked (`player.AccountAge`)? Chặn nick phụ tốt hơn level 3 nhưng cũng chặn người mới thật.
 5. ~~**Danh hiệu rank cạnh tên.**~~ Đã trả lời bằng mockup `05`: tab Rank hiện tên hạng dưới tên người chơi, không hiện danh hiệu mốc (quyết định CA).
-6. **Hàng chờ chạy nền.** Bản đầu người chơi ngồi ở màn hàng chờ. Có muốn cho chơi solo trong lúc chờ (ghép được thì hiện thẻ "Match found" như thẻ mời) không? Tốt cho lúc vắng, nhưng thêm một bước Accept và các ca hết hạn.
+6. ~~**Hàng chờ chạy nền.**~~ Đã trả lời: không, người chơi ngồi ở màn hàng chờ như mockup `08`/`09`. Bản đầu người chơi ngồi ở màn hàng chờ. Có muốn cho chơi solo trong lúc chờ (ghép được thì hiện thẻ "Match found" như thẻ mời) không? Tốt cho lúc vắng, nhưng thêm một bước Accept và các ca hết hạn.
 7. **Mùa đầu tiên** bắt đầu từ tháng nào, và có cần một "mùa thử" không tính quà để chỉnh số không?
 8. ~~**Rác đẩy hay thay?**~~ Đã trả lời: **đẩy cả bảng**, đúng như BC. Mockup `04` (hàng rác thay hàng đáy, 7 hàng trên đứng yên) chỉ là minh họa; khi cài, cả bảng dịch một ô và hàng/cột ở mép đối diện mất.
 9. ~~**Báo trước hướng rác?**~~ Đã trả lời: **có** (quyết định CB). Server rút hướng lúc rác vào hàng chờ và gửi cho nạn nhân; vị trí lỗ không báo trước.
 10. ~~**Nút Pause trong trận.**~~ Đã trả lời (quyết định CC): bấm Pause mở bảng có **Resume** và **Forfeit**, đồng hồ vẫn chạy.
-11. **Menu trên điện thoại ngang thấp.** Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Cần trước M27.
+11. ~~**Menu trên điện thoại ngang thấp.**~~ Đã trả lời: để tới khi làm bản điện thoại; PC theo mockup `06`. Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Cần trước M27.
 
 ## Quyết định đã chốt
 

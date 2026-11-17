@@ -2,7 +2,8 @@
 -- Connects Rooms (invitations and two-player rooms) to the remotes and to player lifetime, and tells the rest of
 -- the server when a room is formed, loses a player or closes (M21's CoopService listens). Who may be invited
 -- is published on each Player as attributes, so the Co-op screen needs no remote to list people:
---   CoopBusy  "room" (in a room), "tutorial" (hasn't finished it), "loading" (data not in yet), or nil (free)
+--   CoopBusy  "room" (in a room), "queue" (in the ranked queue), "tutorial" (hasn't finished it), "loading" (data not
+--             in yet), or nil (free)
 --   Level     the player's level
 -- Everything a client sends is rate limited and checked here before Rooms sees it: the client names a player by
 -- UserId (a number), never by an instance, and there is no text to filter.
@@ -34,6 +35,7 @@ local leaveLimiter = RateLimiter.new(1, 1, os.clock)
 local formedListeners: { (room: Rooms.Room, inviteId: number?) -> () } = {}
 local leftListeners: { (room: Rooms.Room, player: Player, seat: number) -> () } = {}
 local closedListeners: { (room: Rooms.Room) -> () } = {}
+local queued: { [Player]: boolean } = {} -- in the ranked queue: can't be invited (PvpService says)
 
 -- The Co-op remotes do nothing until the mode is playable, except in Studio where it is being built. Duels likewise.
 local function enabled(): boolean
@@ -67,6 +69,8 @@ local function refreshStatus(player: Player)
 	local busy: string? = nil
 	if rooms:roomOf(player) then
 		busy = "room"
+	elseif queued[player] then
+		busy = "queue"
 	elseif not data then
 		busy = "loading"
 	elseif not data.tutorialDone then
@@ -141,7 +145,7 @@ function RoomService.init(_self: any)
 				return (player :: any).IsBot == true -- the practice partner of the Studio debug bridge
 			end
 			local data = DataService.get(player :: Player)
-			return data ~= nil and data.tutorialDone
+			return data ~= nil and data.tutorialDone and not queued[player :: Player]
 		end,
 		emit = emit,
 		limits = {
@@ -211,6 +215,7 @@ function RoomService.start(_self: any)
 		task.spawn(onPlayerAdded, player)
 	end
 	Players.PlayerRemoving:Connect(function(player: Player)
+		queued[player] = nil
 		rooms:remove(player)
 		inviteLimiter:forget(player)
 		replyLimiter:forget(player)
@@ -242,6 +247,18 @@ end
 
 function RoomService.roomOf(player: Player): Rooms.Room?
 	return rooms:roomOf(player)
+end
+
+-- Puts `a` (seat 1) and `b` in a room of `mode` without an invitation (a pair the ranked queue made). Nil when either
+-- can't (see Rooms.form).
+function RoomService.form(a: any, b: any, mode: Rooms.Mode): Rooms.Room?
+	return rooms:form(a, b, mode)
+end
+
+-- Whether the player is in the ranked queue: while they are, nobody can invite them and others see "In queue".
+function RoomService.setQueued(player: Player, on: boolean)
+	queued[player] = if on then true else nil
+	refreshStatus(player)
 end
 
 -- Takes the player out of their room, if they are in one.

@@ -35,6 +35,8 @@
 --   PvpRequestState()                            the client thinks it is out of step; send the full match state
 --   PvpForfeit(matchId)                          give up the match (a loss)
 --   PvpRematch(matchId)                          Play again after a friendly or practice match; needs both players
+--   PvpQueue(join)                               join (true) or leave (false) the ranked queue
+--   PvpPractice()                                play a practice match against the bot (from the queue screen)
 -- Server -> client
 --   GameState(state, reason)                     full run state; reason is "start", "resync" or "revive"
 --   MoveResult(runId, moveIndex, score, set, isOver, best)
@@ -89,6 +91,13 @@
 --   PvpEvent("votes", matchId, votes)            who has pressed Play again, by seat
 --                                                Everything about a match goes through PvpEvent, one remote, so it arrives
 --                                                in the order it was sent
+--   PvpQueueState(state)                         the player's place in the ranked queue: { queued, since?, others,
+--                                                refusal? } with since in server time, others the other players queued,
+--                                                and refusal why they couldn't join ("off", "private", "tutorial",
+--                                                "level", "busy", "loading")
+--                                                A ranked PvpEvent("start") state also carries ranked = { rated, ratings,
+--                                                tiers } by seat, and its PvpEvent("end") rating = { rated, before,
+--                                                after, tierBefore, tier } for the player it is sent to
 --   PvpOpponentBoard(board)                      (unreliable) the opponent's board as a 39-byte buffer (PvpBoardCodec),
 --                                                after each of their moves and again every second
 -- Who is free to be invited is published on each Player as attributes: CoopBusy ("room", "tutorial", "loading" or
@@ -166,6 +175,9 @@ return {
 	PvpRequestState = remoteEvent("PvpRequestState"),
 	PvpForfeit = remoteEvent("PvpForfeit"),
 	PvpRematch = remoteEvent("PvpRematch"),
+	PvpQueue = remoteEvent("PvpQueue"),
+	PvpPractice = remoteEvent("PvpPractice"),
+	PvpQueueState = remoteEvent("PvpQueueState"),
 	PvpEvent = remoteEvent("PvpEvent"),
 	PvpOpponentBoard = unreliableEvent("PvpOpponentBoard"),
 	CoopPartnerHover = unreliableEvent("CoopPartnerHover"),

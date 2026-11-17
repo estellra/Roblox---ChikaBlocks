@@ -175,6 +175,27 @@ local Config = {
 			MERCY_SMALL_MULTIPLIER = 1,
 		}),
 
+		-- Ranked (M27). Ranked matches come only from the queue (invitations are always friendly), are off in private
+		-- servers, and need the tutorial done and level MIN_LEVEL. A pair's matches count for rank only
+		-- PAIR_RATED_LIMIT times in PAIR_WINDOW_SECONDS; later ones are played "unrated".
+		RANKED_ENABLED = true,
+		MIN_LEVEL = 3,
+		PAIR_RATED_LIMIT = 2,
+		PAIR_WINDOW_SECONDS = 24 * 60 * 60,
+		-- After this long without an opponent the queue screen offers practice against the bot and inviting friends.
+		QUEUE_OFFER_SECONDS = 20,
+
+		-- The queue (see Matchmaker): each player accepts an opponent within WINDOW_BASE + WINDOW_PER_SECOND points per
+		-- second waited, at most WINDOW_MAX; two players are matched when each is within the other's window. A pair that
+		-- met in the last RECENT_SECONDS is matched only when nobody else fits. Pairs are made every TICK_SECONDS.
+		QUEUE = table.freeze({
+			WINDOW_BASE = 100,
+			WINDOW_PER_SECOND = 20,
+			WINDOW_MAX = 400,
+			RECENT_SECONDS = 10 * 60,
+			TICK_SECONDS = 1,
+		}),
+
 		-- Rank points for ranked matches (see Elo and PvpRating). A player's change is
 		-- round(K * (S - E)) with E = 1 / (1 + 10 ^ ((opponent - own) / SCALE)) and S 1 for a win, 0.5 for a draw,
 		-- 0 for a loss. K is K_PLACEMENT for the first PLACEMENT_GAMES ranked games of the account, K_HIGH from

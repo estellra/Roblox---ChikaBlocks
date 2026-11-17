@@ -47,6 +47,9 @@ export type Theme = {
 		ExpFill: Color3,
 		Pieces: { Color3 }, -- indexed by Piece.color (1..Config.COLOR_COUNT), then PVP garbage (Config.PVP.GARBAGE_COLOR)
 		PieceOutlines: { Color3 }, -- the darker edge of each piece color
+		Tiers: { [string]: Color3 }, -- the badge of each rank tier (Config.PVP.TIERS ids)
+		RankUp: Color3, -- a rise in rank points
+		RankDown: Color3, -- a fall in rank points
 	},
 	Transparency: {
 		Overlay: number,
@@ -202,6 +205,16 @@ local Theme: Theme = {
 			Color3.fromHex("#e06a6a"),
 			Color3.fromHex("#9d95a3"),
 		},
+		Tiers = {
+			Bronze = Color3.fromHex("#e8956a"),
+			Silver = Color3.fromHex("#cfd8e3"),
+			Gold = Color3.fromHex("#ffd36e"),
+			Platinum = Color3.fromHex("#9ee6e0"),
+			Diamond = Color3.fromHex("#9fd8ff"),
+			Master = Color3.fromHex("#cfbdff"),
+		},
+		RankUp = Color3.fromHex("#3f9a5c"),
+		RankDown = Color3.fromHex("#c4566b"),
 	},
 	Transparency = {
 		Overlay = 0.4,

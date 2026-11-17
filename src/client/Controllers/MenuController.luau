@@ -10,6 +10,7 @@ local CoopController = require("./CoopController")
 local GameController = require("./GameController")
 local LeaderboardController = require("./LeaderboardController")
 local MenuView = require("../Views/MenuView")
+local QueueController = require("./QueueController")
 local SupportController = require("./SupportController")
 
 local MenuController = {}
@@ -53,6 +54,7 @@ function MenuController.leaveForGame()
 	LeaderboardController.close()
 	SupportController.close()
 	CoopController.dismiss()
+	QueueController.dismiss()
 	leaving = false
 	MenuController.hide()
 end
@@ -75,12 +77,19 @@ function MenuController.openCoop()
 	CoopController.open(MenuController.show)
 end
 
--- True on the menu and on screens opened from it (the leaderboard, the Support and Co-op screens).
+-- Swaps the menu for the ranked queue screen (the player joins the queue); going back brings the menu back.
+function MenuController.openRanked()
+	MenuController.hide()
+	QueueController.open(MenuController.show)
+end
+
+-- True on the menu and on screens opened from it (the leaderboard, the Support, Co-op and queue screens).
 function MenuController.isOpen(): boolean
 	return (menu ~= nil and menu:isOpen())
 		or LeaderboardController.isOpen()
 		or SupportController.isOpen()
 		or CoopController.isOpen()
+		or QueueController.isOpen()
 end
 
 function MenuController.start(_self: any)
@@ -95,9 +104,14 @@ function MenuController.start(_self: any)
 			MenuController.play("tutorial")
 		end,
 		MenuController.openSupport,
-		MenuController.openCoop
+		MenuController.openCoop,
+		MenuController.openRanked
 	)
-	view:setCoopVisible(CoopController.isAvailable())
+	local function refreshModes()
+		view:setModes(QueueController.isAvailable(), CoopController.isAvailable())
+	end
+	refreshModes()
+	QueueController.onAvailabilityChanged(refreshModes)
 	menu = view
 	GameController.onProfileChanged(function()
 		refresh(view)

@@ -6,16 +6,28 @@
 -- (Net.PvpEvent), so it arrives in the order it was sent; the opponent's board goes unreliably (Net.PvpOpponentBoard)
 -- after each change and again every second. Times are kept on os.clock() and sent to clients in server time.
 --
--- Friendly matches (a Duel invitation) and practice matches against the bot change no rank; ranked matches, the rank
--- data and the queue come with M27. For the Studio debug bridge it can pair a player with a practice bot that plays on
--- the server (see bot()), so one Studio window is enough to play a whole match.
+-- Three kinds of match: "friendly" (a Duel invitation), "bot" (practice against a bot that plays on the server) and
+-- "ranked" (M27): the queue (Matchmaker) pairs players of this server and forms their room without an invitation. A
+-- ranked match changes rank (PvpRating) unless the pair has had PAIR_RATED_LIMIT rated matches today (PairLimits, in a
+-- MemoryStore shared by servers); its loss is written into the players' data when it starts, so leaving can't dodge it
+-- (settled before the data is released, or the next time it loads). For the Studio debug bridge the practice bot can
+-- also be put in the queue (see bot()), so one Studio window is enough to play a ranked match.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local MemoryStoreService = game:GetService("MemoryStoreService")
+
 local Board = require(ReplicatedStorage.Shared.Board)
 local Config = require(ReplicatedStorage.Shared.Config)
+local DataService = require("./DataService")
 local GameService = require("./GameService")
+local Matchmaker = require("../Matchmaker")
+local PairLimits = require("../PairLimits")
+local PvpRating = require("../PvpRating")
+local RankedRules = require("../RankedRules")
+local RateLimiter = require("../Util/RateLimiter")
+local Seasons = require("../Seasons")
 local Net = require(ReplicatedStorage.Shared.Net)
 local PvpBoardCodec = require(ReplicatedStorage.Shared.PvpBoardCodec)
 local PvpMatches = require("../PvpMatches")
@@ -29,17 +41,39 @@ local SIZE = Config.GRID_SIZE
 local IS_STUDIO = RunService:IsStudio()
 local SWEEP_SECONDS = 0.1 -- how often matches whose clock ran out are ended
 local BOT_FIRST_USER_ID = -8001
+local BOT_RATE = 0.6 -- moves a second of the practice bot
+local PAIRS_MAP = "PvpPairs"
+local DATA_WAIT_SECONDS = 15
 
-type Bot = { rate: number, afk: boolean }
+type Bot = { rate: number, afk: boolean, rating: number }
+
+-- A ranked match: whether it counts, the id its players' pending loss was written under, and the points each had.
+type RankedMatch = { rated: boolean, pendingId: string, ratings: { number } }
 
 local PvpService = {}
 
 local matches: PvpMatches.PvpMatches
+local rating = PvpRating.new(PVP.RATING, PVP.TIERS)
+local matchmaker: Matchmaker.Matchmaker
+local pairLimits: PairLimits.PairLimits
 local bots: { [any]: Bot } = {}
 local botCount = 0
+local rankedOf: { [number]: RankedMatch } = {} -- by match id
+local pairRated: { [any]: boolean } = {} -- set by the queue for the room it is about to form
+local queueLimiter = RateLimiter.new(2, 1, os.clock)
+local practiceLimiter = RateLimiter.new(1, 2, os.clock)
 
 local function enabled(): boolean
 	return PVP.ENABLED or IS_STUDIO
+end
+
+local function rankedEnabled(): boolean
+	return enabled() and PVP.RANKED_ENABLED
+end
+
+-- A private server could match its owner with their own second account.
+local function isPrivateServer(): boolean
+	return game.PrivateServerOwnerId ~= 0
 end
 
 local function isPlayer(who: any): boolean
@@ -67,6 +101,22 @@ end
 
 local function userIdOf(who: any): number
 	return (who :: any).UserId
+end
+
+-- A player's rank points: their saved data's, or the practice bot's own.
+local function ratingOf(who: any): number
+	if isPlayer(who) then
+		local data = DataService.get(who :: Player)
+		return if data then data.pvp.rating else PVP.RATING.START
+	end
+	local bot = bots[who]
+	return if bot then bot.rating else PVP.RATING.START
+end
+
+-- Brings the player's rank data up to date: a match left pending in saved data is a loss, and a new season rolls over.
+local function prepareRank(data: any)
+	rating:settleStale(data.pvp)
+	rating:rollSeason(data.pvp, Seasons.id(os.time()))
 end
 
 local function wireSnapshot(snapshot: any): any
@@ -98,6 +148,7 @@ local function wireState(state: PvpMatches.MatchState, me: any): any
 	if state.seat == 2 then
 		seated = { opponent, me }
 	end
+	local ranked = rankedOf[state.matchId]
 	local userIds, names = {}, {}
 	for seat, member in seated do
 		userIds[seat] = if member then userIdOf(member) else 0
@@ -114,6 +165,13 @@ local function wireState(state: PvpMatches.MatchState, me: any): any
 		ended = if state.ended then wireEnd(state.ended) else nil,
 		userIds = userIds,
 		names = names,
+		ranked = if ranked
+			then {
+				rated = ranked.rated,
+				ratings = ranked.ratings,
+				tiers = { Seasons.tier(PVP.TIERS, ranked.ratings[1]), Seasons.tier(PVP.TIERS, ranked.ratings[2]) },
+			}
+			else nil,
 	}
 end
 
@@ -126,23 +184,66 @@ local function sendBoard(owner: any)
 	end
 end
 
+-- Tells both players how the match ended. A ranked match is settled first: each player's pending change is applied
+-- (or voided, if the server cancelled it), and each hears what it did to their points.
 local function sendEnd(info: PvpMatches.EndInfo)
-	local wire = wireEnd(info)
-	for _, member in info.players do
+	local ranked = rankedOf[info.matchId]
+	rankedOf[info.matchId] = nil
+	for seat, member in info.players do
+		local wire = wireEnd(info)
+		if ranked then
+			local before = ranked.ratings[seat]
+			local after = before
+			local data = if isPlayer(member) then DataService.get(member :: Player) else nil
+			if data and ranked.rated then
+				local result = if info.results then info.results[seat] else nil
+				RankedRules.settle(rating, data.pvp, ranked.pendingId, info.reason, result :: any)
+				after = data.pvp.rating
+			end
+			wire.rating = {
+				rated = ranked.rated,
+				before = before,
+				after = after,
+				tierBefore = Seasons.tier(PVP.TIERS, before),
+				tier = Seasons.tier(PVP.TIERS, after),
+			}
+			if data then
+				GameService.sendProfile(member :: Player)
+			end
+		end
 		fire(member, Net.PvpEvent, "end", wire)
 	end
 end
 
-local function startMatch(room: Rooms.Room)
-	local kind = "friendly"
-	for _, member in room.players do
-		if bots[member] then
-			kind = "bot"
+-- A ranked match starts: when it counts, each player's loss is written into their data now (PvpRating.open) and the
+-- pair's daily count goes up.
+local function openRanked(matchId: number, players: { any }): RankedMatch
+	local ratings = { ratingOf(players[1]), ratingOf(players[2]) }
+	local rated = RankedRules.isRated("ranked", pairRated[players[1]] == true and pairRated[players[2]] == true)
+	pairRated[players[1]], pairRated[players[2]] = nil, nil
+	local ranked: RankedMatch = { rated = rated, pendingId = `{game.JobId}:{matchId}`, ratings = ratings }
+	if rated then
+		for seat, member in players do
+			local data = if isPlayer(member) then DataService.get(member :: Player) else nil
+			if data then
+				prepareRank(data)
+				rating:open(data.pvp, ranked.pendingId, ratings[3 - seat], os.time())
+			end
 		end
+		task.spawn(function()
+			pairLimits:record(userIdOf(players[1]), userIdOf(players[2]))
+		end)
 	end
+	return ranked
+end
+
+local function startMatch(room: Rooms.Room, kind: string)
 	local states = matches:start(room, kind)
 	if not states then
 		return
+	end
+	if kind == "ranked" then
+		rankedOf[states[1].matchId] = openRanked(states[1].matchId, room.players)
 	end
 	for seat, member in room.players do
 		if isPlayer(member) then
@@ -193,13 +294,45 @@ local function rematch(player: any, matchId: unknown)
 		fire(member, Net.PvpEvent, "votes", matchId, votes.votes)
 	end
 	if votes.ready then
-		startMatch(room)
+		startMatch(room, if bots[room.players[1]] or bots[room.players[2]] then "bot" else "friendly")
 	end
 end
 
-local function onRoomFormed(room: Rooms.Room, _inviteId: number?)
-	if room.mode == "pvp" then
-		startMatch(room)
+-- The queue state as the player's queue screen shows it.
+local function sendQueueState(player: any, refusal: RankedRules.Refusal?)
+	local waited = matchmaker:waited(player)
+	local others = matchmaker:count() - (if waited then 1 else 0)
+	fire(player, Net.PvpQueueState, {
+		queued = waited ~= nil,
+		since = if waited then workspace:GetServerTimeNow() - waited else nil,
+		others = others,
+		refusal = refusal,
+	})
+end
+
+local function leaveQueue(player: any)
+	if matchmaker:cancel(player) and isPlayer(player) then
+		RoomService.setQueued(player :: Player, false)
+	end
+end
+
+-- A "pvp" room was formed: by the queue (no invitation: ranked), by a Duel invitation (friendly), or with the bot.
+local function onRoomFormed(room: Rooms.Room, inviteId: number?)
+	if room.mode ~= "pvp" then
+		return
+	end
+	for _, member in room.players do
+		leaveQueue(member)
+	end
+	local kind = "friendly"
+	if inviteId == nil then
+		kind = "ranked"
+	elseif bots[room.players[1]] or bots[room.players[2]] then
+		kind = "bot"
+	end
+	startMatch(room, kind)
+	for _, member in room.players do
+		sendQueueState(member)
 	end
 end
 
@@ -231,7 +364,93 @@ local function onRoomClosed(room: Rooms.Room)
 	end
 end
 
+-- PairLimits' store: the MemoryStore hash map every server shares, keyed by pair.
+local function pairStore(): PairLimits.Store
+	local map = MemoryStoreService:GetHashMap(PAIRS_MAP)
+	return {
+		get = function(key: string): (boolean, PairLimits.Record?)
+			local ok, value = pcall(function()
+				return map:GetAsync(key)
+			end)
+			return ok, if ok and typeof(value) == "table" then value else nil
+		end,
+		update = function(key: string, transform: (PairLimits.Record?) -> PairLimits.Record, ttl: number): boolean
+			local ok = pcall(function()
+				map:UpdateAsync(key, function(old: any): any
+					return transform(if typeof(old) == "table" then old else nil)
+				end, ttl)
+			end)
+			return ok
+		end,
+	}
+end
+
+-- Whether the player may join the queue now, and why not.
+local function eligibility(player: Player): (boolean, RankedRules.Refusal?)
+	return RankedRules.canQueue({
+		enabled = rankedEnabled(),
+		privateServer = isPrivateServer(),
+		data = DataService.get(player),
+		minLevel = PVP.MIN_LEVEL,
+		busy = RoomService.roomOf(player) ~= nil,
+	})
+end
+
+local function joinQueue(player: Player)
+	local ok, refusal = eligibility(player)
+	if not ok then
+		sendQueueState(player, refusal)
+		return
+	end
+	local data = DataService.get(player)
+	if data then
+		prepareRank(data)
+	end
+	if matchmaker:enqueue(player, ratingOf(player)) then
+		GameService.abandonRun(player)
+		RoomService.setQueued(player, true)
+	end
+	sendQueueState(player)
+end
+
+-- Pairs whoever the queue can match and forms each pair's room; the match starts when it is formed (onRoomFormed).
+local function matchQueue()
+	for _, pair in matchmaker:tick() do
+		local a, b = pair[1], pair[2]
+		for _, member in pair do
+			if isPlayer(member) then
+				RoomService.setQueued(member :: Player, false)
+			end
+		end
+		local here = (not isPlayer(a) or (a :: Player).Parent == Players)
+			and (not isPlayer(b) or (b :: Player).Parent == Players)
+		local rated = here and pairLimits:isRated(userIdOf(a), userIdOf(b))
+		pairRated[a], pairRated[b] = rated, rated
+		if not here or not RoomService.form(a, b, "pvp") then
+			pairRated[a], pairRated[b] = nil, nil
+			for _, member in pair do
+				sendQueueState(member) -- out of the queue; the screen lets them join again
+			end
+		end
+	end
+	for _, player in Players:GetPlayers() do
+		if matchmaker:isQueued(player) then
+			sendQueueState(player) -- who else is waiting changes
+		end
+	end
+end
+
 function PvpService.init(_self: any)
+	matchmaker = Matchmaker.new({ clock = os.clock, settings = PVP.QUEUE })
+	pairLimits = PairLimits.new({
+		store = pairStore(),
+		clock = os.time,
+		limit = PVP.PAIR_RATED_LIMIT,
+		windowSeconds = PVP.PAIR_WINDOW_SECONDS,
+		onStoreError = function(what: string)
+			warn(`PvpService: the pair count store failed ({what}); counting in this server`)
+		end,
+	})
 	matches = PvpMatches.new({
 		PvpSession = PvpSession,
 		settings = PVP,
@@ -243,6 +462,8 @@ function PvpService.init(_self: any)
 end
 
 function PvpService.start(_self: any)
+	-- Clients can't tell a private server apart; the Ranked button follows this.
+	ReplicatedStorage:SetAttribute("RankedOpen", rankedEnabled() and not isPrivateServer())
 	RoomService.onRoomFormed(onRoomFormed)
 	RoomService.onMemberLeft(onMemberLeft)
 	RoomService.onRoomClosed(onRoomClosed)
@@ -281,10 +502,61 @@ function PvpService.start(_self: any)
 		end
 	end)
 
+	Net.PvpQueue.OnServerEvent:Connect(function(player: Player, join: unknown)
+		if not enabled() or not queueLimiter:allow(player) or typeof(join) ~= "boolean" then
+			return
+		end
+		if join then
+			joinQueue(player)
+		else
+			leaveQueue(player)
+			sendQueueState(player)
+		end
+	end)
+	Net.PvpPractice.OnServerEvent:Connect(function(player: Player)
+		if enabled() and practiceLimiter:allow(player) then
+			PvpService.practice(player)
+		end
+	end)
+	-- A player is in one thing at a time: starting a solo run leaves the queue.
+	Net.StartGame.OnServerEvent:Connect(function(player: Player)
+		leaveQueue(player)
+	end)
+
+	-- Rank data is brought up to date when it loads (a match left pending counts as lost, a new season rolls over).
+	local function onPlayerAdded(player: Player)
+		local data = DataService.waitForData(player, DATA_WAIT_SECONDS)
+		if data then
+			prepareRank(data)
+			GameService.sendProfile(player)
+		end
+	end
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	for _, player in Players:GetPlayers() do
+		task.spawn(onPlayerAdded, player)
+	end
+	-- Leaving during a match loses it; settled while the player's data is still here.
+	DataService.beforeRelease(function(player: Player)
+		local info = matches:remove(player)
+		if info then
+			sendEnd(info)
+		end
+		matchmaker:remove(player)
+	end)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		local info = matches:remove(player) -- the room's own events may have ended the match already
 		if info then
 			sendEnd(info)
+		end
+		matchmaker:remove(player)
+		queueLimiter:forget(player)
+		practiceLimiter:forget(player)
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(PVP.QUEUE.TICK_SECONDS)
+			matchQueue()
+			pairLimits:sweep()
 		end
 	end)
 	-- A planned shutdown cancels the matches still going: nobody wins or loses.
@@ -367,6 +639,11 @@ local function playBot(bot: any, state: Bot)
 			continue
 		end
 		if summary.ended then
+			if summary.kind == "ranked" then
+				RoomService.leave(bot) -- no rematch in ranked: the bot's work is done
+				bots[bot] = nil
+				break
+			end
 			rematch(bot, summary.matchId) -- the bot is always up for another match
 			continue
 		end
@@ -381,12 +658,42 @@ local function playBot(bot: any, state: Bot)
 	end
 end
 
+local function newBot(rate: number?, points: number?): (any, Bot)
+	botCount += 1
+	local bot = { UserId = BOT_FIRST_USER_ID - botCount, Name = "PvpBot", DisplayName = "Bot", IsBot = true }
+	local state: Bot = { rate = math.max(0.2, rate or BOT_RATE), afk = false, rating = points or PVP.RATING.START }
+	bots[bot] = state
+	return bot, state
+end
+
+--- Practice against the bot (the queue screen offers it when nobody else is there): the player leaves the queue and
+--- whatever room they are in, and plays an unranked match against a bot that plays on the server.
+function PvpService.practice(player: Player): boolean
+	leaveQueue(player)
+	RoomService.leave(player)
+	local bot, state = newBot(BOT_RATE)
+	if not RoomService.pairWithBot(player, bot, "pvp") then
+		bots[bot] = nil
+		sendQueueState(player)
+		return false
+	end
+	task.spawn(playBot, bot, state)
+	return true
+end
+
 -- For the Studio debug bridge. Pairs the player with a practice bot that places the greedy move `rate` times a
 -- second, or changes the one they have: "afk" stops it moving, "back" lets it move again, "leave" takes it out of the
--- room (the player wins). Returns a line saying what happened.
+-- room (the player wins). "queue" puts a bot with `rate` rank points (default 1000) in the ranked queue instead, so a
+-- ranked match can be played alone (only in Studio does a bot's match count). Returns a line saying what happened.
 function PvpService.bot(player: Player, action: string, rate: number?): string
 	if not IS_STUDIO then
 		return "practice bots are for Studio only"
+	end
+	if action == "queue" then
+		local bot, state = newBot(BOT_RATE, rate)
+		matchmaker:enqueue(bot, state.rating)
+		task.spawn(playBot, bot, state)
+		return `a bot with {state.rating} points is in the queue ({matchmaker:count()} queued)`
 	end
 	local room = RoomService.roomOf(player)
 	local partner: any = nil
@@ -412,10 +719,7 @@ function PvpService.bot(player: Player, action: string, rate: number?): string
 		RoomService.leave(partner)
 	end
 	RoomService.leave(player)
-	botCount += 1
-	local bot = { UserId = BOT_FIRST_USER_ID - botCount, Name = "PvpBot", DisplayName = "Bot", IsBot = true }
-	local state: Bot = { rate = math.max(0.2, rate or 0.6), afk = false }
-	bots[bot] = state
+	local bot, state = newBot(rate)
 	if not RoomService.pairWithBot(player, bot, "pvp") then
 		bots[bot] = nil
 		return "could not make a room: the player must have finished the tutorial"

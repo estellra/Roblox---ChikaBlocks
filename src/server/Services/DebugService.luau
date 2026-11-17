@@ -16,7 +16,8 @@
 -- coopbot [userId] [moves per second] pairs the player with a practice partner that plays on the server (it also
 -- plays again when the game is over); coopbot nil nil afk / back / leave idles it, wakes it, or takes it out.
 -- pvpbot [userId] [moves per second] starts a practice PVP match against a bot that plays on the server (it also plays
--- again); pvpbot nil nil afk / back / leave as for coopbot. pvp [userId] describes the player's match; pvp nil <n>
+-- again); pvpbot nil nil afk / back / leave as for coopbot; pvpbot nil <points> queue puts a bot with those rank points
+-- in the ranked queue instead. pvp [userId] describes the player's match; pvp nil <n>
 -- garbage puts n garbage lines in their queue; pvp nil nil cornered leaves them one move from being stuck; pvp nil nil
 -- end ends the match now, as if the clock had run out.
 local Players = game:GetService("Players")

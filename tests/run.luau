@@ -44,6 +44,9 @@ local specs = {
 	require("./PvpMatches.spec"),
 	require("./PvpSync.spec"),
 	require("./PvpLockstep.spec"),
+	require("./Matchmaker.spec"),
+	require("./PairLimits.spec"),
+	require("./RankedRules.spec"),
 }
 
 for _, spec in specs do

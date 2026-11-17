@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local CoopRuns = require("../CoopRuns")
 local DataService = require("./DataService")
 local GameRuns = require("../GameRuns")
@@ -18,6 +19,7 @@ local PlayerData = require("../PlayerData")
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local RateLimiter = require("../Util/RateLimiter")
 local RewardService = require("./RewardService")
+local Seasons = require("../Seasons")
 local Telemetry = require("../Telemetry")
 
 local IS_STUDIO = RunService:IsStudio()
@@ -39,6 +41,18 @@ export type Profile = {
 	rotations: number, -- bought rotations left
 	donated: number, -- Robux given through donation products
 	title: string?,
+	rank: Rank, -- ranked PVP
+}
+
+-- The player's rank, for the menu and the queue screen.
+export type Rank = {
+	rating: number,
+	tier: string,
+	wins: number,
+	losses: number,
+	draws: number,
+	season: string, -- "" before the first ranked game
+	seasonGames: number,
 }
 
 -- What a finished run earned, for the game over panel.
@@ -118,6 +132,15 @@ local function profileOf(player: Player, data: PlayerData.PlayerData): Profile
 		rotations = data.rotations,
 		donated = data.robuxDonated,
 		title = Progression.title(data.milestonesClaimed),
+		rank = {
+			rating = data.pvp.rating,
+			tier = Seasons.tier(Config.PVP.TIERS, data.pvp.rating),
+			wins = data.pvp.wins,
+			losses = data.pvp.losses,
+			draws = data.pvp.draws,
+			season = data.pvp.season,
+			seasonGames = data.pvp.seasonGames,
+		},
 	}
 end
 
