@@ -1,4 +1,5 @@
 --!strict
+local Config = require("../src/shared/Config")
 local PlayerData = require("../src/server/PlayerData")
 local TestKit = require("./TestKit")
 
@@ -35,8 +36,23 @@ return function(t: TestKit.TestKit)
 				purchaseIds = {},
 				coopBest = 0,
 				coopGamesPlayed = 0,
+				pvp = {
+					rating = 1000,
+					peak = 1000,
+					games = 0,
+					wins = 0,
+					losses = 0,
+					draws = 0,
+					season = "",
+					seasonGames = 0,
+					pending = false,
+					lastSeason = false,
+					medals = {},
+				},
 			})
 			t.expect(table.isfrozen(PlayerData.TEMPLATE)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.pvp)).toBe(true)
+			t.expect(table.isfrozen(PlayerData.TEMPLATE.pvp.medals)).toBe(true)
 			-- Nested defaults are frozen too, so no code can change the template through a shallow copy.
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.milestonesClaimed)).toBe(true)
 			t.expect(table.isfrozen(PlayerData.TEMPLATE.badgesAwarded)).toBe(true)
@@ -68,6 +84,14 @@ return function(t: TestKit.TestKit)
 			t.expect(PlayerData.TEMPLATE.coopBest).toBe(0)
 			t.expect(PlayerData.TEMPLATE.coopGamesPlayed).toBe(0)
 			t.expect(PlayerData.VERSION).toBe(3)
+		end)
+
+		t.it("gives profiles from before PVP starting rank data without a migration", function()
+			-- Reconcile copies the whole `pvp` table in; the version stays 3.
+			local old = PlayerData.migrate({ version = PlayerData.VERSION, bestScore = 120, coopBest = 50 })
+			t.expect(old.version).toBe(3)
+			t.expect(PlayerData.TEMPLATE.pvp.rating).toBe(Config.PVP.RATING.START)
+			t.expect(PlayerData.TEMPLATE.pvp.peak).toBe(Config.PVP.RATING.START)
 		end)
 
 		t.it("places version 1 players in the onboarding funnel by what they had already played", function()

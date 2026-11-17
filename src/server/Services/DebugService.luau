@@ -50,6 +50,28 @@ local function keys(set: { [string]: boolean }): string
 	return table.concat(list, ",")
 end
 
+-- The rank data, for `data`.
+local function pvpSummary(pvp: any): string
+	if typeof(pvp) ~= "table" then
+		return "pvp=missing"
+	end
+	local pending = if pvp.pending
+		then `{pvp.pending.id}(+{pvp.pending.win}/{pvp.pending.draw}/{pvp.pending.loss})`
+		else "none"
+	local last = if pvp.lastSeason then `{pvp.lastSeason.id}:{pvp.lastSeason.tier}` else "none"
+	local medals = {}
+	for season, medal in pvp.medals do
+		table.insert(medals, `{season}:{medal.tier}`)
+	end
+	table.sort(medals)
+	return `pvp rating={pvp.rating} peak={pvp.peak} games={pvp.games} W{pvp.wins} L{pvp.losses} D{pvp.draws} season={if pvp.season
+			== ""
+		then "none"
+		else pvp.season} seasonGames={pvp.seasonGames} pending={pending} lastSeason={last} medals={if #medals > 0
+		then table.concat(medals, ",")
+		else "none"}`
+end
+
 local function describe(player: Player): string
 	local state = GameService.getRuns():peek(player)
 	if not state then
@@ -108,7 +130,7 @@ function DebugService.start(_self: any)
 				data
 			)} rotations={data.rotations} donated={data.robuxDonated} coopBest={data.coopBest} coopGames={data.coopGamesPlayed} purchases={#data.purchaseIds} title={Progression.title(
 				data.milestonesClaimed
-			)}`
+			)} | {pvpSummary(data.pvp)}`
 		elseif command == "resetdata" then
 			local data = DataService.get(player)
 			if not data then

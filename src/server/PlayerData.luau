@@ -21,6 +21,32 @@ export type PlayerData = {
 	-- Co-op (see CoopProgress). Never the partner's id: the pair's board row is the only place two players meet.
 	coopBest: number, -- the highest score that counted for Co-op, with any partner
 	coopGamesPlayed: number, -- Co-op runs that ended in game over or had their score fixed by a partner leaving
+	-- Ranked PVP (see PvpRating). Never the opponent's id and no match history.
+	pvp: PvpData,
+}
+
+-- A ranked match in progress, written when it starts with the change each result would bring, so leaving can't dodge
+-- a loss (see PvpRating).
+export type PvpPending = { id: string, win: number, draw: number, loss: number, at: number }
+
+-- The numbers of a season that has ended.
+export type PvpSeasonRecord = { id: string, rating: number, peak: number, games: number, tier: string }
+
+-- A season medal: the highest tier reached that season, and the place on the Rank board for the top players.
+export type PvpMedal = { tier: string, top: number? }
+
+export type PvpData = {
+	rating: number,
+	peak: number, -- highest points this season
+	games: number, -- ranked games ever, counting all three results
+	wins: number,
+	losses: number,
+	draws: number,
+	season: string, -- the season the numbers above belong to (Seasons.id), "" before the first ranked game
+	seasonGames: number,
+	pending: PvpPending | false,
+	lastSeason: PvpSeasonRecord | false,
+	medals: { [string]: PvpMedal }, -- season id -> medal
 }
 
 -- MIGRATIONS[n] upgrades version n data to version n + 1. Never delete a field in the same release that
@@ -72,6 +98,19 @@ PlayerData.TEMPLATE = table.freeze({
 	purchaseIds = table.freeze({}),
 	coopBest = 0,
 	coopGamesPlayed = 0,
+	pvp = table.freeze({
+		rating = 1000, -- Config.PVP.RATING.START (shared code can't be required from here; a test checks they match)
+		peak = 1000,
+		games = 0,
+		wins = 0,
+		losses = 0,
+		draws = 0,
+		season = "",
+		seasonGames = 0,
+		pending = false,
+		lastSeason = false,
+		medals = table.freeze({}),
+	}),
 })
 
 -- Brings saved data up to the current version in place. Run before Reconcile.

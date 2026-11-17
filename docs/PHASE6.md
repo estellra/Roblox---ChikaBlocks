@@ -333,6 +333,21 @@ Mọi bước là logic thuần trên bảng dữ liệu (`PvpRating.open`, `clo
 - **Studio:** profile cũ nạp lên có `pvp` đúng mặc định (`data`); `DataService.beforeRelease` được gọi trước khi phiên kết thúc (dừng Play giữa một trận giả, vào lại, đọc `data`). Kiểm lại API hiện hành của ProfileStore cho lần lưu cuối khi phiên bị server khác lấy.
 - **Hai người thật:** không có gì ở mốc này.
 
+### Kết quả M25
+
+Đã cài: `src/server/Elo.luau`, `Seasons.luau`, `PvpRating.luau`, `Config.PVP.RATING` và `Config.PVP.TIERS`, trường `pvp` trong `PlayerData` (version vẫn 3), `DataService.beforeRelease`, và lệnh debug `data` in thêm phần `pvp`. Test: `Elo.spec`, `Seasons.spec`, `PvpRating.spec`, cộng test mới trong `PlayerData.spec`. 373 test pass.
+
+- **Sửa một test cũ:** test "starts new players at zero" của `PlayerData` so nguyên bảng mẫu, nên phải thêm `pvp` vào đó. Đây là test duy nhất trong số 309 test cũ phải sửa; M22 cũng sửa test này khi thêm trường Co-op.
+- **Cấu hình truyền vào:** `Elo.new(settings)` và `PvpRating.new(settings, tiers)` nhận `Config.PVP.RATING` và `Config.PVP.TIERS` qua tham số, như `Rooms.new(deps)`. Code server và shared nằm ở hai chỗ khác nhau trong DataModel.
+- **Chi tiết mình tự chọn (đổi được trong `Config.PVP.RATING`):**
+  - Huy chương mùa cần ít nhất `MEDAL_MIN_GAMES = 1` ván ranked trong mùa.
+  - `lastSeason` vẫn được ghi khi mùa đó không có ván nào.
+  - Người nghỉ nhiều tháng chỉ bị kéo điểm về giữa một lần.
+  - Mã mùa cũ hơn mùa trong dữ liệu (đồng hồ server khác chạy chậm) thì bỏ qua.
+  - Làm tròn nửa ra xa số 0, nên khi cùng K thì điểm người thắng nhận đúng bằng điểm người thua mất.
+- **Chưa nối:** chưa có chỗ nào gọi `settleStale`, `rollSeason` lúc vào game hay `beforeRelease`. Các lời gọi này thuộc `PvpService` ở M26/M27.
+- **Studio:** chưa chạy, vì lúc làm không có Studio nào kết nối MCP. Còn nợ hai bước: kiểm `data` in ra `pvp` mặc định với một profile cũ, và đọc lại API hiện hành của ProfileStore cho lần lưu cuối khi phiên bị server khác lấy.
+
 ## M26: Ván PVP giao hữu
 
 ### Giao thức

@@ -37,6 +37,9 @@ local specs = {
 	require("./CoopTurnsLockstep.spec"),
 	require("./PvpSession.spec"),
 	require("./PvpSimulation.spec"),
+	require("./Elo.spec"),
+	require("./Seasons.spec"),
+	require("./PvpRating.spec"),
 }
 
 for _, spec in specs do

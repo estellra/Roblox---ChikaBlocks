@@ -20,6 +20,7 @@ local DataService = {}
 
 local store: any
 local profiles: { [Player]: any } = {}
+local releaseCallbacks: { (player: Player, data: PlayerData.PlayerData) -> () } = {}
 
 local function onPlayerAdded(player: Player)
 	local profile = store:StartSessionAsync(Erasure.profileKey(player.UserId), {
@@ -63,9 +64,22 @@ function DataService.start(_self: any)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		local profile = profiles[player]
 		if profile then
+			for _, callback in releaseCallbacks do
+				local ok, err = pcall(callback, player, profile.Data)
+				if not ok then
+					warn(`DataService: a beforeRelease callback failed for {player.UserId}: {err}`)
+				end
+			end
 			profile:EndSession() -- saves and releases the session lock
 		end
 	end)
+end
+
+-- Registers `callback` to run when a player leaves, with their live data, right before it is saved and released (for
+-- example, to settle a ranked match they left). It must not yield. It doesn't run when the data was taken by another
+-- server: PvpRating.settleStale covers that case the next time the data loads.
+function DataService.beforeRelease(callback: (player: Player, data: PlayerData.PlayerData) -> ())
+	table.insert(releaseCallbacks, callback)
 end
 
 -- The player's live data, or nil while it loads (or if they're leaving). Changes are saved automatically.

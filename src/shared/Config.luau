@@ -167,6 +167,38 @@ local Config = {
 		GENERATOR = table.freeze({
 			MERCY_SMALL_MULTIPLIER = 1,
 		}),
+
+		-- Rank points for ranked matches (see Elo and PvpRating). A player's change is
+		-- round(K * (S - E)) with E = 1 / (1 + 10 ^ ((opponent - own) / SCALE)) and S 1 for a win, 0.5 for a draw,
+		-- 0 for a loss. K is K_PLACEMENT for the first PLACEMENT_GAMES ranked games of the account, K_HIGH from
+		-- K_HIGH_FROM points up, K otherwise. Points never go below FLOOR.
+		RATING = table.freeze({
+			START = 1000,
+			FLOOR = 100,
+			SCALE = 400,
+			K_PLACEMENT = 40,
+			PLACEMENT_GAMES = 10,
+			K = 24,
+			K_HIGH = 16,
+			K_HIGH_FROM = 1800,
+
+			-- A season is a calendar month (UTC). When a new one starts, points move this share of the way back to
+			-- START, and a player who played at least MEDAL_MIN_GAMES ranked games in the old one gets its medal
+			-- (their highest tier that season).
+			SEASON_PULL = 0.5,
+			MEDAL_MIN_GAMES = 1,
+		}),
+
+		-- Rank tiers, lowest first: a player is in the last tier whose `from` their points reach. Never rename an id
+		-- once shipped (season medals are saved by tier id).
+		TIERS = table.freeze({
+			table.freeze({ id = "Bronze", from = 0 }),
+			table.freeze({ id = "Silver", from = 1000 }),
+			table.freeze({ id = "Gold", from = 1200 }),
+			table.freeze({ id = "Platinum", from = 1400 }),
+			table.freeze({ id = "Diamond", from = 1600 }),
+			table.freeze({ id = "Master", from = 1800 }),
+		}),
 	}),
 }
 
