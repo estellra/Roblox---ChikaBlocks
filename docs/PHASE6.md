@@ -671,6 +671,8 @@ Mỗi mùa thêm một store vào danh sách xóa (12 store mỗi năm), ít hơ
   - Upload qua Studio MCP; ID nằm trong `Theme.Images.Rank*`. `RankBadge` giờ hiện ảnh.
   - Lúc upload, ảnh còn chờ Roblox kiểm duyệt nên trong Studio chỗ huy hiệu tạm trống; duyệt xong sẽ tự hiện.
 - Badge ID cho Gold, Diamond, Master.
+- **Thông báo chuyển mùa (hoãn, chờ mockup):** thẻ một lần trên menu ghi hạng cuối mùa, huy chương và điểm kéo về. Cần thêm trường "đã xem" vào dữ liệu người chơi (migration nhỏ) và `lastSeason` trong `Profile`. Chưa làm theo quyết định của bạn; xem lại sau khi có mockup.
+- **Màn tạm không cần mockup (đã làm):** nút Ranked trên menu hiện mờ kèm lý do khi chưa qua tutorial hoặc chưa đủ level (bấm vào hiện dòng lý do 4 giây; private server vẫn ẩn nút); Forfeit trong bảng Pause của trận cần bấm hai lần trong 3 giây ("Sure? Tap again"). Cả hai chưa thử trong Studio.
 - Kiểm trên server thật sau khi publish (xem mục Test).
 
 ## M29: Ghép liên server (phác thảo)

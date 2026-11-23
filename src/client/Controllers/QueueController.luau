@@ -49,6 +49,22 @@ function QueueController.onAvailabilityChanged(callback: () -> ())
 	ReplicatedStorage:GetAttributeChangedSignal("RankedOpen"):Connect(callback)
 end
 
+--- Why the Ranked button is locked for this player, as the menu says it, or nil when they can queue. The server checks
+--- again when they join (RankedRules.Refusal); this only keeps the button honest for the two cases the client knows.
+function QueueController.lockReason(): string?
+	local profile = GameController.getProfile()
+	if not profile then
+		return nil
+	end
+	if not profile.tutorialDone then
+		return REFUSALS.tutorial
+	end
+	if profile.level < PVP.MIN_LEVEL then
+		return REFUSALS.level
+	end
+	return nil
+end
+
 -- "0:12"
 local function clockText(seconds: number): string
 	local whole = math.max(0, math.floor(seconds))

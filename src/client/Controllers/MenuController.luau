@@ -109,12 +109,14 @@ function MenuController.start(_self: any)
 	)
 	local function refreshModes()
 		view:setModes(QueueController.isAvailable(), CoopController.isAvailable())
+		view:setRankedLock(QueueController.lockReason())
 	end
 	refreshModes()
 	QueueController.onAvailabilityChanged(refreshModes)
 	menu = view
 	GameController.onProfileChanged(function()
 		refresh(view)
+		view:setRankedLock(QueueController.lockReason())
 	end)
 	GameController.onMenuRequested(MenuController.show)
 	refresh(view) -- the profile may have arrived before this controller started

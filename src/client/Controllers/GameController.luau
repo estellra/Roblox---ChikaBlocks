@@ -83,6 +83,7 @@ local IS_STUDIO = RunService:IsStudio()
 local REVIVE_WAIT_SECONDS = 20 -- how long Revive shows "Please wait…" without an answer
 local START_RETRY_SECONDS = 3 -- ask again if the server hasn't answered StartGame by then
 local ROTATIONS_ASK_GAP_SECONDS = 2 -- the purchase prompt for rotations opens at most this often
+local FORFEIT_CONFIRM_SECONDS = 3 -- Forfeit in a match's pause panel needs a second press within this long
 local CONFIRM_TIMEOUT_SECONDS = 2 -- ask for the full state if a move is still unconfirmed by then
 
 local GameController = {}
@@ -95,6 +96,7 @@ local runMode: RunMode = "normal"
 local views: Views? = nil
 local profile: Profile? = nil
 local runRewards: RunRewards? = nil -- what the current run earned, once it is over and the server said
+local forfeitArmedAt = -math.huge -- when Forfeit was first pressed in a match's pause panel
 local reviveWaitToken = 0 -- identifies the latest Revive press, for its timeout
 local rotationsAskedAt = -math.huge -- when the player last asked to buy rotations
 local reviveOffer: { runId: number, tokens: number, price: number? }? = nil -- what the server offered after game over
@@ -412,9 +414,26 @@ end
 -- Closes the game over panel and asks for the main menu (MenuController listens).
 function GameController.requestMenu()
 	if source and source.isMatch and source.forfeit then
-		-- The pause panel of a match: Forfeit. The match's result screen comes next, not the menu.
+		-- The pause panel of a match: Forfeit, on the second press within FORFEIT_CONFIRM_SECONDS. The match's result
+		-- screen comes next, not the menu.
+		local now = os.clock()
+		if now - forfeitArmedAt > FORFEIT_CONFIRM_SECONDS then
+			forfeitArmedAt = now
+			if views then
+				views.hud:setForfeitArmed(true)
+			end
+			task.delay(FORFEIT_CONFIRM_SECONDS, function()
+				if views and forfeitArmedAt == now then
+					forfeitArmedAt = -math.huge
+					views.hud:setForfeitArmed(false)
+				end
+			end)
+			return
+		end
+		forfeitArmedAt = -math.huge
 		source.forfeit()
 		if views then
+			views.hud:setForfeitArmed(false)
 			views.hud:hidePause()
 		end
 		return

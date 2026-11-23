@@ -622,6 +622,11 @@ function Hud.setMatchPause(self: Hud, on: boolean)
 	self.pauseMenuButton.Text = if on then "Forfeit" else "Menu"
 end
 
+-- The match pause panel's Forfeit asks for a second press: armed it says so, then goes back to "Forfeit".
+function Hud.setForfeitArmed(self: Hud, armed: boolean)
+	self.pauseMenuButton.Text = if armed then "Sure? Tap again" else "Forfeit"
+end
+
 -- The partner's name in the bar and the Co-op pause panel (nil for a solo run).
 function Hud.setPartner(self: Hud, name: string?)
 	self.bar:setPartner(name)

@@ -55,6 +55,9 @@ export type MenuView = typeof(setmetatable(
 		leaderboardButton: TextButton,
 		coopButton: TextButton,
 		rankedButton: TextButton,
+		rankedNote: TextLabel, -- why Ranked is locked, shown for a few seconds after pressing it
+		rankedLock: string?,
+		noteToken: number,
 		leaderboardRoot: Frame,
 		coopRoot: Frame,
 		rankedRoot: Frame,
@@ -236,10 +239,23 @@ function MenuView.new(
 	end
 	local modeRow = row("ModeRow", 3, { rankedRoot, coopRoot })
 	modeRow.Visible = false
-	local secondaryRow = row("SecondaryRow", 4, { leaderboardRoot })
+	local secondaryRow = row("SecondaryRow", 5, { leaderboardRoot })
+	local rankedNote = create("TextLabel", {
+		Name = "RankedNote",
+		LayoutOrder = 4,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		FontFace = fonts.Body,
+		TextSize = 14,
+		TextWrapped = true,
+		TextColor3 = colors.TextMuted,
+		Text = "",
+		Visible = false,
+	})
 	local tagline = create("TextLabel", {
 		Name = "Tagline",
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
@@ -264,6 +280,7 @@ function MenuView.new(
 		pills,
 		playRoot,
 		modeRow,
+		rankedNote,
 		secondaryRow,
 		tagline,
 	})
@@ -337,6 +354,9 @@ function MenuView.new(
 		leaderboardButton = leaderboardButton,
 		coopButton = coopButton,
 		rankedButton = rankedButton,
+		rankedNote = rankedNote,
+		rankedLock = nil,
+		noteToken = 0,
 		leaderboardRoot = leaderboardRoot,
 		coopRoot = coopRoot,
 		rankedRoot = rankedRoot,
@@ -376,7 +396,12 @@ function MenuView.new(
 	table.insert(
 		self.connections,
 		rankedButton.Activated:Connect(function()
-			if self.ready and onRanked then
+			if not self.ready then
+				return
+			end
+			if self.rankedLock then
+				self:showRankedNote(self.rankedLock)
+			elseif onRanked then
 				onRanked()
 			end
 		end)
@@ -450,6 +475,32 @@ function MenuView.setModes(self: MenuView, ranked: boolean, coop: boolean)
 	local size = if both then UDim2.new(0.5, -5, 1, 0) else UDim2.fromScale(1, 1)
 	self.rankedRoot.Size = size
 	self.coopRoot.Size = size
+end
+
+-- Paints the Ranked button locked (pale, like the other unavailable buttons) with `reason`, or normal again (nil).
+-- A locked button still takes the press, to tell the player why.
+function MenuView.setRankedLock(self: MenuView, reason: string?)
+	self.rankedLock = reason
+	Clay.setEnabled(self.rankedRoot, reason == nil)
+	self.rankedButton.Active = true
+	self.rankedButton.Selectable = true
+	if reason == nil then
+		self.noteToken += 1
+		self.rankedNote.Visible = false
+	end
+end
+
+-- Shows `text` under the mode buttons for a few seconds.
+function MenuView.showRankedNote(self: MenuView, text: string)
+	self.noteToken += 1
+	local token = self.noteToken
+	self.rankedNote.Text = text
+	self.rankedNote.Visible = true
+	task.delay(4, function()
+		if token == self.noteToken then
+			self.rankedNote.Visible = false
+		end
+	end)
 end
 
 -- The Co-op button on its own (Ranked off); see setModes.
