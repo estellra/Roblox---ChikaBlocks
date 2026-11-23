@@ -721,7 +721,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 
 1. Trả lời các câu hỏi mở (BG đến BZ đã duyệt). Không còn câu nào chặn M24; câu 2 chờ số liệu thật sau M26; không còn câu nào chặn M28.
 2. Trước M26: cùng mình chạy lượt kiểm UI trong Studio (M6 solo, màn hình M19/M21/M22). Nếu Studio MCP kết nối được thì mình tự chạy phần một client.
-3. Cho mình biết **số người tối đa mỗi server** đang đặt trong Creator Hub và số người chơi cùng lúc hiện tại (để ước lượng hàng chờ trong server có đủ người không).
+3. ~~Số người tối đa mỗi server~~ Đã trả lời: dự định **12 đến 16 người** mỗi server. Với con số này, hàng chờ ranked trong server thường chỉ có 0 đến 2 người, nên bot luyện tập và mời bạn là phần cần thiết; xem `PvpQueueWait` (kết thúc bằng `bot` hoặc `cancelled`) để quyết định có làm M29 không. Số người chơi cùng lúc hiện tại vẫn cần khi có số liệu.
 4. Sau M26 và M27: thử với hai tài khoản thật trên hai thiết bị theo các danh sách "Hai người thật".
 5. Khi có: badge ID cho Gold, Diamond, Master; mockup cho điện thoại (dọc và ngang) và các màn còn thiếu (xem [Chưa có mockup](#chưa-có-mockup)). Mockup PC đã nhận.
 
@@ -737,7 +737,7 @@ Chỉ làm khi số liệu M27 và M28 cho thấy cần (ví dụ trung vị `Pv
 8. ~~**Rác đẩy hay thay?**~~ Đã trả lời: **đẩy cả bảng**, đúng như BC. Mockup `04` (hàng rác thay hàng đáy, 7 hàng trên đứng yên) chỉ là minh họa; khi cài, cả bảng dịch một ô và hàng/cột ở mép đối diện mất.
 9. ~~**Báo trước hướng rác?**~~ Đã trả lời: **có** (quyết định CB). Server rút hướng lúc rác vào hàng chờ và gửi cho nạn nhân; vị trí lỗ không báo trước.
 10. ~~**Nút Pause trong trận.**~~ Đã trả lời (quyết định CC): bấm Pause mở bảng có **Resume** và **Forfeit**, đồng hồ vẫn chạy.
-11. ~~**Menu trên điện thoại ngang thấp.**~~ Đã trả lời: để tới khi làm bản điện thoại; PC theo mockup `06`. Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Cần trước M27.
+11. ~~**Menu trên điện thoại ngang thấp.**~~ Đã trả lời: để tới khi làm bản điện thoại; PC theo mockup `06`. Mockup `06` có ba hàng nút dưới Play (Ranked + Co-op, rồi Leaderboard). M19 đã gộp Co-op với Leaderboard vào một hàng để vừa màn thấp. Trên điện thoại: thu nhỏ nút, hay xếp Ranked, Co-op, Leaderboard thành một hàng ba nút? Đã chọn **một hàng ba nút** khi màn ngang thấp hơn 420 px (`SHORT_HEIGHT` trong `MenuView`); nút Leaderboard đổi nhãn thành "Top". Chưa thử trong Studio.
 
 ## Quyết định đã chốt
 

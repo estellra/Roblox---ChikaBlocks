@@ -22,6 +22,7 @@ local PLAY_KEYS: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.Space] = true,
 }
 
+local SHORT_HEIGHT = 420 -- a safe area lower than this puts the three mode buttons on one row
 local LANDSCAPE_MIN_RATIO = 1.1 -- width / height of the safe area
 local DECOR_CELL = 26 -- pixels per cell of the floating blocks
 local OPEN_START_SCALE = 0.96 -- the menu grows from this as it opens
@@ -62,6 +63,10 @@ export type MenuView = typeof(setmetatable(
 		coopRoot: Frame,
 		rankedRoot: Frame,
 		modeRow: Frame,
+		secondaryRow: Frame,
+		showRanked: boolean,
+		showCoop: boolean,
+		short: boolean, -- a low landscape screen: Ranked, Co-op and Leaderboard share one row
 		helpButton: TextButton,
 		supportButton: TextButton,
 		floaters: { Tween },
@@ -361,6 +366,10 @@ function MenuView.new(
 		coopRoot = coopRoot,
 		rankedRoot = rankedRoot,
 		modeRow = modeRow,
+		secondaryRow = secondaryRow,
+		showRanked = false,
+		showCoop = false,
+		short = false,
 		helpButton = helpButton,
 		supportButton = supportButton,
 		floaters = floaters,
@@ -452,6 +461,11 @@ function MenuView.layout(self: MenuView)
 	self.logoLayout.Padding = UDim.new(0, -math.floor(logoSize * 0.14)) -- the second line tucks under the first
 	self.mascot.Size = UDim2.fromOffset(mascotSize, mascotSize)
 	self.actions.Size = UDim2.fromOffset(actionsWidth, 0)
+	local short = landscape and size.Y < SHORT_HEIGHT
+	if short ~= self.short then
+		self.short = short
+		self:arrangeModes()
+	end
 	local layout = self.main:FindFirstChildOfClass("UIListLayout") :: UIListLayout
 	layout.FillDirection = if landscape then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical
 	layout.Padding = UDim.new(0, math.floor(gap))
@@ -468,13 +482,30 @@ end
 -- Shows the Ranked and Co-op buttons that are on, side by side on their row (one alone fills it; with neither the row
 -- goes). Leaderboard keeps its own row.
 function MenuView.setModes(self: MenuView, ranked: boolean, coop: boolean)
-	self.rankedRoot.Visible = ranked
-	self.coopRoot.Visible = coop
-	self.modeRow.Visible = ranked or coop
-	local both = ranked and coop
-	local size = if both then UDim2.new(0.5, -5, 1, 0) else UDim2.fromScale(1, 1)
+	self.showRanked = ranked
+	self.showCoop = coop
+	self:arrangeModes()
+end
+
+-- Lays the mode buttons out: Ranked and Co-op on their row and Leaderboard under them, or on a short screen all three
+-- on one row (Leaderboard then reads "Top" to fit the narrower button). Each takes an equal share of the row.
+function MenuView.arrangeModes(self: MenuView)
+	local short = self.short
+	local leaderboardRoot = self.leaderboardRoot
+	leaderboardRoot.Parent = if short then self.modeRow else self.secondaryRow
+	leaderboardRoot.LayoutOrder = 3
+	self.leaderboardButton.Text = if short then "Top" else "Leaderboard"
+	self.rankedRoot.Visible = self.showRanked
+	self.coopRoot.Visible = self.showCoop
+	self.modeRow.Visible = short or self.showRanked or self.showCoop
+	self.secondaryRow.Visible = not short
+	local count = (if self.showRanked then 1 else 0) + (if self.showCoop then 1 else 0) + (if short then 1 else 0)
+	local size = if count > 1
+		then UDim2.new(1 / count, -math.floor(10 * (count - 1) / count), 1, 0)
+		else UDim2.fromScale(1, 1)
 	self.rankedRoot.Size = size
 	self.coopRoot.Size = size
+	leaderboardRoot.Size = if short then size else UDim2.fromScale(1, 1)
 end
 
 -- Paints the Ranked button locked (pale, like the other unavailable buttons) with `reason`, or normal again (nil).
@@ -505,7 +536,7 @@ end
 
 -- The Co-op button on its own (Ranked off); see setModes.
 function MenuView.setCoopVisible(self: MenuView, visible: boolean)
-	self:setModes(self.rankedRoot.Visible, visible)
+	self:setModes(self.showRanked, visible)
 end
 
 function MenuView.show(self: MenuView)
