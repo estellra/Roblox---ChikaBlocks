@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Clay = require("./Clay")
+local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 local RankBadge = require("./RankBadge")
 local Theme = require("./Theme")
 local create = require("./Create")
@@ -111,6 +112,7 @@ function QueueView.new(playerGui: PlayerGui, callbacks: Callbacks): QueueView
 	backdrop.ScreenInsets = Enum.ScreenInsets.None -- after IgnoreGuiInset, which would reset it
 
 	local badge = RankBadge.new(BADGE_SIZE, "Silver", 1)
+	badge.Visible = Config.PVP.RANK_ICONS_ENABLED
 	local rankLabel = create("TextLabel", {
 		Name = "Rank",
 		LayoutOrder = 1,

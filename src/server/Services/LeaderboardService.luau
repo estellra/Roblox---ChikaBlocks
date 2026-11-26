@@ -25,6 +25,9 @@ local Progression = require(ReplicatedStorage.Shared.Progression)
 local RateLimiter = require("../Util/RateLimiter")
 
 local IS_STUDIO = RunService:IsStudio()
+-- With PVP off the Rank tab is hidden, so the Rank board and the season's final top aren't read.
+local PVP_ON = Config.PVP.ENABLED or IS_STUDIO
+local SEASONS = Config.PVP.SEASONS_ENABLED
 local REFRESH_SECONDS = 60
 local REFRESH_SOON_SECONDS = 3 -- how long refreshSoon() waits, for a write to show up in the sorted read
 local SHUTDOWN_WAIT_SECONDS = 20 -- how long a closing server waits for leaderboard writes (the limit is 30)
@@ -85,7 +88,7 @@ local finalTop: FinalTop? = nil
 local finalTopListeners: { (top: FinalTop) -> () } = {}
 
 local function storeFor(key: string, time: number): OrderedDataStore
-	return DataStoreService:GetOrderedDataStore(Leaderboards.storeName(key, time, IS_STUDIO))
+	return DataStoreService:GetOrderedDataStore(Leaderboards.storeName(key, time, IS_STUDIO, SEASONS))
 end
 
 local function titleFor(index: number): string?
@@ -110,8 +113,8 @@ function LeaderboardService.flush(player: Player, data: PlayerData.PlayerData, m
 		done = {}
 		written[player] = done
 	end
-	local values =
-		Leaderboards.values(data, Progression.titleIndex(data.milestonesClaimed), now, Config.PVP.RANK_MIN_GAMES)
+	local titleIndex = Progression.titleIndex(data.milestonesClaimed)
+	local values = Leaderboards.values(data, titleIndex, now, Config.PVP.RANK_MIN_GAMES, SEASONS)
 	for key, value in Leaderboards.changes(values, done) do
 		writesInFlight += 1
 		task.spawn(function()
@@ -255,7 +258,9 @@ function LeaderboardService.refresh()
 		end
 	end
 	table.insert(reads, { key = Leaderboards.COOP_KEY, top = Leaderboards.COOP_TOP })
-	table.insert(reads, { key = Leaderboards.RANK_KEY, top = Leaderboards.RANK_TOP })
+	if PVP_ON then
+		table.insert(reads, { key = Leaderboards.RANK_KEY, top = Leaderboards.RANK_TOP })
+	end
 	table.insert(reads, { key = Leaderboards.SUPPORTERS_KEY, top = Leaderboards.SUPPORTERS_TOP })
 
 	local raw: { [string]: { RawItem } } = {}
@@ -322,6 +327,9 @@ end
 -- Reads the final top of the season that ended, once it has been over for FINAL_TOP_DELAY_SECONDS. Trial seasons give
 -- no rewards, so they are not read.
 local function readFinalTop()
+	if not PVP_ON or not SEASONS then
+		return
+	end
 	local now = os.time()
 	local current = Seasons.id(now)
 	local ended = Seasons.previous(current)
@@ -408,7 +416,7 @@ function LeaderboardService.describe(): string
 	end
 	table.insert(
 		lines,
-		`Rank ({Leaderboards.storeName(Leaderboards.RANK_KEY, os.time(), IS_STUDIO)}): {if rank
+		`Rank ({Leaderboards.storeName(Leaderboards.RANK_KEY, os.time(), IS_STUDIO, SEASONS)}): {if rank
 			then table.concat(rankParts, " | ")
 			else "not loaded"}`
 	)
@@ -454,6 +462,8 @@ local function snapshotFor(data: PlayerData.PlayerData): Snapshot
 	local season = Seasons.id(now)
 	local pvp = data.pvp
 	local current = pvp.season == season
+	-- With seasons off the board counts every ranked game, and there is no season or medal to show.
+	local seasonGames = if not SEASONS then pvp.games elseif current then pvp.seasonGames else 0
 	Leaderboards.rollWeek(data.weekly, now)
 	return {
 		boards = boards,
@@ -470,11 +480,11 @@ local function snapshotFor(data: PlayerData.PlayerData): Snapshot
 				wins = pvp.wins,
 				losses = pvp.losses,
 				draws = pvp.draws,
-				seasonGames = if current then pvp.seasonGames else 0,
-				season = season,
-				seasonEnds = Seasons.lastDayText(season),
+				seasonGames = seasonGames,
+				season = if SEASONS then season else "",
+				seasonEnds = if SEASONS then Seasons.lastDayText(season) else "",
 				minGames = Config.PVP.RANK_MIN_GAMES,
-				medals = medalLines(pvp),
+				medals = if SEASONS then medalLines(pvp) else {},
 			},
 		},
 	}

@@ -158,6 +158,9 @@ end
 -- and a finished season's Top 10 medal is given.
 local function prepareRank(data: any, player: Player?)
 	rating:settleStale(data.pvp)
+	if not PVP.SEASONS_ENABLED then
+		return
+	end
 	if rating:rollSeason(data.pvp, seasonNow()) and player and data.pvp.lastSeason then
 		telemetry():pvpSeasonTier(player, data.pvp.lastSeason.tier)
 	end
@@ -874,6 +877,8 @@ function PvpService.debug(player: Player, command: string?, value: number?): str
 		-- Moves the season clock on `value` months (Studio only) and rolls the player's data over, as a new month would.
 		if not IS_STUDIO then
 			return "only in Studio"
+		elseif not PVP.SEASONS_ENABLED then
+			return "seasons are off (Config.PVP.SEASONS_ENABLED)"
 		end
 		seasonShift = math.max(0, seasonShift + math.floor(value or 1))
 		local data = DataService.get(player)

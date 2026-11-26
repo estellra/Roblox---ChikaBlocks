@@ -2,11 +2,11 @@
 
 Lập ngày 2026-11-26 từ tài liệu, config và lịch sử git. Việc đã thử nhưng chưa ghi vào tài liệu vẫn để trống ở đây; tick lại khi xác nhận.
 
-**Thứ tự đề xuất:** A4 → publish bản Private có bật PVP → A1, A2, A3 → sửa lỗi → A5 → phần B → public.
+**Thứ tự đề xuất:** A4 → publish bản Private (đã có PVP) → A1, A2, A3 → sửa lỗi → A5 → phần B → public.
 
 ## Trước khi test
 
-- **PVP đang tắt ngoài Studio** (`PVP.ENABLED = false` trong `src/shared/Config.luau`). Muốn thử Duel và Ranked bằng hai tài khoản trên server thật, bật cờ này rồi publish khi experience còn **Private**.
+- **PVP đang bật** (`PVP.ENABLED = true`): Duel, Ranked và BXH Elo. **Hoãn (quyết định 2026-11-26):** mùa giải, medal, Top 10, badge hạng và icon hạng (`SEASONS_ENABLED`, `RANK_ICONS_ENABLED` = false trong `src/shared/Config.luau`).
 - `dev` đang hơn `main` 37 commit. Bản đã publish có thể chưa có Co-op và PVP, nên publish lại trước khi test (cách publish ở [QA.md](QA.md) mục 1).
 - Test hai người cũng chạy được trong Studio (Test → Clients and Servers, 2 người), nhưng không thay được lượt thử trên server thật.
 
@@ -92,13 +92,13 @@ PVP chưa có mockup điện thoại và chưa được thử cảm ứng hay m�
 - [ ] Nút Ranked bị khoá hiện kèm lý do
 - [ ] Forfeit phải bấm hai lần
 - [ ] Hàng ba nút Ranked, Co-op, Leaderboard trên màn thấp
-- [ ] Ảnh huy hiệu rank hiện đúng sau khi Roblox duyệt ảnh
+- [ ] Hạng chỉ hiện bằng tên và điểm, không có huy hiệu hay dòng Season
 
 ### A5. Người mới và vận hành
 
 - [ ] Phép thử 15 giây với ít nhất 5 người chưa từng thấy game ([QA.md](QA.md) mục 3)
 - [ ] Ít nhất 95% người thử không gặp lỗi
-- [ ] `lune run scripts/erase-user.luau <userId> --dry-run`, rồi xoá thật trên tài khoản thử; kiểm tra profile, các bảng điểm, dòng cặp Co-op và bảng `Rank_`
+- [ ] `lune run scripts/erase-user.luau <userId> --dry-run`, rồi xoá thật trên tài khoản thử; kiểm tra profile, các bảng điểm, dòng cặp Co-op và bảng `Rank_all`
 - [ ] Analytics có số liệu: `ReviveOffer`, onboarding, `CoopInvite`, `CoopReviveOffer`, `PvpQueue`, `PvpQueueWait`
 
 ## B. Việc còn lại trước khi public
@@ -107,8 +107,6 @@ PVP chưa có mockup điện thoại và chưa được thử cảm ứng hay m�
 
 - [ ] Sửa các lỗi tìm được ở phần A, nhất là giao diện điện thoại
 - [ ] Review code Co-op và PVP về bảo mật và mất dữ liệu (tài liệu mới ghi đợt review cho bản publish đầu, M11)
-- [ ] Bật `PVP.ENABLED` sau khi test hai người đạt (hoặc public mà chưa mở PVP)
-- [ ] Đặt `PVP.RATING.REWARDS_FROM_SEASON` bằng tháng kế tiếp tháng bật PVP: bật trong 11/2026 là `2026M12`, trong 12/2026 là `2027M01` (giá trị hiện tại)
 - [ ] Creator Hub: bảng câu hỏi độ tuổi
 - [ ] Creator Hub: Developer Product *On Sale*, đúng giá (hồi sinh, gói xoay, donate)
 - [ ] Creator Hub: server 12–16 người
@@ -121,16 +119,22 @@ PVP chưa có mockup điện thoại và chưa được thử cảm ứng hay m�
 
 ### Nên có, không chặn
 
-- [ ] Badge: 9 badge mốc (`Config.MILESTONES`) và 3 badge hạng (`TIER_BADGES`), ID đang là 0
+- [ ] Badge: 9 badge mốc (`Config.MILESTONES`), ID đang là 0
 - [ ] Âm thanh và nhạc (chưa có gì trong code)
-- [ ] Thông báo chuyển mùa (chờ mockup)
-- [ ] Mockup điện thoại và các màn PVP còn thiếu
 - [ ] Kiểm kiểu `--!strict` bằng luau-lsp
 
 ### Sau khi public
 
-- [ ] Theo dõi Analytics và F9 ([QA.md](QA.md) mục 4): funnel mua hàng, `CoopConflict`, `PvpQueueWait`
-- [ ] Ghép liên server (M29), chỉ khi hàng chờ vắng
+- [ ] Theo dõi Analytics và F9 ([QA.md](QA.md) mục 4): funnel mua hàng, `CoopConflict`
 - [ ] Quảng cáo thưởng (cần ít nhất 2.000 người chơi mỗi tháng)
 - [ ] Webhook hoàn tiền
 - [ ] Cosmetic và cửa hàng (giai đoạn 4)
+
+## Khi bật lại các phần phụ của PVP
+
+- [ ] Bật `SEASONS_ENABLED`. BXH chuyển từ `Rank_all` sang `Rank_<mùa>`, bắt đầu từ bảng trống
+- [ ] Đặt `PVP.RATING.REWARDS_FROM_SEASON` bằng tháng kế tiếp tháng bật mùa (giá trị `2027M01` hiện tại có thể đã cũ)
+- [ ] Bật `RANK_ICONS_ENABLED`, kiểm tra ảnh huy hiệu đã được Roblox duyệt
+- [ ] Tạo 3 badge hạng (`TIER_BADGES`)
+- [ ] Thông báo chuyển mùa và mockup các màn PVP còn thiếu
+- [ ] Ghép liên server (M29), chỉ khi hàng chờ vắng

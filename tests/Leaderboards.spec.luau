@@ -145,6 +145,23 @@ return function(t: TestKit.TestKit)
 			t.expect(Leaderboards.values(stats, 2, time)[Leaderboards.RANK_KEY]).toBe(nil)
 		end)
 
+		t.it("keeps one all-time Rank board with seasons off", function()
+			local time = 1796083200
+			t.expect(Leaderboards.storeName(Leaderboards.RANK_KEY, time, false, false)).toBe("Rank_all")
+			t.expect(Leaderboards.storeName(Leaderboards.RANK_KEY, time, true, false)).toBe("Rank_all_Dev")
+			local stats: any = {
+				bestScore = 0,
+				level = 1,
+				weekly = { week = "", bestScore = 0, exp = 0 },
+				robuxDonated = 0,
+				pvp = { rating = 1320, season = "", seasonGames = 0, games = 4 },
+			}
+			t.expect(Leaderboards.values(stats, 2, time, 5, false)[Leaderboards.RANK_KEY]).toBe(nil)
+			stats.pvp.games = 5
+			local value = Leaderboards.values(stats, 2, time, 5, false)[Leaderboards.RANK_KEY]
+			t.expect(value).toBe(Leaderboards.encode(1320, 2))
+		end)
+
 		t.it("writes again only what changed", function()
 			local written = { Highscore_all = 100, Level_all = 200 }
 			local changes = Leaderboards.changes({ Highscore_all = 100, Level_all = 300, Level_week = 5 }, written)

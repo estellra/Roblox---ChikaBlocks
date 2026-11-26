@@ -122,8 +122,13 @@ local Config = {
 	-- garbage lines onto each other. The numbers marked "M24" are starting points that tests/PvpSimulation.spec reports
 	-- on; see docs/PHASE6.md, "Kết quả M24".
 	PVP = table.freeze({
-		-- Off outside Studio until M27 (ranked queue); M26 makes a friendly match playable in Studio.
-		ENABLED = false,
+		-- Duel, Ranked and the Rank board. Off, they work only in Studio.
+		ENABLED = true,
+		-- Extras put off until there is a steady player base (decided 2026-11-26). Seasons off: one all-time Rank board
+		-- ("Rank_all"), points are never pulled back, and no season medals or Top 10. Rank icons off: tiers show by name
+		-- only. The tier badges stay off while their ids in TIER_BADGES are 0.
+		SEASONS_ENABLED = false,
+		RANK_ICONS_ENABLED = false,
 
 		-- A match lasts this long; moves the server receives later than END_GRACE_SECONDS after the end are dropped.
 		MATCH_SECONDS = 180,
@@ -185,7 +190,7 @@ local Config = {
 		-- After this long without an opponent the queue screen offers practice against the bot and inviting friends.
 		QUEUE_OFFER_SECONDS = 20,
 
-		-- The Rank board (M28): one OrderedDataStore per season, "Rank_<season>". A player shows on it once they have
+		-- The Rank board (M28): one OrderedDataStore per season, "Rank_<season>" ("Rank_all" with seasons off). A player shows on it once they have
 		-- played RANK_MIN_GAMES ranked games that season. When a season is over, its final top TOP_REWARD get a "Top 10"
 		-- medal (first place "Champion"); servers read that board FINAL_TOP_DELAY_SECONDS after the season ends, so the
 		-- last writes have landed.

@@ -7,7 +7,8 @@
 --   Roblox's own erasure tooling can find it);
 -- - one entry "<id>" in each leaderboard OrderedDataStore. An OrderedDataStore entry cannot carry user ids, so
 --   Roblox cannot link these itself; the weekly boards have a store per week, and this lists every week since
---   the first publish, and the Rank board a store per season (month) since ranked began.
+--   the first publish, and the Rank board a store per season (month) since ranked began, plus "Rank_all"
+--   (used with seasons off).
 -- The ranked queue's pair counts ("PvpPairs" in MemoryStore, keyed by the pair) expire on their own within 24 hours,
 -- so nothing is erased there.
 -- - the Co-op board is the exception: its rows are pairs "<id>_<id>" in the "Coop" store, so a row can't be found by
@@ -77,6 +78,7 @@ function Erasure.orderedStoreNames(now: number): { string }
 		add(Leaderboards.storeName(`{board}_week`, now, false))
 	end
 	-- Rank stores come last, so the lists above keep their order.
+	add("Rank_all") -- the Rank board with seasons off
 	local season, last = Seasons.id(Erasure.FIRST_SEASON_TIME), Seasons.id(now)
 	while season <= last do
 		add(`Rank_{season}`)

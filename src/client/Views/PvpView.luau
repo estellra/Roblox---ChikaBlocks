@@ -544,6 +544,7 @@ function PvpView.new(
 	local garbageLabel = label("Garbage", "", fonts.Label, 15, colors.TextMuted, 5)
 	-- "Gold 1,320 → 1,338 +18" on a pill, after a ranked match.
 	local ratingBadge = RankBadge.new(22, nil, 1)
+	ratingBadge.Visible = Config.PVP.RANK_ICONS_ENABLED
 	local ratingText = create("TextLabel", {
 		Name = "Text",
 		LayoutOrder = 2,
@@ -743,7 +744,7 @@ function PvpView.showVs(self: PvpView, info: VsInfo)
 		view.name.Text = card.name
 		view.subtitle.Text = card.subtitle
 		view.subtitle.TextColor3 = card.subtitleColor or Theme.Colors.TextMuted
-		view.badge.Visible = card.tier ~= nil
+		view.badge.Visible = Config.PVP.RANK_ICONS_ENABLED and card.tier ~= nil
 		if card.tier then
 			RankBadge.paint(view.badge, card.tier)
 		end

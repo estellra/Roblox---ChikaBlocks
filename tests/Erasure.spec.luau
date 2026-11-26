@@ -47,7 +47,8 @@ return function(t: TestKit.TestKit)
 			t.expect(has(names, "Highscore_2026W47")).toBe(false)
 			-- Plus one Rank store per season since ranked began (November 2026), after all the others.
 			t.expect(names[#names]).toBe("Rank_2026M11")
-			t.expect(#names).toBe(3 + 2 * 3 + 1)
+			t.expect(has(names, "Rank_all")).toBe(true)
+			t.expect(#names).toBe(3 + 2 * 3 + 2)
 		end)
 
 		t.it(
@@ -61,7 +62,7 @@ return function(t: TestKit.TestKit)
 						table.insert(ranks, name)
 					end
 				end
-				t.expect(ranks).toEqual({ "Rank_2026M11", "Rank_2026M12", "Rank_2027M01", "Rank_2027M02" })
+				t.expect(ranks).toEqual({ "Rank_all", "Rank_2026M11", "Rank_2026M12", "Rank_2027M01", "Rank_2027M02" })
 				for index, name in before do
 					if string.sub(name, 1, 5) ~= "Rank_" then
 						t.expect(later[index]).toBe(name)

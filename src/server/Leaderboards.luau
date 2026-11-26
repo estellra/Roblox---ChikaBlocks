@@ -16,7 +16,8 @@
 --
 -- The Rank board ("Rank_season") has a store per ranked season ("Rank_2026M12", see Seasons): a player's rank points
 -- with their title, once they have played the season's minimum of ranked games. Points go down as well as up, so the
--- board is written with the current value, like the others.
+-- board is written with the current value, like the others. With seasons off there is one store, "Rank_all", and the
+-- minimum counts every ranked game.
 --
 -- A stored value is stat * TITLE_SLOTS + title index (0 = no title; see Progression.titleIndex): the title
 -- shows next to the name without reading every player's profile, and the order is still by stat.
@@ -29,7 +30,7 @@ export type Stats = {
 	level: number,
 	weekly: Weekly,
 	robuxDonated: number,
-	pvp: { rating: number, season: string, seasonGames: number }?,
+	pvp: { rating: number, season: string, seasonGames: number, games: number? }?,
 }
 
 local TITLE_SLOTS = 100
@@ -75,12 +76,12 @@ function Leaderboards.pairIds(key: string): { low: number, high: number }?
 end
 
 -- The store behind a board key at `time`. Studio uses separate stores so tests never reach live boards.
-function Leaderboards.storeName(key: string, time: number, isStudio: boolean): string
+function Leaderboards.storeName(key: string, time: number, isStudio: boolean, seasons: boolean?): string
 	local board, period = string.match(key, "^(%a+)_(%a+)$")
 	assert(board and period, `bad board key {key}`)
 	local name = if period == "week"
 		then `{board}_{Leaderboards.weekKey(time)}`
-		elseif period == "season" then `{board}_{Seasons.id(time)}`
+		elseif period == "season" then `{board}_{if seasons == false then "all" else Seasons.id(time)}`
 		else (STORE_NAMES[board] or board)
 	return if isStudio then `{name}_Dev` else name
 end
@@ -112,13 +113,14 @@ function Leaderboards.recordRun(weekly: Weekly, time: number, score: number, exp
 end
 
 -- What each board should hold for this player now, by board key. Boards where the player has nothing to
--- show (no score, still level 1, nothing this week, fewer than `rankMinGames` ranked games this season) are left out
--- so they don't fill up with zeros.
+-- show (no score, still level 1, nothing this week, fewer than `rankMinGames` ranked games this season, or ever when
+-- `seasons` is false) are left out so they don't fill up with zeros.
 function Leaderboards.values(
 	stats: Stats,
 	titleIndex: number,
 	time: number,
-	rankMinGames: number?
+	rankMinGames: number?,
+	seasons: boolean?
 ): { [string]: number }
 	local values: { [string]: number } = {}
 	if stats.bestScore > 0 then
@@ -140,7 +142,15 @@ function Leaderboards.values(
 		values[Leaderboards.SUPPORTERS_KEY] = math.floor(stats.robuxDonated)
 	end
 	local pvp = stats.pvp
-	if pvp and rankMinGames and pvp.season == Seasons.id(time) and pvp.seasonGames >= rankMinGames then
+	local ranked = false
+	if pvp and rankMinGames then
+		if seasons == false then
+			ranked = (pvp.games or 0) >= rankMinGames
+		else
+			ranked = pvp.season == Seasons.id(time) and pvp.seasonGames >= rankMinGames
+		end
+	end
+	if pvp and ranked then
 		values[Leaderboards.RANK_KEY] = Leaderboards.encode(pvp.rating, titleIndex)
 	end
 	return values

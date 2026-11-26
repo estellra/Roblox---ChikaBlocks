@@ -555,8 +555,9 @@ function LeaderboardView.render(self: LeaderboardView)
 			row.name.Text = entry.name
 			row.title.Text = entry.title or ""
 			-- On the Rank board: the tier's badge before the name, and the tier's name under it (decision CA).
-			row.badge.Visible = ranked
-			local left = if ranked then 78 else 48
+			local icon = ranked and Config.PVP.RANK_ICONS_ENABLED
+			row.badge.Visible = icon
+			local left = if icon then 78 else 48
 			row.title.Position = UDim2.new(0, left, 0.5, 0)
 			if ranked then
 				local tier = tierOf(entry.value)
@@ -587,14 +588,18 @@ function LeaderboardView.render(self: LeaderboardView)
 	self.status.Text = if not empty
 		then ""
 		elseif coop then "No co-op scores yet. Play a run with a friend to get on the board!"
-		elseif ranked then "No ranked players yet this season. Play ranked to get on the board!"
+		elseif ranked then if Config.PVP.SEASONS_ENABLED
+			then "No ranked players yet this season. Play ranked to get on the board!"
+			else "No ranked players yet. Play ranked to get on the board!"
 		else "No scores yet. Play a run to get on the board!"
 	self.status.Visible = empty
 	local you = snapshot.you
 	local rank = you.rank
 	self.medalsLabel.Visible = false
 	if ranked and rank then
-		self.seasonLabel.Text = `Season {rank.season} · ends {rank.seasonEnds}`
+		self.seasonLabel.Text = if Config.PVP.SEASONS_ENABLED
+			then `Season {rank.season} · ends {rank.seasonEnds}`
+			else "All-time rank points"
 		local tier = tierOf(rank.rating)
 		local more = rank.minGames - rank.seasonGames
 		youLabel.Text = if more > 0

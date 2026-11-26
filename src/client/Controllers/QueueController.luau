@@ -103,7 +103,7 @@ local function render()
 	ui:setState({
 		tier = tier,
 		rankLine = `{tier} · {Format.withCommas(points)}`,
-		recordLine = `{wins}W {losses}L · Season {season}`,
+		recordLine = if PVP.SEASONS_ENABLED then `{wins}W {losses}L · Season {season}` else `{wins}W {losses}L`,
 		searching = state.queued,
 		status = status,
 		waitedLine = if state.queued
